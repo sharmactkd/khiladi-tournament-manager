@@ -1,0 +1,39 @@
+//D:\Khiladi\frontend\src\utils\tournamentUtils.js
+export const shuffleArray = (array) => {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+  
+  export const generateKnockoutBracket = (participants) => {
+    const bracket = [];
+    let currentRound = participants;
+    let numParticipants = participants.length;
+    
+    if (numParticipants === 0) return [];
+    
+    // Calculate needed byes to reach next power of 2
+    const nextPower = 2 ** Math.ceil(Math.log2(numParticipants));
+    const byes = nextPower - numParticipants;
+    currentRound = [...participants, ...Array(byes).fill({ name: 'Bye', team: '' })];
+    
+    while (currentRound.length > 1) {
+      const nextRound = [];
+      for (let i = 0; i < currentRound.length; i += 2) {
+        nextRound.push({
+          participant1: currentRound[i],
+          participant2: currentRound[i + 1]
+        });
+      }
+      bracket.push({
+        round: bracket.length + 1,
+        matches: nextRound
+      });
+      currentRound = nextRound.map(() => ({})); // Empty slots for next round
+    }
+    
+    return bracket;
+  };

@@ -1,0 +1,262 @@
+// D:\Khiladi\frontend\src\components\TournamentForm\constants.js
+
+// Age Categories
+export const AGE_CATEGORIES = [
+  "Sub-Junior",
+  "Cadet",
+  "Junior",
+  "Senior",
+  "Under - 14",
+  "Under - 17",
+  "Under - 19",
+];
+
+export const MAIN_AGE_CATEGORIES = ["Sub-Junior", "Cadet", "Junior", "Senior"];
+
+// Kyorugi Sub-Events
+export const KYORUGI_SUB_EVENTS = [
+  { label: "Kyorugi", key: "Kyorugi" },
+  { label: "Fresher", key: "Fresher" },
+  { label: "Tag Team", key: "TagTeam" },
+];
+
+// Poomsae Sub-Events
+export const POOMSAE_SUB_EVENTS = ["Individual", "Pair", "Team"];
+
+// WT Standard Weights
+export const WT_WEIGHTS = {
+  Senior: {
+    Male: [
+      "Under - 54 KG (Not exceeding 54kg)",
+      "Under - 58 KG (Over 54kg & Not exceeding 58kg)",
+      "Under - 63 KG (Over 58kg & Not exceeding 63kg)",
+      "Under - 68 KG (Over 63kg & Not exceeding 68kg)",
+      "Under - 74 KG (Over 68kg & Not exceeding 74kg)",
+      "Under - 80 KG (Over 74kg & Not exceeding 80kg)",
+      "Under - 87 KG (Over 80kg & Not exceeding 87kg)",
+      "Over - 87 KG (Over 87kg)",
+    ],
+    Female: [
+      "Under - 46 KG (Not exceeding 46kg)",
+      "Under - 49 KG (Over 46kg & Not exceeding 49kg)",
+      "Under - 53 KG (Over 49kg & Not exceeding 53kg)",
+      "Under - 57 KG (Over 53kg & Not exceeding 57kg)",
+      "Under - 62 KG (Over 57kg & Not exceeding 62kg)",
+      "Under - 67 KG (Over 62kg & Not exceeding 67kg)",
+      "Under - 73 KG (Over 67kg & Not exceeding 73kg)",
+      "Over - 73 KG (Over 73kg)",
+    ],
+  },
+  Junior: {
+    Male: [
+      "Under - 45 KG (Not exceeding 45kg)",
+      "Under - 48 KG (Over 45kg & Not exceeding 48kg)",
+      "Under - 51 KG (Over 48kg & Not exceeding 51kg)",
+      "Under - 55 KG (Over 51kg & Not exceeding 55kg)",
+      "Under - 59 KG (Over 55kg & Not exceeding 59kg)",
+      "Under - 63 KG (Over 59kg & Not exceeding 63kg)",
+      "Under - 68 KG (Over 63kg & Not exceeding 68kg)",
+      "Under - 73 KG (Over 68kg & Not exceeding 73kg)",
+      "Under - 78 KG (Over 73kg & Not exceeding 78kg)",
+      "Over - 78 KG (Over 78kg)",
+    ],
+    Female: [
+      "Under - 42 KG (Not exceeding 42kg)",
+      "Under - 44 KG (Over 42kg & Not exceeding 44kg)",
+      "Under - 46 KG (Over 44kg & Not exceeding 46kg)",
+      "Under - 49 KG (Over 46kg & Not exceeding 49kg)",
+      "Under - 52 KG (Over 49kg & Not exceeding 52kg)",
+      "Under - 55 KG (Over 52kg & Not exceeding 55kg)",
+      "Under - 59 KG (Over 55kg & Not exceeding 59kg)",
+      "Under - 63 KG (Over 59kg & Not exceeding 63kg)",
+      "Under - 68 KG (Over 63kg & Not exceeding 68kg)",
+      "Over - 68 KG (Over 68kg)",
+    ],
+  },
+  Cadet: {
+    weight: {
+      Male: [
+        "Under - 33 KG (Not exceeding 33kg)",
+        "Under - 37 KG (Over 33kg & Not exceeding 37kg)",
+        "Under - 41 KG (Over 37kg & Not exceeding 41kg)",
+        "Under - 45 KG (Over 41kg & Not exceeding 45kg)",
+        "Under - 49 KG (Over 45kg & Not exceeding 49kg)",
+        "Under - 53 KG (Over 49kg & Not exceeding 53kg)",
+        "Under - 57 KG (Over 53kg & Not exceeding 57kg)",
+        "Under - 61 KG (Over 57kg & Not exceeding 61kg)",
+        "Under - 65 KG (Over 61kg & Not exceeding 65kg)",
+        "Over - 65 KG (Over 65kg)",
+      ],
+      Female: [
+        "Under - 29 KG (Not exceeding 29kg)",
+        "Under - 33 KG (Over 29kg & Not exceeding 33kg)",
+        "Under - 37 KG (Over 33kg & Not exceeding 37kg)",
+        "Under - 41 KG (Over 37kg & Not exceeding 41kg)",
+        "Under - 44 KG (Over 41kg & Not exceeding 44kg)",
+        "Under - 47 KG (Over 44kg & Not exceeding 47kg)",
+        "Under - 51 KG (Over 47kg & Not exceeding 51kg)",
+        "Under - 55 KG (Over 51kg & Not exceeding 55kg)",
+        "Under - 59 KG (Over 55kg & Not exceeding 59kg)",
+        "Over - 59 KG (Over 59kg)",
+      ],
+    },
+    height: {
+      Male: [
+        "Under - 148cm (33kg - 45kg)",
+        "Under - 152cm (35kg - 48kg)",
+        "Under - 156cm (37kg - 51kg)",
+        "Under - 160cm (39kg - 53kg)",
+        "Under - 164cm (41kg - 56kg)",
+        "Under - 168cm (43kg - 59kg)",
+        "Under - 172cm (45kg - 61kg)",
+        "Under - 176cm (47kg - 64kg)",
+        "Under - 180cm (49kg - 67kg)",
+        "Over - 180cm (52kg - 80kg)",
+      ],
+      Female: [
+        "Under - 144cm (32kg - 43kg)",
+        "Under - 148cm (33kg - 45kg)",
+        "Under - 152cm (35kg - 48kg)",
+        "Under - 156cm (37kg - 51kg)",
+        "Under - 160cm (39kg - 53kg)",
+        "Under - 164cm (41kg - 56kg)",
+        "Under - 168cm (43kg - 59kg)",
+        "Under - 172cm (45kg - 61kg)",
+        "Under - 176cm (47kg - 64kg)",
+        "Over - 176cm (50kg - 75kg)",
+      ],
+    },
+  },
+  "Sub-Junior": {
+    Male: [
+      "Under - 18 KG (Not exceeding 18kg)",
+      "Under - 21 KG (Over 18kg & Not exceeding 21kg)",
+      "Under - 23 KG (Over 21kg & Not exceeding 23kg)",
+      "Under - 25 KG (Over 23kg & Not exceeding 25kg)",
+      "Under - 27 KG (Over 25kg & Not exceeding 27kg)",
+      "Under - 29 KG (Over 27kg & Not exceeding 29kg)",
+      "Under - 32 KG (Over 29kg & Not exceeding 32kg)",
+      "Under - 35 KG (Over 32kg & Not exceeding 35kg)",
+      "Under - 38 KG (Over 35kg & Not exceeding 38kg)",
+      "Under - 41 KG (Over 38kg & Not exceeding 41kg)",
+      "Under - 44 KG (Over 41kg & Not exceeding 44kg)",
+      "Over - 44 KG (Over 44kg)",
+    ],
+    Female: [
+      "Under - 16 KG (Not exceeding 16kg)",
+      "Under - 18 KG (Over 16kg & Not exceeding 18kg)",
+      "Under - 20 KG (Over 18kg & Not exceeding 20kg)",
+      "Under - 22 KG (Over 20kg & Not exceeding 22kg)",
+      "Under - 24 KG (Over 22kg & Not exceeding 24kg)",
+      "Under - 26 KG (Over 24kg & Not exceeding 26kg)",
+      "Under - 29 KG (Over 26kg & Not exceeding 29kg)",
+      "Under - 32 KG (Over 29kg & Not exceeding 32kg)",
+      "Under - 35 KG (Over 32kg & Not exceeding 35kg)",
+      "Under - 38 KG (Over 35kg & Not exceeding 38kg)",
+      "Under - 41 KG (Over 38kg & Not exceeding 41kg)",
+      "Over - 41 KG (Over 41kg)",
+    ],
+  },
+};
+
+// SGFI Standard Weights
+export const SGFI_WEIGHTS = {
+  "Under - 14": {
+    Male: [
+      "Under - 18 KG (Not exceeding 18kg)",
+      "Under - 21 KG (Over 18kg & Not exceeding 21kg)",
+      "Under - 23 KG (Over 21kg & Not exceeding 23kg)",
+      "Under - 25 KG (Over 23kg & Not exceeding 25kg)",
+      "Under - 27 KG (Over 25kg & Not exceeding 27kg)",
+      "Under - 29 KG (Over 27kg & Not exceeding 29kg)",
+      "Under - 32 KG (Over 29kg & Not exceeding 32kg)",
+      "Under - 35 KG (Over 32kg & Not exceeding 35kg)",
+      "Under - 38 KG (Over 35kg & Not exceeding 38kg)",
+      "Under - 41 KG (Over 38kg & Not exceeding 41kg)",
+      "Over - 41 KG (Over 41kg)",
+    ],
+    Female: [
+      "Under - 16 KG (Not exceeding 16kg)",
+      "Under - 18 KG (Over 16kg & Not exceeding 18kg)",
+      "Under - 20 KG (Over 18kg & Not exceeding 20kg)",
+      "Under - 22 KG (Over 20kg & Not exceeding 22kg)",
+      "Under - 24 KG (Over 22kg & Not exceeding 24kg)",
+      "Under - 26 KG (Over 24kg & Not exceeding 26kg)",
+      "Under - 29 KG (Over 26kg & Not exceeding 29kg)",
+      "Under - 32 KG (Over 29kg & Not exceeding 32kg)",
+      "Under - 35 KG (Over 32kg & Not exceeding 35kg)",
+      "Under - 38 KG (Over 35kg & Not exceeding 38kg)",
+      "Over - 38 KG (Over 38kg)",
+    ],
+  },
+  "Under - 17": {
+    Male: [
+      "Under - 35 KG (Not exceeding 35kg)",
+      "Under - 38 KG (Over 35kg & Not exceeding 38kg)",
+      "Under - 41 KG (Over 38kg & Not exceeding 41kg)",
+      "Under - 45 KG (Over 41kg & Not exceeding 45kg)",
+      "Under - 48 KG (Over 45kg & Not exceeding 48kg)",
+      "Under - 51 KG (Over 48kg & Not exceeding 51kg)",
+      "Under - 55 KG (Over 51kg & Not exceeding 55kg)",
+      "Under - 59 KG (Over 55kg & Not exceeding 59kg)",
+      "Under - 63 KG (Over 59kg & Not exceeding 63kg)",
+      "Under - 68 KG (Over 63kg & Not exceeding 68kg)",
+      "Under - 73 KG (Over 68kg & Not exceeding 73kg)",
+      "Under - 78 KG (Over 73kg & Not exceeding 78kg)",
+      "Over - 78 KG (Over 78kg)",
+    ],
+    Female: [
+      "Under - 32 KG (Not exceeding 32kg)",
+      "Under - 35 KG (Over 32kg & Not exceeding 35kg)",
+      "Under - 38 KG (Over 35kg & Not exceeding 38kg)",
+      "Under - 42 KG (Over 38kg & Not exceeding 42kg)",
+      "Under - 44 KG (Over 42kg & Not exceeding 44kg)",
+      "Under - 46 KG (Over 44kg & Not exceeding 46kg)",
+      "Under - 49 KG (Over 46kg & Not exceeding 49kg)",
+      "Under - 52 KG (Over 49kg & Not exceeding 52kg)",
+      "Under - 55 KG (Over 52kg & Not exceeding 55kg)",
+      "Under - 59 KG (Over 55kg & Not exceeding 59kg)",
+      "Under - 63 KG (Over 59kg & Not exceeding 63kg)",
+      "Under - 68 KG (Over 63kg & Not exceeding 68kg)",
+      "Over - 68 KG (Over 68kg)",
+    ],
+  },
+  "Under - 19": {
+    Male: [
+      "Under - 41 KG (Not exceeding 41kg)",
+      "Under - 45 KG (Over 41kg & Not exceeding 45kg)",
+      "Under - 48 KG (Over 45kg & Not exceeding 48kg)",
+      "Under - 51 KG (Over 48kg & Not exceeding 51kg)",
+      "Under - 55 KG (Over 51kg & Not exceeding 55kg)",
+      "Under - 59 KG (Over 55kg & Not exceeding 59kg)",
+      "Under - 63 KG (Over 59kg & Not exceeding 63kg)",
+      "Under - 68 KG (Over 63kg & Not exceeding 68kg)",
+      "Under - 73 KG (Over 68kg & Not exceeding 73kg)",
+      "Under - 78 KG (Over 73kg & Not exceeding 78kg)",
+      "Over - 78 KG (Over 78kg)",
+    ],
+    Female: [
+      "Under - 40 KG (Not exceeding 40kg)",
+      "Under - 42 KG (Over 40kg & Not exceeding 42kg)",
+      "Under - 44 KG (Over 42kg & Not exceeding 44kg)",
+      "Under - 46 KG (Over 44kg & Not exceeding 46kg)",
+      "Under - 49 KG (Over 46kg & Not exceeding 49kg)",
+      "Under - 52 KG (Over 49kg & Not exceeding 52kg)",
+      "Under - 55 KG (Over 52kg & Not exceeding 55kg)",
+      "Under - 59 KG (Over 55kg & Not exceeding 59kg)",
+      "Under - 63 KG (Over 59kg & Not exceeding 63kg)",
+      "Under - 68 KG (Over 63kg & Not exceeding 68kg)",
+      "Over - 68 KG (Over 68kg)",
+    ],
+  },
+};
+
+// Tournament Levels
+export const TOURNAMENT_LEVELS = [
+  "Inter School",
+  "District",
+  "Regional",
+  "State",
+  "National",
+  "International",
+];

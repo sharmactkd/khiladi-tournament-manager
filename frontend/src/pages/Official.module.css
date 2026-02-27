@@ -1,0 +1,226 @@
+/* src/pages/Official.module.css */
+/* Adapt from Winner.module.css - gradients, shadows, responsive */
+
+.container {
+  padding: 2rem;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f8f9fa;
+  min-height: 100vh;
+}
+
+.loading {
+  text-align: center;
+  font-size: 18px;
+  color: #495057;
+  padding: 4rem 0;
+}
+
+/* ✅ Print & Save PDF Buttons — SAME as TeamChampionship */
+.buttonSection {
+  margin: 20px 0;
+  text-align: center;
+}
+
+.pdfButtonWrapper {
+  display: inline-flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 20px;
+}
+
+/* Base button style */
+.pdfButton,
+.printButton {
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  border: none;
+  white-space: nowrap;
+  background: #cf0006; /* same red as tie-sheet */
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.printButton:hover:not(:disabled),
+.pdfButton:hover:not(:disabled) {
+  background: #a50040;
+}
+
+/* Disabled state */
+.pdfButton:disabled,
+.printButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  color: white;
+  gap: 20px;
+  min-height: 120px;
+  border-radius: 8px;
+  margin-bottom: 2rem;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  position: relative;
+}
+
+/* Logos */
+.logoLeft,
+.logoRight {
+  max-height: 100px;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+/* Center Content - Vertically stacked */
+.headerContent {
+  flex: 1;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+}
+
+.tournamentName {
+  font-size: 1.8rem;
+  font-weight: bold;
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  line-height: 1.2;
+}
+
+.federation {
+  font-size: 0.9rem;
+  margin: 0;
+  opacity: 0.9;
+  font-weight: 500;
+}
+
+.title {
+  font-size: 1.6rem;
+  margin: 0;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+
+/* Table */
+.tableWrapper {
+  background: white;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+  margin: 0 auto;
+  max-width: 1200px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  padding: 14px 12px;
+  text-align: left;
+  border-bottom: 1px solid #e0e6ed;
+}
+
+.table th {
+  background: linear-gradient(135deg, #cf0006 0%, #990005 100%);
+  color: white;
+  font-weight: 600;
+  font-family: Arial, Helvetica, sans-serif;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  font-size: 18px;
+}
+
+.table tbody tr:nth-child(even) {
+  background-color: #f8f9fa;
+}
+
+.table tbody tr:hover {
+  background-color: #e3f2fd;
+  transition: background-color 0.2s;
+}
+
+.noData {
+  text-align: center;
+  font-style: italic;
+  color: #888;
+  padding: 2rem;
+}
+
+/* ✅ These classes are used in Official.jsx (safe to include even if you already had them elsewhere) */
+.input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #d0d7de;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+  background: #ffffff;
+}
+
+.input:focus {
+  border-color: #cf0006;
+  box-shadow: 0 0 0 3px rgba(207, 0, 6, 0.15);
+}
+
+.deleteButton {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.deleteButton:hover {
+  background: rgba(207, 0, 6, 0.08);
+}
+
+@media (max-width: 768px) {
+  .table th,
+  .table td {
+    padding: 10px 8px;
+    font-size: 14px;
+  }
+
+  .header {
+    padding: 1.5rem;
+  }
+
+  .tournamentName {
+    font-size: 22px;
+  }
+
+  .title {
+    font-size: 20px;
+  }
+
+  /* Buttons wrap nicely on mobile */
+  .pdfButtonWrapper {
+    padding: 10px 12px;
+  }
+}

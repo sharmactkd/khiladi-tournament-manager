@@ -1,0 +1,40 @@
+/* D:\Khiladi\frontend\src\index.css */
+html {
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+  touch-action: manipulation;
+}
+
+body {
+  height: 100%;
+  width: 100vw;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  line-height: 1;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box;
+  overflow-y: auto;
+}
+
+#root {
+  height: 100vh;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto; /* overflow: hidden से बदलें */
+}
+
+/* Temporary visible scrollbar for debugging */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cf0006;
+  border-radius: 4px;
+}

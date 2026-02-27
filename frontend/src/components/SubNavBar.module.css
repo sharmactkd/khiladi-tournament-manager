@@ -1,0 +1,81 @@
+.subNav {
+  width: 100%;
+  background-color: var(--secondary-color);
+  padding: 0;
+  font-family: var(--font-family);
+ 
+  top: 60px; /* Matches Header height */
+  z-index: 10;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  box-sizing: border-box;
+  white-space: nowrap;
+  flex-shrink: 0; /* Prevent shrinking in flex layout */
+}
+
+.subNav ul {
+  list-style: none;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0;
+  padding: 0 0.5rem;
+  width: 100%;
+}
+
+.subNav li {
+  margin: 0 0.5rem;
+}
+
+.active {
+  background-color: var(--primary-color);
+  color: white !important;
+  border-radius: 4px;
+  padding: 0.3rem 0.6rem;
+  text-decoration: none;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.inactive {
+  color: var(--text-color);
+  padding: 0.3rem 0.6rem;
+  text-decoration: none;
+  transition: color 0.3s ease;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.inactive:hover {
+  color: #dddddd;
+}
+
+.subNav li:first-child .inactive {
+  font-weight: bold;
+  padding-left: 0.5rem;
+}
+
+.subNav li:first-child .active {
+  background-color: #cf0006;
+}
+
+@media (max-width: 600px) {
+  .subNav {
+    position: static;
+    height: auto;
+  }
+
+  .subNav ul {
+    flex-direction: column;
+    padding: 0.5rem 0;
+  }
+
+  .subNav li {
+    margin: 0.3rem 0;
+  }
+}

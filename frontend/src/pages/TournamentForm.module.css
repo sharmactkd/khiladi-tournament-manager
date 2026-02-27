@@ -1,0 +1,1859 @@
+/* TournamentForm.module.css */
+
+:root {
+  --primary-color: #cf0006;
+  --primary-color-dark: #0056b3;
+  --secondary-bg: #f8f9fa;
+  --border-color: #ccc;
+  --error-color: #d9534f;
+  --highlight-bg: #e7f3ff;
+  --font-family: Arial, Helvetica, sans-serif;
+  --base-padding: 1rem;
+  --border-radius: 4px;
+}
+
+.container {
+  max-width: 1000px;
+  margin: 2rem auto;
+  padding: var(--base-padding);
+  background: #fff;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: var(--border-radius);
+  font-family: var(--font-family);
+  overflow-y: auto;
+  max-height: calc(100vh - 4rem);
+}
+
+.error {
+  color: var(--error-color);
+  text-align: center;
+  margin-bottom: var(--base-padding);
+  font-weight: bold;
+}
+
+/* Header row with title and toggle */
+.headerRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--base-padding);
+}
+
+.headerRow h1 {
+  margin: 0;
+  font-size: 1.8rem;
+}
+
+/* Modern toggle switch with text inside */
+.visibilityToggle {
+  position: relative;
+  display: inline-block;
+  width: 80px;
+  height: 34px;
+}
+
+.visibilityToggle input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: 0.4s;
+  border-radius: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+  color: #fff;
+  font-size: 0.9rem;
+}
+
+.visibilityToggle input:checked + .slider {
+  background-color: var(--primary-color);
+}
+
+.visibilityToggle input:checked + .slider::before {
+  content: "Public";
+}
+
+.slider::before {
+  content: "Private";
+  transition: 0.4s;
+}
+
+/* Form layout: vertical */
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--base-padding);
+}
+
+/* Section styling: each section on a new line with a bottom border */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0;
+
+  border-bottom: 1px solid var(--border-color);
+}
+
+.section h2 {
+  font-size: 1.2rem;
+  margin: 0;
+
+}
+
+.nameFields{
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  max-width: 93.5%; 
+}
+
+/* Row container for email & contact fields */
+.rowFields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  max-width: 93.5%;
+}
+
+.rowFields > * {
+  flex: 0 0 calc(50% - 0.5rem);
+}
+
+
+.dates {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+  width: 93.5%;
+  align-items: start;
+  justify-items: stretch;
+  /* Remove fixed height from here, let the wrapper control it */
+  position: relative;
+  overflow: visible;
+}
+
+/* New wrapper for each datepicker */
+.datePickerContainer {
+  position: relative; /* Context for absolute positioning of the calendar */
+  height: 38px; /* Fixed height to match input */
+  width: 100%;
+  overflow: visible; /* Calendar can overflow without affecting layout */
+}
+
+.react-datepicker-wrapper {
+  width: 100%;
+  height: 100%; /* Fill the container */
+}
+
+.react-datepicker__input-container {
+  width: 100%;
+  height: 100%;
+}
+
+.dateInput {
+  width: 189% !important;
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-sizing: border-box;
+  height: 38px; /* Fixed height */
+}
+
+/* Force the calendar to be absolutely positioned and detached from flow */
+.react-datepicker-popper {
+  position: absolute !important;
+  top: 38px !important; /* Matches input height + small offset */
+  left: 0 !important;
+  z-index: 9999 !important;
+  transform: none !important; /* Prevent Popper.js from overriding */
+  width: 100%; /* Match input width */
+}
+
+/* Style the calendar itself */
+.react-datepicker {
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-family: var(--font-family);
+}
+
+
+/* Custom Phone Input Styles */
+.customPhoneContainer {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  position: relative;
+}
+
+.phoneInputRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0; /* No gap since borders are connected */
+  width: 100%;
+}
+
+.phoneNumberInput {
+  width: 100%; /* Takes remaining space */
+  padding: 8px 12px;
+  height: 38px;
+  border: 1px solid #ccc;
+  border-radius: 0 4px 4px 0 !important; /* Keep right corners rounded, left corners square */
+  border-left: none; /* Remove left border to connect with dropdown */
+  font-size: 14px;
+  box-sizing: border-box;
+  flex-grow: 1; /* Ensures it takes up available space */
+}
+
+.phoneNumberInput:focus {
+  outline: none;
+  border-color: #a30004;
+  box-shadow: 0 0 5px rgba(207, 0, 6, 0.5);
+}
+
+.errorInput {
+  border-color: #ff0000;
+}
+
+.contactError {
+  color: #ff0000;
+  font-size: 0.8rem;
+  margin-top: 4px;
+  position: absolute;
+  bottom: -20px;
+  left: 0;
+}
+
+.inputWrapper {
+  display: flex;
+  align-items: center;
+  border: none;
+  border-radius: 4px;
+  width: 100%;
+  background-color: transparent;
+}
+
+.phoneNumberInput {
+  border: none;
+  outline: none;
+  flex: 1;
+  font-size: 1em;
+  background: transparent;
+}
+
+.errorMessage {
+  font-size: 0.8em; /* Decreased font size */
+  color: red; /* Red font color */
+  margin-left: 5px;
+  white-space: nowrap;
+}
+
+/* Basic styling for inputs, selects, textareas */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="tel"],
+
+textarea,
+select {
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-sizing: border-box;
+}
+
+/* Venue Name row: input and map button on the same line */
+.venueNameRow {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.venueNameRow input[type="text"] {
+  flex: 1;
+  max-width: 100%;
+}
+
+/* Venue container: a row with map icon button and dropdowns */
+.venueContainer {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+/* Venue dropdowns using react-select */
+.venueDropdowns {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Force the react-select control to have a fixed width of 300px */
+.venueDropdowns .reactSelect__control {
+  width: 300px !important;
+  min-width: 300px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  min-height: 38px;
+}
+
+/* For the dropdown menu: auto width based on content with min-width of 300px */
+.venueDropdowns .reactSelect__menu {
+  z-index: 10;
+  width: auto !important;
+  min-width: 300px;
+}
+
+/* Additional portal style if using menuPortalTarget */
+.venueDropdowns .reactSelect__menuPortal {
+  z-index: 9999;
+  width: auto !important;
+  min-width: 300px;
+}
+
+.venueDropdowns .reactSelect__option {
+  display: flex;
+  align-items: center;
+}
+
+.venueDropdowns .reactSelect__option--is-focused {
+  background-color: var(--highlight-bg);
+}
+
+
+.mapButton {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 1.8rem;
+  color: var(--primary-color);
+}
+
+/* Map placeholder styling */
+.mapPlaceholder {
+  padding: 1rem;
+  background-color: var(--secondary-bg);
+  text-align: center;
+  border: 1px dashed var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.tournamentLevelSection {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: var(--border-radius);
+  background: #fff;
+}
+
+.tournamentLevelSection h2 {
+  margin-bottom: 0.5rem;
+  font-size: 1.2rem;
+}
+
+.levelButtonsContainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.levelButton {
+  flex: 1;
+  min-width: 120px;
+  padding: 0.5rem 1rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.selectedLevelButton {
+  background: var(--primary-color);
+  color: #fff;
+  border-color: var(--primary-color);
+}
+
+/* Tournament Type Section */
+.typeContainer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.typeBox {
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  padding: 1rem;
+  transition: all 0.3s ease;
+  cursor: default;
+  position: relative;
+}
+
+.activeType {
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+/* Tournament Type header: first column for the "Select All" button, second for label */
+.typeHeader {
+  position: relative;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.typeLabel {
+  display: inline-block;
+width: 100%;
+  text-align: center;
+  font-weight: bold;
+}
+
+.selectAllButton {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  text-align: left;
+}
+
+.selectAllButton:hover {
+  background: #f8050d;
+}
+
+.ageGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.regularAgeContainer{
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+gap: .5rem;
+}
+
+.underAgeContainer{
+display: flex;
+justify-content: space-between;
+
+gap: .5rem;
+}
+
+.underAgeContainer .ageContainer {
+  flex: 1;                   /* ✅ Added: Equal width for each button */
+}
+
+.ageContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.ageButton {
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  text-align: center;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.selectedAge {
+  background: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.individualGenderSelection {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.genderSelection {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+  
+}
+
+.genderTag {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: #f0f0f0;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+.genderTag.selectedAge {
+  border-color: #cf0006;
+  background-color: #f0f0f0;
+  color: #cf0006;
+  box-shadow: 0 1px 1px 0 rgba(0, 0, 0, 0.2), 0 2px 20px 0 rgba(0, 0, 0, 0.19)!important;
+}
+
+.playerLimitContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  margin-bottom: 1rem;
+}
+
+.playerLimitLabel {
+  flex-shrink: 0;
+font-family: Arial, Helvetica, sans-serif; 
+font-style: italic; 
+font-size: 1rem;
+}
+
+/* Container for the two player limit buttons */
+.playerLimitButtons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Base styling for each player limit button */
+.playerLimitButton {
+  flex: 1;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: #fff;
+  color: #333;
+  cursor: pointer;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+  text-align: center;
+}
+
+/* Hover state for buttons */
+.playerLimitButton:hover {
+  background-color: #f8050d;
+}
+
+/* Styling when a button is selected */
+.selectedButton {
+  background-color: var(--primary-color);
+  color: #fff;
+}
+
+/* Tournament Type row using CSS Grid */
+.tournamentTypeRow {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  align-items: center;
+ max-width: 100%;
+}
+
+/* Make the first child span both columns (i.e. full width on row 1) */
+.tournamentTypeRow > :nth-child(1) {
+  grid-column: 1 / span 2;
+}
+
+/* Label for the Tournament Type */
+.tournamentTypeLabel {
+  display: flex;
+  font-weight: bold;
+}
+
+/* Radio group container to hold the two box buttons */
+.radioGroup {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  max-width: 100%;
+  align-items: center;
+   /* Allow radio buttons to share available space */
+}
+
+/* Box button style for each radio button */
+.radioBox {
+  flex: 1;
+  text-align: center;
+  border: 1px solid var(--border-color);
+  padding: 0.5rem;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  user-select: none;
+  transition: background-color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Hide the native radio input */
+.radioBox input {
+  display: none;
+}
+
+/* When selected, change the background and border */
+.selected {
+  background-color: var(--primary-color);
+  color: #fff;
+  border-color: var(--primary-color-dark);
+}
+
+/* Fixed width class for inputs (300px in this example) */
+.fixedWidthInput {
+  width: 300px;
+}
+
+
+/* Radio and checkbox groups */
+.radioGroup,
+.checkboxGroup {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border: #cf0006;
+}
+
+/* Sub-section styling */
+.subSection {
+  margin-left: 1rem;
+  padding-left: 1rem;
+  border-left: 2px solid var(--border-color);
+}
+
+/* Checkbox with fee input styling */
+.checkboxWithFee {
+  display: flex;
+  flex-direction: column;
+  margin-top: 0.5rem;
+}
+
+/* Entry fee field styling */
+.entryFeeField {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+/* Event Categories Section */
+.sectionHeader {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+/* Currency field styling */
+.currencyContainer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.currencyLabel {
+  font-size: 0.9rem;
+  font-weight: bold;
+}
+
+.currency {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+
+/* Event Categories Section */
+.eventContainer {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1rem;
+}
+
+.eventBox {
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  padding: 1rem;
+  transition: all 0.3s ease;
+}
+
+.activeEvent {
+  border-color: var(--primary-color);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+.eventHeader {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 1rem;
+  padding: 0 2rem; /* Add padding for absolute positioned buttons */
+}
+
+.selectAllButtonEvent {
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--primary-color);
+  color: white;
+  border: none;
+  padding: 0.25rem 0.75rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.selectAllButtonEvent:hover {
+  background: #f8050d;
+}
+
+.eventTitle {
+  font-weight: bold;
+  font-size: 1.1rem;
+  margin: 0 auto; /* Center the title */
+}
+
+.eventToggle {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  margin: 0;
+}
+
+/* Sub-event row layout */
+.subEventRow {
+  display: flex;
+  flex-wrap: wrap; /* Allow wrapping if needed */
+  gap: 1rem;
+}
+
+.subEventItem {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1; /* Ensure equal width for sub-events */
+  min-width: 100px; /* Minimum width to prevent collapse */
+}
+
+.subEventButton {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+}
+
+.selectedSubEvent {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+/* Fee options below sub-event */
+.feeOptions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.feeButtons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.feeButton {
+  padding: 0.25rem 0.75rem;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  width: 60px; /* Fixed width for consistency */
+}
+
+.selectedFee {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.amountInput {
+  width: 100px; /* Fixed width for amount input */
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  font-size: 0.9rem;
+  text-align: center;
+}
+/* Weight Categories Section Container */
+
+
+.mainSection {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+  padding: 25px;
+}
+
+.genderSection {
+  margin-bottom: 40px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.sectionTitle {
+  color: #cf0006;
+  border-bottom: 2px solid #3498db;
+  padding-bottom: 10px;
+  margin-bottom: 25px;
+}
+
+.categoryGroup {
+  margin-bottom: 30px;
+}
+
+.categoryGroup h3 {
+  color: #34495e;
+  margin-bottom: 15px;
+  font-size: 1.2em;
+}
+
+.checkboxGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+.checkboxLabel:hover {
+  background: #e9ecef;
+}
+
+.cadetSection {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 6px;
+  margin-top: 25px;
+}
+
+.heightTableContainer {
+  overflow-x: auto;
+}
+
+.heightTable {
+  width: 100%;
+  border-collapse: collapse;
+
+}
+
+.heightTable th{
+  background-color: #cf0006!important;
+  padding: 10px;
+}
+.heightTable td {
+  padding: 7px;
+  border: 1px solid #dee2e6;
+  text-align: left;
+  font-size: .9rem;
+}
+
+.heightTable th {
+  background-color: #3498db;
+  color: white;
+}
+
+.heightTable tr:nth-child(even) {
+  background-color: #f8f9fa;
+}
+
+/* Weight Categories Table Container */
+.weightTableContainer {
+
+  overflow-x: auto;
+}
+
+/* Weight Categories Table Styling */
+.weightTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.weightTable th {
+  background-color: var(--primary-color);
+  color: #fff;
+  padding: 10px;
+  text-align: center;
+}
+
+/* Set a fixed width for the "S.No." column in the header */
+.weightTable th:first-child {
+  width: 60px; /* Adjust this value to match the desired width */
+}
+
+/* Ensure the "S.No." column in the body matches the header width */
+.weightTable td:first-child {
+  width: 60px;
+  text-align: center; /* Center the S.No. text for better appearance */
+}
+
+.weightTable td {
+  padding: 10px;
+  border: 1px solid #dee2e6;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.weightTable th {
+  background-color: var(--primary-color);
+  color: #fff;
+  font-weight: bold;
+}
+
+.weightTable tr:nth-child(even) {
+  background-color: #f8f9fa;
+}
+
+/* Age Group Section Styling (for Sub-Junior, Junior, Senior headings) */
+.ageGroupSection {
+  margin-bottom: .5rem;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+}
+
+.ageGroupTitle {
+  font-size: 1.2rem;
+  font-weight: bold;
+  text-align: center;
+  margin: 0;
+  padding-top: 20px;
+  padding-bottom: 15px;
+  text-transform: uppercase;
+  color: var(--primary-color);
+}
+
+/* Gender Column Headings Styling */
+.genderSections {
+  display: flex;
+}
+
+.genderColumn {
+  width: 52.5%;
+}
+
+.genderColumn h4 {
+  font-size: 1rem;
+  text-align: center;
+  margin-bottom: 0.5rem;
+  background-color: #f0f0f0;
+  padding: 0.5rem;
+  margin-block-start: 0;
+  margin-block-end: 0;
+  color: #cf0006;
+}
+
+
+
+
+
+
+.section {
+  padding: 1rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--border-color);
+  background: #fff;
+}
+
+/* Section Heading */
+.section h2 {
+  font-size: 1.2rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Select element styling */
+.selectWeightType {
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  margin-bottom: 0rem;
+  background: #fff;
+}
+
+/* Weight Group Container */
+.weightGroup {
+  margin-bottom: 1rem;
+  padding: 0.5rem;
+  border: 1px solid #ddd;
+  border-radius: var(--border-radius);
+  background: #fafafa;
+}
+
+/* Weight Group Heading */
+.weightGroup h3 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  color: var(--primary-color);
+}
+
+/* Checkbox Group for weight options */
+.checkboxGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.checkboxGroup label {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+/* Add these new styles or modify existing ones */
+.cadetCategoryButtons {
+  display: flex;
+  flex-direction: row; /* Ensure buttons are in a row */
+  gap: 10px; /* Space between buttons */
+  width: 100%; /* Full width of the parent container */
+  margin-top: 10px;
+}
+
+.cadetCategoryButton {
+  flex: 1; /* Each button takes equal space, stretching to fill the row */
+  padding: 8px 16px;
+  height: 40px;
+  border: 1px solid #cf0006;
+  border-radius: 4px;
+  background-color: #fff;
+  cursor: pointer;
+  transition: background-color 0.3s, color 0.3s;
+  text-align: center; /* Center the text inside the button */
+}
+
+
+.selectedCadetButton {
+  background-color: #cf0006;
+  color: #fff;
+}
+
+.weightTable th {
+  background-color: #cf0006;
+  color: #fff;
+  padding: 8px;
+  text-align: left;
+}
+
+.weightTable td {
+  padding: 8px;
+  border-bottom: 1px solid #ddd;
+}
+
+/* Ensure existing styles align with the new layout */
+.section {
+  margin-bottom: 20px;
+  padding: 15px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+/* Fooding & Lodging Styles */
+.foodingContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.foodingOptions {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+}
+
+.foodingOption {
+  padding: 0.7rem;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-align: center;
+}
+
+.selectedFooding {
+  border-color: var(--primary-color);
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.typeAndPaymentRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.typeButton {
+  padding: 0.7rem;
+  border: 2px solid #ddd;
+  border-radius: 6px;
+  background: white;
+  cursor: pointer;
+  text-align: center;
+  font-weight: bold;
+  transition: all 0.3s ease;
+  box-sizing: border-box;
+}
+
+.typeAndPaymentRow .typeButton {
+  flex: 1; /* Initially 50% each */
+}
+
+.typeAndPaymentRow:has(> .amountInput) .typeButton {
+  flex: 0 0 24.38%; /* When Paid, each takes 25%, together 50% */
+}
+
+.selectedType {
+  background-color: var(--primary-color);
+  color: white;
+  border-color: var(--primary-color);
+}
+
+.amountInput {
+  flex: 0 0 24%; /* Takes 25% of total width when Paid is selected */
+  padding: 0.5rem;
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+  font-size: 0.9rem;
+  box-sizing: border-box;
+}
+
+.paymentButton {
+  flex: 1; /* 1/3 of remaining 50% */
+  padding: 0.5rem 1rem;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.selectedPayment {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+/* Textarea for custom weights */
+textarea {
+  width: 100%;
+  padding: 0.5rem;
+  font-size: 1rem;
+  font-family: Arial, Helvetica, sans-serif;
+  border: 1px solid #cf0006 !important;
+  border-radius: var(--border-radius) !important;
+  box-sizing: border-box;
+  resize: vertical;
+  background: #ffffff;
+}
+
+/* Point system styling */
+.pointSystem {
+  display: flex;
+  flex-direction: row;
+  font-weight: bold;
+  align-items: center;
+  width: 50%;
+  gap: 1rem;
+}
+
+.pointSystem input {
+  border: 1px solid #cf0006; 
+}
+
+
+
+/* File Upload Section Styles */
+
+
+
+/*
+  =====================================
+  SHARED STYLES FOR FILE NAME + "NO FILE"
+  =====================================
+*/
+.fileName {
+  margin-left: 8px;
+  font-weight: normal;
+  color: #333;
+}
+
+.noFileText {
+  display: block;
+  color: #666;
+}
+
+/*
+  ====================================
+  TOURNAMENT POSTER (FULL WIDTH) STYLES
+  ====================================
+*/
+.posterUploadContainer {
+  margin-top: 10px;
+}
+
+.posterLabel {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+/* 
+  The big clickable box that displays
+  "No file chosen" or the preview image.
+*/
+.posterInputWrapper {
+  
+  position: relative;
+  width: 100%; /* Full width for the poster */
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 8px;
+  box-sizing: border-box;
+  text-align: center;
+  cursor: pointer;
+}
+
+/* 
+  The file input is hidden (opacity=0) 
+  but spans the entire wrapper so it's clickable.
+*/
+.posterInputFile {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.posterPreviewImage {
+  max-width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+}
+
+/*
+  ======================================
+  LOGOS SECTION (50%-50% WIDTH) STYLES
+  ======================================
+*/
+.logoContainer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 15px;     /* Gap between the two logos */
+  margin-top: 20px;
+}
+
+/* 
+  Each logoItem now takes 50% width 
+  so that Logo 1 and Logo 2 are side by side.
+*/
+.logoItem {
+  flex: 1;       /* This automatically makes them 50-50 if 2 items exist */
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start; /* Align label and input to the left (adjust if needed) */
+}
+
+.logoLabel {
+  display: block;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+/* 
+  The big clickable box for each logo,
+  same style as the poster, but at 50% width 
+  (because .logoItem is already half the container).
+*/
+.logoInputWrapper {
+  position: relative;
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 8px;
+  box-sizing: border-box;
+  text-align: center;
+  cursor: pointer;
+}
+
+.logoInputFile {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.logoPreviewImage {
+  max-width: 100%;
+  max-height: 200px;
+  object-fit: contain;
+}
+
+.descriptionContainer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.descriptionLabel {
+  font-size: 1.1rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.descriptionInput {
+  width: 100%;
+  padding: 10px;
+  font-size: 1rem;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  resize: vertical; /* Allows vertical resizing only */
+  min-height: 100px;
+  background-color: #fff;
+  box-sizing: border-box;
+}
+
+.descriptionInput:focus {
+  outline: none;
+  border-color: #4CAF50;
+  box-shadow: 0 0 5px rgba(76, 175, 80, 0.3);
+}
+
+.descriptionInput::placeholder {
+  color: #999;
+}
+
+.submitButton {
+  background-color: var(--primary-color);
+  color: #fff;
+  border: none;
+  padding: 0.75rem;
+  font-size: 1rem;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+
+  /* CHANGED: Negative top margin to move button up */
+  margin-top: -20px; 
+}
+
+/* Optional: Hover effect */
+.submitButton:hover {
+  background-color: var(--primary-color-dark);
+}
+
+/* Responsive adjustments */
+@media (max-width: 700px) {
+  .container {
+    margin: var(--base-padding);
+    max-height: none;
+  }
+  .venueContainer {
+    flex-direction: column;
+  }
+}
+
+/* Date Picker Popper Fix – Yeh add kar do */
+.reactDatepickerPopper {
+  z-index: 9999 !important;
+  position: absolute !important;
+  transform: none !important;
+}
+
+/* Ensure calendar doesn't get clipped */
+.dates {
+  position: relative;
+  overflow: visible !important;
+}
+
+.datePickerContainer {
+  position: relative;
+  overflow: visible !important;
+}
+
+/* Input width fix */
+.dateInput {
+  width: 377px !important;
+  
+  box-sizing: border-box;
+}
+
+/* ===== FIX: Button Click Problem ===== */
+.submitButton {
+  position: relative;        /* Ensures no overlay blocks click */
+  z-index: 10;               /* Button sabse upar rahega */
+  pointer-events: auto !important;  /* Click force enable */
+  cursor: pointer;           /* Hand cursor dikhega */
+}
+
+/* Progress bar bhi click block na kare */
+.progressContainer {
+  pointer-events: none;      /* Progress bar par click pass through ho */
+}
+
+/* src/pages/TournamentForm.module.css में add करो */
+
+.select {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 16px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  background-color: white;
+  cursor: pointer;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
+  appearance: none; /* default arrow remove */
+  background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='m6 8 4 4 4-4'/%3e%3c/svg%3e");
+  background-position: right 12px center;
+  background-repeat: no-repeat;
+  background-size: 12px;
+}
+
+.select:focus {
+  outline: none;
+  border-color: #cf0006;
+  box-shadow: 0 0 0 3px rgba(207, 0, 6, 0.2);
+}
+
+.select:hover {
+  border-color: #cf0006;
+}
+
+.textarea {
+  width: 100%;
+  padding: 12px 16px;
+  font-size: 16px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  resize: vertical;
+  min-height: 200px;
+  font-family: inherit;
+}
+
+.textarea:focus {
+  outline: none;
+  border-color: #cf0006;
+  box-shadow: 0 0 0 3px rgba(207, 0, 6, 0.2);
+}
+
+/* TournamentForm.module.css में add करो */
+
+.customWeightLabel {
+  display: block;
+  
+  margin: 10px 0 12px 0;
+  font-weight: 500;
+  font-size: 16px;
+  color: #000000;
+}
+
+.customWeightTextarea {
+  width: 100%;
+  padding: 16px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 15px;
+  font-family: inherit;
+  resize: vertical;
+  min-height: 220px;
+}
+
+.customWeightTextarea:focus {
+  outline: none;
+  border-color: #cf0006;
+  box-shadow: 0 0 0 3px rgba(207, 0, 6, 0.2);
+}
+
+.customWeightHint {
+  margin-top: 12px;
+  font-size: 14px;
+  color: #718096;
+  font-style: italic;
+  line-height: 1.5;
+}
+
+.posterPreviewImage {
+  max-width: 500px;     /* पहले से बड़ा */
+  max-height: 600px;
+  margin-top: 16px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.logoPreviewImage {
+  width: 250px;         /* पहले से बड़ा */
+  height: 250px;
+  object-fit: contain;
+  margin-top: 16px;
+  border-radius: 12px;
+  border: 2px solid #eee;
+  padding: 8px;
+  background: #f9f9f9;
+}
+
+
+.cadetToggleContainer {
+  margin: 2px 0;
+  height: 50px;
+  padding: 2px;
+  background: #ffffff;
+  
+  text-align: center;
+}
+
+
+
+.cadetRadioGroup {
+  display: flex;
+  width: 100%;
+  gap: 5px;
+  justify-content: center;
+  
+}
+
+.cadetRadioLabel {
+  display: flex;
+  align-items: center;
+  font-size: 1.1em;
+  cursor: pointer;
+  padding: 12px 90px;
+  border-radius: 8px;
+  background: #f0f0f0;
+  color: #333;
+  transition: all 0.3s ease;
+  font-weight: 500;
+}
+
+.cadetRadioLabel input {
+  margin-right: 12px;
+  transform: scale(1.2);
+}
+
+.cadetRadioSelected {
+  background: #cf0006 !important;
+  color: white !important;
+}
+
+.cadetInfoText {
+  margin-top: 12px;
+  font-style: italic;
+  color: #555;
+}
+
+.numberInput {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.addRowButton {
+  margin-top: 16px;
+  padding: 10px 20px;
+  background: #cf0006;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.addRowButton:hover {
+  background: #a00005;
+}
+
+.removeRowBtn {
+  background: #cf0006;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.removeRowBtn:hover {
+  background: #a00005;
+}
+
+.presetControls {
+  display: flex;
+  gap: 12px;
+  margin: 20px 0;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.presetInput {
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  width: 250px;
+}
+
+.savePresetBtn {
+  padding: 10px 20px;
+  background: #cf0006;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.savePresetBtn:hover {
+  background: #a30004;
+}
+
+.ageCustomTable {
+  margin-bottom: 40px;
+  padding: 20px;
+  background: #f9f9f9;
+  border-radius: 12px;
+  border: 1px solid #ddd;
+}
+
+.ageCustomTable h3 {
+  margin-top: 0;
+  color: #cf0006;
+  font-size: 1.3em;
+}
+
+/* Preset Controls Container - already defined as .presetControls */
+/* Ensure it's flex and spaced nicely */
+.presetControls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 20px;
+  padding: 12px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+/* Load Preset Dropdown */
+.presetControls select {
+  min-width: 200px;
+  padding: 10px 12px;
+  color: #cf0006;
+  font-size: 15px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  background-color: white;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.presetControls select:hover {
+  border-color: #cf0006;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.15);
+}
+
+.presetControls select:focus {
+  outline: none;
+  border-color: #cf0006;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+/* Placeholder option styling */
+.presetControls select option[value=""] {
+  color: #6c757d;
+  font-style: italic;
+}
+
+/* Preset Name Input */
+.presetControls .presetInput {
+  flex: 1;
+  min-width: 180px;
+  padding: 10px 12px;
+  font-size: 15px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+}
+
+.presetControls .presetInput:focus {
+  outline: none;
+  border-color: #cf0006;
+  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.25);
+}
+
+/* Save Preset Button */
+.presetControls .savePresetBtn {
+  padding: 10px 20px;
+  font-size: 15px;
+  font-weight: 600;
+  color: white;
+  background-color: #cf0006;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 4px rgba(40, 167, 69, 0.3);
+}
+
+.presetControls .savePresetBtn:hover:not(:disabled) {
+  background-color: #a00005;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(40, 167, 69, 0.4);
+}
+
+.presetControls .savePresetBtn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.presetControls .savePresetBtn:disabled {
+  background-color: #6c757d;
+  cursor: not-allowed;
+  box-shadow: none;
+  opacity: 0.65;
+}
+
+/* Custom Weight Table - Column Widths */
+.ageCustomTable .weightTable th,
+.ageCustomTable .weightTable td {
+  text-align: center;
+  vertical-align: middle;
+}
+
+/* Specific column widths */
+.ageCustomTable .weightTable th:nth-child(1),
+.ageCustomTable .weightTable td:nth-child(1) {
+  width: 60px;        /* S.No. */
+}
+
+.ageCustomTable .weightTable th:nth-child(2),
+.ageCustomTable .weightTable td:nth-child(2) {
+  width: 120px       /* Min. Weight */
+}
+
+.ageCustomTable .weightTable th:nth-child(3),
+.ageCustomTable .weightTable td:nth-child(3) {
+  width: 120px;       /* Max. Weight */
+}
+
+.ageCustomTable .weightTable th:nth-child(4),
+.ageCustomTable .weightTable td:nth-child(4) {
+  width: 180px;       /* Category (e.g., Under - 35 KG or 80+ KG) */
+}
+
+.ageCustomTable .weightTable th:nth-child(5),
+.ageCustomTable .weightTable td:nth-child(5) {
+  width: 300px;       /* Description - thoda zyada space */
+}
+
+.ageCustomTable .weightTable th:nth-child(6),
+.ageCustomTable .weightTable td:nth-child(6) {
+  width: 100px;       /* Action (Remove button) */
+}
+
+/* Optional: Ensure table takes full width */
+.ageCustomTable .weightTable {
+  table-layout: fixed;   /* Yeh important hai — fixed layout se width properly apply hoti hai */
+  width: 100%;
+}
+
+/* Open-Ended Category Hint Box */
+.openCategoryHint {
+  margin: 20px 0 16px 0;
+  padding: 16px 20px;
+  background: linear-gradient(135deg, #fff0f0 0%, #ffe6e6 100%);
+  border: 2px solid #cf0006;
+  border-radius: 12px;
+  font-size: 15px;
+  line-height: 1.6;
+  color: #333;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(207, 0, 6, 0.1);
+  position: relative;
+  overflow: hidden;
+}
+
+.openCategoryHint::before {
+  content: "💡";
+  font-size: 28px;
+  position: absolute;
+  left: 16px;
+  top: 16px;
+  opacity: 0.8;
+}
+
+.openCategoryHint strong {
+  color: #cf0006;
+  font-weight: 700;
+}
+
+/* Mobile Responsive */
+@media (max-width: 768px) {
+  .openCategoryHint {
+    font-size: 14px;
+    padding: 14px 16px;
+  }
+  
+  .openCategoryHint::before {
+    font-size: 24px;
+    left: 12px;
+    top: 12px;
+  }
+}

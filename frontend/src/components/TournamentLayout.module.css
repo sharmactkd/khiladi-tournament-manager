@@ -1,0 +1,19 @@
+/* TournamentLayout.module.css */
+
+.layoutContainer {
+  height: 100vh; /* Full viewport height */
+  overflow: hidden; /* No extra scroll here */
+  display: flex;
+  flex-direction: column;
+}
+
+.content {
+  flex: 1;
+  overflow: auto; /* Yeh key hai – extra vertical scroll band karega */
+  position: relative;
+}
+
+/* Agar SubNavBar bhi hai toh */
+.subNavBar {
+  flex-shrink: 0; /* Nav ko shrink nahi hone do */
+}

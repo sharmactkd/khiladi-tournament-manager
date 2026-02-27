@@ -1,0 +1,184 @@
+/* Main Container */
+.authContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background: linear-gradient(to right, white 50%, #CF0006 50%);
+  padding: 1rem;
+}
+
+/* Register Card */
+.authCard {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+  text-align: center;
+  width: 100%;
+  max-width: 400px;
+} 
+
+/* Title & Subtitle */
+.title {
+  font-size: 1.8rem;
+  font-weight: bold;
+  color: #CF0006;
+  margin-bottom: 0.5rem;
+}
+
+.subtitle {
+  font-size: 1rem;
+  color: #666;
+  margin-bottom: 1.5rem;
+}
+
+/* Social Login */
+.socialLogin {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.socialButton {
+  width: 50px;
+  height: 50px;
+  border-radius: 50%;
+  border: 1px solid #ddd;
+  background: white;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  transition: background 0.3s ease;
+}
+
+.socialButton:hover {
+  background: #f5f5f5;
+}
+
+.socialIcon {
+  font-size: 1.5rem;
+}
+
+/* Divider */
+.divider {
+  margin: 1rem 0;
+  text-align: center;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.divider::before, .divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #999;
+  margin: 0 10px;
+}
+
+.dividerText {
+  color: #999;
+  font-size: 0.9rem;
+}
+
+/* Form Styling */
+.authForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  align-items: center;
+  width: 100%;
+}
+
+.inputGroup {
+  position: relative;
+  width: 100%;
+  max-width: 350px;
+}
+
+.inputIcon {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+}
+
+.input {
+  width: 100%;
+  padding: 0.8rem 2.5rem;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #f9f9f9;
+  box-sizing: border-box;
+}
+
+.inputGroup input {
+  width: 100%;
+  padding: 0.8rem 1rem 0.8rem 2.5rem !important;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: white;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+
+.input:focus {
+  outline: none;
+  border-color: #CF0006;
+}
+
+.error {
+  border-color: red !important;
+}
+
+.validationError {
+  color: red;
+  font-size: 0.8rem;
+  margin-top: 0.3rem;
+  text-align: left;
+}
+
+/* Register Button */
+.primaryButton {
+  background: #CF0006;
+  color: white;
+  padding: 0.8rem;
+  border-radius: 8px;
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.3s;
+  width: 100%;
+  max-width: 350px;
+}
+
+.primaryButton:hover {
+  background: #a30005;
+}
+
+/* Footer */
+.authFooter {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.footerText {
+  margin-right: 0.3rem;
+}
+
+.link {
+  color: #CF0006;
+  font-weight: bold;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
+}

@@ -1,0 +1,444 @@
+/* Winner.module.css */
+.winnerContainer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: 'Arial', sans-serif;
+  background: #f8f9fa;
+  min-height: 100vh;
+}
+
+.pdfButtonWrapper {
+  display: flex;
+  justify-content: center;      /* centre on small screens */
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 20px 0;
+}
+
+/* ---- Base button (used for both PDF & Print) ---- */
+.pdfButton,
+.printButton {
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+  border: none;
+  white-space: nowrap;
+  background: #cf0006;          /* same red as tie-sheet */
+  color: #ffffff;
+  font-weight: 600;
+}
+
+/* ---- Hover (same as tie-sheet) ---- */
+.pdfButton:hover:not(:disabled),
+.printButton:hover:not(:disabled) {
+  background: #a50040;
+}
+
+/* ---- Disabled state ---- */
+.pdfButton:disabled,
+.printButton:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ---- Optional: give Print a slightly different colour (green) ---- */
+.printButton {
+  background: #a50040;          /* green – same as your earlier Print button */
+}
+.printButton:hover:not(:disabled) {
+  background: #a50040;
+}
+
+.winnerPage {
+  background: white;
+  margin-bottom: 30px;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  overflow: hidden;
+  page-break-after: always;
+  page-break-inside: avoid;
+}
+
+.pageHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  background: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
+  color: white;
+  gap: 20px;
+  min-height: 100px; /* Ensures space for logos */
+}
+
+.logoLeft,
+.logoRight {
+  max-height: 100px;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.headerContent {
+  flex: 1;
+  text-align: center;
+}
+
+.tournamentName {
+  font-size: 1.8rem;
+  font-weight: bold;
+  margin: 0 0 5px 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.federation {
+  font-size: 0.9rem;
+  margin: 0 0 10px 0;
+  opacity: 0.9;
+}
+
+.medalTitle {
+  font-size: 1.4rem;
+  margin: 10px 0 5px 0;
+}
+
+.ageGenderTitle {
+  font-size: 1.1rem;
+  margin: 5px 0 0 0;
+  font-weight: 600;
+  opacity: 0.95;
+}
+
+.tableContainer {
+  padding: 20px;
+  overflow-x: auto;
+}
+
+.medalTable {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.medalTable th {
+  background: #34495e;
+  color: white;
+  padding: 15px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 2px solid #2c3e50;
+}
+
+.medalTable td {
+  padding: 12px;
+  border-bottom: 1px solid #ecf0f1;
+  vertical-align: middle;
+}
+
+.weightHeader { width: 20%; }
+.medalHeader { width: 15%; }
+.participantHeader { width: 35%; }
+.teamHeader { width: 20%; }
+.markHeader { width: 10%; }
+
+.weightCell {
+  background: #f8f9fa;
+  font-weight: 600;
+  color: #2c3e50;
+  border-right: 2px solid #ecf0f1;
+  font-size: 0.95rem;
+}
+
+.weightCellFirst {
+  border-top-left-radius: 8px;
+}
+
+.medalCell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.medalContainer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.medalIcon {
+  width: 20px;
+  height: 20px;
+}
+
+.medalIconGold { color: #f1c40f; }
+.medalIconSilver { color: #bdc3c7; }
+.medalIconBronze { color: #cd7f32; }
+
+.medalText {
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.participantCell {
+  font-size: 0.95rem;
+  color: #2c3e50;
+}
+
+.winnerName {
+  font-size: 1rem !important;
+  color: #a50040 !important;
+}
+
+
+
+.teamName {
+  background: #ffffff;
+  padding: 4px 8px;
+  border-radius: 12px;
+  font-weight: bold;
+  font-size: 0.85rem;
+  display: inline-block;
+}
+
+.noTeam {
+  color: #95a5a6;
+  font-style: italic;
+}
+
+.markCell {
+  text-align: center;
+}
+
+.markLine {
+  display: block;
+  border-bottom: 2px solid #34495e;
+  width: 80%;
+  margin: 0 auto;
+  height: 2px;
+}
+
+.noMedalCell {
+  text-align: center;
+  color: #7f8c8d;
+  font-style: italic;
+  background: #f8f9fa;
+}
+
+.noMedalText {
+  font-size: 0.9rem;
+}
+
+.pageFooter {
+  background: #f8f9fa;
+  padding: 15px 20px;
+  border-top: 1px solid #ecf0f1;
+  font-size: 0.8rem;
+  color: #7f8c8d;
+}
+
+.footerContent {
+  display: flex;
+  justify-content: space-between;   /* Left empty, Center, Right */
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* Center Text: www.khiladi.com */
+.footerCenterText {
+  flex: 1;
+  text-align: center;
+  font-weight: 500;
+  color: #7f8c8d;
+}
+
+/* Page Number: Right */
+.pageNumber {
+  color: #34495e;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* No winners state */
+.noWinnersContainer {
+  text-align: center;
+  padding: 60px 20px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  margin: 40px 0;
+}
+
+.noWinnersIcon {
+  width: 80px;
+  height: 80px;
+  color: #bdc3c7;
+  margin-bottom: 20px;
+}
+
+.noWinnersTitle {
+  color: #2c3e50;
+  font-size: 1.8rem;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+.noWinnersText {
+  color: #7f8c8d;
+  font-size: 1.1rem;
+  margin-bottom: 30px;
+  line-height: 1.5;
+}
+
+.goToTieSheetButton {
+  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+  color: white;
+  border: none;
+  padding: 12px 30px;
+  border-radius: 25px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-decoration: none;
+  display: inline-block;
+}
+
+.goToTieSheetButton:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(231, 76, 60, 0.3);
+}
+
+/* Error state */
+.errorContainer {
+  max-width: 600px;
+  margin: 40px auto;
+  padding: 40px;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  text-align: center;
+}
+
+.errorTitle {
+  color: #e74c3c;
+  font-size: 1.5rem;
+  margin-bottom: 15px;
+}
+
+.errorMessage {
+  color: #7f8c8d;
+  margin-bottom: 25px;
+  line-height: 1.5;
+}
+
+.retryButton, .backButton {
+  background: #3498db;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 20px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  margin: 0 10px;
+  transition: all 0.3s ease;
+}
+
+.retryButton:hover, .backButton:hover {
+  background: #2980b9;
+  transform: translateY(-1px);
+}
+
+.backButton {
+  background: #95a5a6;
+}
+
+.backButton:hover {
+  background: #7f8c8d;
+}
+
+/* Loading state */
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 300px;
+  font-size: 1.2rem;
+  color: #7f8c8d;
+}
+
+/* Responsive */
+@media print {
+  .winnerContainer {
+    background: white;
+    padding: 0;
+  }
+  
+  .buttonSection, .pdfButtonWrapper {
+    display: none;
+  }
+  
+  .winnerPage {
+    box-shadow: none;
+    margin: 0;
+    page-break-after: always;
+    page-break-inside: avoid;
+  }
+  
+  .pageHeader {
+    background: #2c3e50 !important;
+   -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+  }
+}
+
+@media (max-width: 768px) {
+  .winnerContainer {
+    padding: 10px;
+  }
+  
+  .pageHeader {
+    flex-direction: column;
+    text-align: center;
+    gap: 15px;
+  }
+  
+  .tournamentName {
+    font-size: 1.4rem;
+  }
+  
+  .medalTable {
+    font-size: 0.85rem;
+  }
+  
+  .medalTable th, .medalTable td {
+    padding: 8px 6px;
+  }
+  
+  .tableContainer {
+    padding: 15px;
+  }
+  
+  .footerContent {
+    flex-direction: column;
+    gap: 8px;
+    text-align: center;
+  }
+
+  .pdfButtonWrapper {
+    flex-direction: column;
+    gap: 10px;
+  }
+}

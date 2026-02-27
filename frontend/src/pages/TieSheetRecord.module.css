@@ -1,0 +1,158 @@
+/* src/pages/TieSheetRecord.module.css */
+.container {
+  padding: 2rem;
+  max-width: 1600px;
+  margin: 0 auto;
+  font-family: Arial, sans-serif;
+}
+
+.title {
+  text-align: center;
+  margin-bottom: 2rem;
+  color: #cf0006;
+  font-size: 2.4rem;
+}
+
+
+.loading {
+  padding: 3rem;
+  text-align: center;
+  font-size: 1.4rem;
+}
+
+.noRecords {
+  text-align: center;
+  padding: 5rem;
+  background: #f9f9f9;
+  border-radius: 12px;
+}
+
+.noRecords p {
+  font-size: 1.5rem;
+  color: #777;
+}
+
+.categorySection {
+  margin-bottom: 4rem;
+}
+
+.categoryHeader {
+  background: linear-gradient(135deg, #cf0006, #990005);
+  color: white;
+  padding: 1.4rem 2rem;
+  border-radius: 14px;
+  font-size: 1.6rem;
+  font-weight: bold;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+}
+
+.cardsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(520px, 1fr));
+  gap: 2.5rem;
+  margin-top: 2rem;
+}
+
+.card {
+  border: 3px solid #cf0006;
+  border-radius: 20px;
+  padding: 2rem;
+  background: #ffffff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  transition: transform 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-10px);
+}
+
+.latestCard {
+  border: 5px solid #990005;
+  background: #f7f7f7;
+}
+
+.versionTitle {
+  font-size: 1.6rem;
+  font-weight: bold;
+  color: #cf0006;
+}
+
+.dateLabel {
+  font-size: 1.1rem;
+  color: #444;
+  margin: 1.2rem 0;
+}
+
+.previewContainer {
+  margin-top: 1.5rem;
+  border: 2px solid #ddd;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #f9f9f9;
+  cursor: pointer;
+  transition: border-color 0.3s;
+}
+
+.previewContainer:hover {
+  border-color: #cf0006;
+}
+
+.previewImg {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.previewPlaceholder {
+  padding: 3rem;
+  text-align: center;
+  color: #999;
+  font-size: 1rem;
+}
+
+.clickHint {
+  padding: 1rem;
+  font-size: 1rem;
+  color: #cf0006;
+  margin: 0;
+  background: #eef5ff;
+  font-weight: bold;
+  text-align: center;
+}
+
+.reprintButton {
+  width: 100%;
+  padding: 1.2rem;
+  background: #cf0006;
+  color: white;
+  border: none;
+  border-radius: 12px;
+  font-size: 1.2rem;
+  font-weight: bold;
+  cursor: pointer;
+  margin-top: 2rem;
+  transition: background 0.3s;
+}
+
+.reprintButton:hover {
+  background: #c01515;
+}
+
+.previewTempDiv {
+  position: absolute;
+  left: -9999px;
+  top: -9999px;
+  width: 1000px;
+  max-width: none;
+  background: #ffffff;
+  padding: 20px;
+  font-size: 11px;
+  box-sizing: border-box;
+}
+
+.printTempDiv {
+  position: absolute;
+  left: -9999px;
+  width: 297mm;
+  background: #ffffff;
+}

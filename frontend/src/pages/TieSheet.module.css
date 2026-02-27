@@ -1,0 +1,1442 @@
+/* ============================================================= */
+/* 1. General Container and Layout Styles                        */
+/* ============================================================= */
+.stickyWrapper {
+  position: sticky;
+  top: 1px;
+  background: #ffffff;
+  z-index: 1100;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: 10px;
+}
+
+.pdfbtn {
+  position: sticky;
+  top: 1px;
+  background: #ffffff;
+  z-index: 1100;
+  padding: 15px 20px;
+  margin: 0;
+  width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.tieSheetContainer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 10px;
+  font-family: 'Arial', sans-serif;
+  background: #ffffff;
+  width: 100%;
+  position: relative;
+  z-index: 1000;
+}
+
+/* ---- PAGE (A4 Landscape) ---- */
+.page {
+  position: relative;
+  margin-bottom: 40px;
+  background: #ffffff;
+  border: 1px solid #ff0000;
+  padding: 2mm;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-sizing: border-box;
+  width: 297mm;
+  height: 210mm;
+  display: flex;
+  flex-direction: column;
+  page-break-inside: avoid;
+}
+
+/* ============================================================= */
+/* 2. Header and Logo Styles                                     */
+/* ============================================================= */
+.header {
+  text-align: center;
+  background: #f5f5f5;
+  position: relative;
+  box-sizing: border-box;
+  padding: 10px;
+  flex-shrink: 0;
+}
+
+.header h1 {
+  font-size: 24px;
+  font-weight: bold;
+  margin: 0;
+  color: #333;
+  font-family: 'Arial', sans-serif;
+}
+
+.logoLeft,
+.logoRight {
+  position: absolute;
+  max-width: 70px;
+  max-height: 70px;
+  object-fit: contain;
+}
+.logoLeft { left: 15px; }
+.logoRight { right: 15px; }
+
+.federationName {
+  font-size: 16px;
+  margin: 5px 0;
+  color: #555;
+  font-weight: bold;
+  text-transform: uppercase;
+}
+
+/* ============================================================= */
+/* 3. Button & Toggle Styles                                     */
+/* ============================================================= */
+.lockedButton {
+  background: #e74c3c !important;
+  color: white;
+}
+
+.unlockedButton {
+  background: #27ae60;
+  color: white;
+}
+
+.buttonContainer {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 15px 0;
+}
+
+.categoryRow {
+  display: flex;
+  justify-content: center;
+  gap: 30px;
+  margin-top: 3px;
+  padding-bottom: 3px;
+}
+
+.categoryItem {
+  font-size: 14px;
+  font-weight: 600;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #333;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.toggleContainer {
+  display: flex;
+  justify-content: flex-start;
+  align-items: center;
+  width: 100%;
+}
+
+.toggleGroup {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.toggleButton {
+  padding: 8px 16px;
+  border: 1px solid #cf0006;
+  background: #ffffff;
+  color: #cf0006;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s ease;
+}
+
+.toggleButton:hover {
+  background: #a50040;
+  color: #ffffff;
+}
+
+.toggleButton.active {
+  background: #cf0006;
+  color: #ffffff;
+}
+
+.spacer { width: 20px; }
+
+/* BUTTON CONTAINER - SMART CENTER ALIGNMENT */
+.buttonContainer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 15px;
+  margin: 20px 0;
+}
+
+.leftButtons {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.centerButtonsWrapper {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.centerButtons {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.buttonContainer .centerButtons {
+  flex: 1;
+  display: flex;
+  justify-content: flex-start;
+  padding-left: 235px;
+}
+
+.centerButtons:has(.printPoolButton) {
+  transform: translateX(-70px);
+}
+
+.rightButton {
+  display: flex;
+  justify-content: flex-end;
+  padding-right: 30px;
+}
+
+/* Button Styles */
+.shuffleButton,
+.printButton,
+.printPoolButton,
+.saveButton {
+  padding: 10px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  border: none;
+  white-space: nowrap;
+  min-width: 130px;
+}
+
+.shuffleButton {
+  background: #cf0006;
+  color: #ffffff;
+}
+.shuffleButton:hover:not(:disabled) { background: #a50040; }
+.shuffleButton:disabled { background: #ccc; cursor: not-allowed; }
+
+.printButton {
+  background: #cf0006;
+  color: #ffffff;
+}
+.printButton:hover { background: #a50040; }
+
+.printPoolButton {
+  background: #cf0006;
+  color: #ffffff;
+}
+.printPoolButton:hover { background: #a50040; }
+
+.saveButton {
+  background: #cf0006;
+  color: #ffffff;
+}
+.saveButton:hover { background: #a50040; }
+
+/* Lock Button */
+.lockedButton,
+.unlockedButton {
+  padding: 10px 16px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 600;
+  min-width: 110px;
+  border: none;
+  cursor: pointer;
+}
+
+.lockedButton { background: #a50040 !important; color: white !important; }
+.unlockedButton { background: #cf0006 !important; color: white !important; }
+
+.actionButtons {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+/* ============================================================= */
+/* 5. Bracket Wrapper                                            */
+/* ============================================================= */
+.bracketWrapper {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ============================================================= */
+/* 6. Bracket Container & Table Styles                           */
+/* ============================================================= */
+.tableWrapper {
+  width: 100%;
+  height: auto;
+  justify-content: flex-start;
+  box-sizing: border-box;
+  position: relative;
+}
+
+.bracketContainer {
+  width: 100%;
+  flex: 1;
+  overflow: hidden;
+  padding: 5px 0;
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  z-index: 1;
+
+  --match-height: 110px;
+  --participant-height: 27px;
+  --team-height: 22px;
+  --cell-padding: 5px;
+
+  --name-font: unset;
+  --team-font: unset;
+  --matchnum-font: unset;
+
+  --total-rounds: 2;
+}
+
+.bracketTable {
+  width: 100%;
+  height: 100%;
+  border-collapse: collapse;
+  display: table;
+  box-sizing: border-box;
+  table-layout: fixed;
+}
+
+.bracketTable th,
+.bracketTable td {
+  width: calc(100% / var(--total-rounds, 2)) !important;
+  box-sizing: border-box;
+  padding: var(--cell-padding, 5px);
+  text-align: center;
+  vertical-align: middle;
+  position: relative;
+}
+
+.bracketTable th {
+  background-color: #f5f5f5;
+  height: 40px !important;
+  font-size: 16px;
+  font-weight: bold;
+  font-family: Arial, Helvetica, sans-serif;
+  text-transform: uppercase;
+  border: 3px solid #ffffff;
+  color: #333;
+}
+
+.bracketTable td:empty {
+  padding: 0;
+  border: none;
+}
+
+/* ============================================================= */
+/* 7. Match and Participant Styles                               */
+/* ============================================================= */
+.match {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid #ccc;
+  border-radius: 7px 0 0 7px;
+  background: #ffffff;
+  min-width: 0;
+
+  height: var(--match-height, 110px);
+
+  width: 90%;
+  max-width: 100%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  position: relative;
+  box-sizing: border-box;
+  margin: 0 auto;
+  justify-content: flex-start;
+}
+
+.matchNumberContainer {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 25px;
+  height: 100%;
+  padding: 0 5px;
+  background: transparent;
+  flex-shrink: 0;
+}
+
+.matchNumber {
+  font-size: var(--matchnum-font, clamp(10px, 4vw, 16px));
+  font-weight: bold;
+  color: #333;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.participantsContainer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.participant {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  background: #f5f5f5;
+  border: 1px solid #e0e0e0;
+
+  height: var(--participant-height, 27px);
+
+  font-family: Arial, Helvetica, sans-serif;
+  justify-content: center;
+  padding-left: 5px;
+  font-weight: 600;
+  color: #333;
+  text-align: left;
+  width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+  position: relative;
+  border-bottom: none;
+}
+
+.participant.bye {
+  background: #f0f0f0;
+  color: #777;
+  font-style: italic;
+  border-color: #ccc;
+}
+
+.playerName {
+  font-size: var(--name-font, clamp(12px, 3vw, 20px));
+  font-weight: 600;
+  color: #333;
+  padding-left: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.teamBox {
+  background: #ffffff;
+  border: 1px solid #e0e0e0;
+  width: 100%;
+
+  height: var(--team-height, 22px);
+
+  padding-left: 5px;
+  box-sizing: border-box;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  font-family: Arial, Helvetica, sans-serif;
+  overflow: hidden;
+  border-top: none;
+}
+
+.teamName {
+  font-size: var(--team-font, clamp(10px, 2.5vw, 16px));
+  color: #555;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding-left: 5px;
+}
+
+
+.singlePlayer .participant[data-participant-position="first"] + .teamBox,
+.singlePlayer .participant.first-participant + .teamBox,
+.singlePlayer .teamBox.first-participant-team,
+.singlePlayer .participant.bye[data-participant-position="first"] + .teamBox,
+.singlePlayer .participant.bye.first-participant + .teamBox {
+  margin-bottom: 0px !important;
+}
+
+/* PARTICIPANT BORDER (BLUE / RED) */
+.participant[data-participant-position="first"],
+.participant.first-participant,
+.participant.bye[data-participant-position="first"],
+.participant.bye.first-participant {
+  border-right: 6px solid #0000FF !important;
+}
+
+.participant[data-participant-position="first"] + .teamBox,
+.participant.first-participant + .teamBox,
+.teamBox.first-participant-team,
+.participant.bye[data-participant-position="first"] + .teamBox,
+.participant.bye.first-participant + .teamBox {
+  border-right: 6px solid #0000FF !important;
+  margin-bottom: 10px !important;
+  border-radius: 0 0 0 10px !important;
+}
+
+.participant[data-participant-position="second"],
+.participant.second-participant,
+.participant.bye[data-participant-position="second"],
+.participant.bye.second-participant {
+  border-right: 6px solid #FF0000 !important;
+  border-radius: 10px 0 0 0 !important;
+}
+
+.participant[data-participant-position="second"] + .teamBox,
+.participant.second-participant + .teamBox,
+.teamBox.second-participant-team,
+.participant.bye[data-participant-position="second"] + .teamBox,
+.participant.bye.second-participant + .teamBox {
+  border-right: 6px solid #FF0000 !important;
+}
+
+/* ============================================================= */
+/* 8. Footer, Medals & Signature                                 */
+/* ============================================================= */
+.signatureMedalSection {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: stretch;
+  padding: 10px;
+  flex-shrink: 0;
+  gap: 40px;
+  background: white;
+  margin-top: auto;
+}
+
+.medalRow,
+.signatureRow {
+  display: flex;
+  flex-direction: row;
+  flex: 1;
+  font-size: 10px;
+  color: #333;
+  font-family: Arial, Helvetica, sans-serif;
+  text-align: center;
+}
+
+.signatureLeft { flex: 1; text-align: left; }
+.signature { font-size: 11px; color: #333; font-weight: bold; }
+.medalRight { flex: 1; text-align: left; }
+.medal { font-size: 14px; color: #333; font-weight: bold; }
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #555;
+  margin-left: 10px;
+  padding-right: 10px;
+  padding-top: 7px;
+  border-top: 1px solid #e0e0e0;
+  flex-shrink: 0;
+}
+
+/* ============================================================= */
+/* 9. SVG Lines (always on top)                                  */
+/* ============================================================= */
+.bracketLines {
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 10;
+  overflow: visible !important;
+}
+
+.bracketLines path {
+  stroke: #000 !important;
+  stroke-width: 2;
+}
+
+/* ============================================================= */
+/* 10. SINGLE ROUND & SPECIAL CASE STYLES                        */
+/* ============================================================= */
+.page:has(.singleRound) {
+  display: grid !important;
+  grid-template-rows: auto 1fr auto auto;
+  gap: 10px;
+  height: 210mm;
+  box-sizing: border-box;
+  padding: 2mm;
+}
+
+.page:has(.singleRound) .bracketContainer {
+  grid-row: 2;
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center;
+  width: 600px !important;
+  height: 500px !important;
+  margin: 0 auto;
+}
+
+.singleRound .tableWrapper {
+  width: 600px !important;
+  margin: 0 auto;
+}
+
+.singleRound .bracketTable {
+  table-layout: fixed;
+  width: 600px !important;
+  margin: 0 auto;
+}
+
+.singleRound .bracketTable th {
+  height: 50px !important;
+  font-size: 28px !important;
+  font-weight: bold !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f5f5f5 !important;
+  margin-bottom: 10px !important;
+}
+
+.singleRound .bracketTable th,
+.singleRound .bracketTable td {
+  width: 600px !important;
+  padding: 0 !important;
+}
+
+.singleRound .match {
+  min-width: 0;
+  width: 600px !important;
+  height: 230px !important;
+  margin: 0;
+  padding: 0 5px;
+}
+
+.singleRound .participant {
+  height: 60px !important;
+  width: 560px !important;
+  font-size: 24px !important;
+  padding-left: 10px !important;
+}
+
+.singleRound .teamBox {
+  height: 50px !important;
+  width: 560px !important;
+  font-size: 20px !important;
+  padding-left: 10px !important;
+}
+
+.singleRound .matchNumberContainer { width: 30px; flex-shrink: 0; }
+.singleRound .participantsContainer { width: calc(100% - 30px); }
+
+.singleRound .bracketLines {
+  width: 250px !important;
+  left: 50% !important;
+  transform: translateX(-50%) !important;
+  z-index: 2 !important;
+}
+
+/* Single Round Borders */
+.singleRound .participant[data-participant-position="first"],
+.singleRound .participant.first-participant,
+.singleRound .participant.bye[data-participant-position="first"],
+.singleRound .participant.bye.first-participant {
+  border-right: 9px solid #0000FF !important;
+}
+
+.singleRound .participant[data-participant-position="first"] + .teamBox,
+.singleRound .participant.first-participant + .teamBox,
+.singleRound .teamBox.first-participant-team,
+.singleRound .participant.bye[data-participant-position="first"] + .teamBox,
+.singleRound .participant.bye.first-participant + .teamBox {
+  border-right: 9px solid #0000FF !important;
+  border-radius: 0 0 0 15px !important;
+}
+
+.singleRound .participant[data-participant-position="second"],
+.singleRound .participant.second-participant,
+.singleRound .participant.bye[data-participant-position="second"],
+.singleRound .participant.bye.second-participant {
+  border-right: 9px solid #FF0000 !important;
+  border-radius: 15px 0 0 0 !important;
+}
+
+.singleRound .participant[data-participant-position="second"] + .teamBox,
+.singleRound .participant.second-participant + .teamBox,
+.singleRound .teamBox.second-participant-team,
+.singleRound .participant.bye[data-participant-position="second"] + .teamBox,
+.singleRound .participant.bye.second-participant + .teamBox {
+  border-right: 9px solid #FF0000 !important;
+}
+
+/* Single player match height */
+.singlePlayer .match {
+  height: var(--match-height, 110px) !important;
+}
+
+/* ============================================================= */
+/* 11. VERTICAL CENTER & POSITIONING TWEAKS                      */
+/* ============================================================= */
+.bracketContainer:not(.singleRound):not(.singlePlayer) {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: center;
+  min-height: 450px;
+  box-sizing: border-box;
+}
+
+.bracketContainer:not(.singleRound):not(.singlePlayer) .bracketTable thead {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: #f5f5f5;
+}
+
+.bracketContainer:not(.singleRound):not(.singlePlayer) .tableWrapper {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  max-width: 100%;
+}
+
+.print-prep-mode > * {
+  display: none !important;
+}
+
+.print-prep-mode .print-active {
+  display: block !important;
+  visibility: visible !important;
+  position: fixed !important;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 297mm;
+  min-height: 210mm;
+  z-index: 99999;
+  background: white;
+  margin: 0;
+  padding: 0;
+  box-shadow: none;
+  border: none;
+  overflow: visible;
+}
+
+.print-prep-mode * {
+  visibility: hidden;
+}
+
+.print-prep-mode .page[data-bracket-key],
+.print-prep-mode .page[id^="bracket-"] {
+  visibility: visible !important;
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 297mm;
+  height: 210mm;
+  z-index: 9999;
+}
+
+.singleRound .bracketContainer {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-self: center !important;
+}
+
+/* 2 Players (Single Round) */
+.bracketContainer.twoPlayer {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  width: 100% !important;
+  height: 100% !important;
+}
+
+.bracketContainer.twoPlayer .tableWrapper {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  width: 100% !important;
+  max-width: 500px !important;
+  margin: 0 auto !important;
+}
+
+.bracketContainer.twoPlayer .bracketTable th {
+  font-size: 24px !important;
+}
+
+.bracketContainer.twoPlayer .match {
+  height: 171px;
+}
+
+.bracketContainer.twoPlayer .participant {
+  height: 54.5px !important;
+  font-size: 24px !important;
+  border-radius: 10px 0px 0px 0px !important;
+}
+
+.bracketContainer.twoPlayer .teamBox {
+  height: 35px !important;
+  font-size: 24px !important;
+}
+
+/* SINGLE PLAYER */
+.bracketContainer.singlePlayer,
+.bracketContainer.twoPlayer {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: center !important;
+  align-items: center !important;
+  width: 100% !important;
+  height: 100% !important;
+  min-height: 500px;
+}
+
+.bracketContainer.singlePlayer .tableWrapper,
+.bracketContainer.twoPlayer .tableWrapper {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  width: 620px !important;
+  max-width: 620px !important;
+  margin: 0 auto !important;
+}
+
+.singleRound .roundHeaderSingle,
+.bracketContainer.singlePlayer .bracketTable th,
+.bracketContainer.twoPlayer .bracketTable th {
+  font-size: 28px !important;
+  font-weight: bold !important;
+  background: #f5f5f5 !important;
+  height: 60px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 2px solid #ddd !important;
+  border-radius: 8px !important;
+  margin-bottom: 5px !important;
+  width: 620px !important;
+  box-sizing: border-box;
+}
+
+.bracketContainer.singlePlayer .match,
+.bracketContainer.twoPlayer .match {
+  width: 600px !important;
+  height: 180px !important;
+  margin: 0 auto !important;
+  border: 1px solid #ccc !important;
+  border-radius: 8px !important;
+  background: #fff !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+  overflow: hidden;
+}
+
+.bracketContainer.singlePlayer .participant{
+  height: 100px !important;
+  font-size: 26px !important;
+  padding: 0 15px !important;
+  display: flex !important;
+  border-radius: 8px 0 0 0 !important;
+}
+
+.bracketContainer.singlePlayer .teamBox {
+  height: 80px !important;
+  font-size: 22px !important;
+  padding: 0 15px !important;
+  border-radius: 0 0 0 8px !important;
+}
+
+.bracketContainer.singlePlayer .participant.firstParticipant,
+.bracketContainer.singlePlayer .teamBox.firstParticipant,
+.bracketContainer.twoPlayer .participant.firstParticipant,
+.bracketContainer.twoPlayer .teamBox.firstParticipant {
+  border-right: 10px solid #0000FF !important;
+}
+
+.bracketContainer.singlePlayer .participant.secondParticipant,
+.bracketContainer.singlePlayer .teamBox.secondParticipant,
+.bracketContainer.twoPlayer .participant.secondParticipant,
+.bracketContainer.twoPlayer .teamBox.secondParticipant {
+  border-right: 10px solid #FF0000 !important;
+}
+
+.bracketContainer.singlePlayer .matchNumber,
+.bracketContainer.twoPlayer .matchNumber {
+  font-size: 28px !important;
+  font-weight: bold !important;
+}
+
+.singlePlayer .singleRoundFlowFix {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  width: 100% !important;
+}
+
+/* your player-count translateY tweaks (kept as-is) */
+.threePlayer .bracketTable td .match[data-game-id="1"] { transform: translateY(60px); margin-top: 0; }
+.fivePlayer .bracketTable td .match[data-game-id="1"] { transform: translateY(60px); margin-top: 0; }
+.sixPlayer .bracketTable td .match[data-game-id="1"] { transform: translateY(30px); margin-top: 0; }
+.sixPlayer .bracketTable td .match[data-game-id="2"] { transform: translateY(40px); margin-top: 0; }
+.sixPlayer .bracketTable td .match[data-game-id="3"] { transform: translateY(-40px); margin-top: 0; }
+.sixPlayer .bracketTable td .match[data-game-id="4"] { transform: translateY(-30px); margin-top: 0; }
+.sixPlayer .bracketTable td .match[data-game-id="5"] { transform: translateY(-30px); margin-top: 0; }
+.sevenPlayer .bracketTable td .match[data-game-id="1"] { transform: translateY(-20px); margin-top: 0; }
+.sevenPlayer .bracketTable td .match[data-game-id="2"] { transform: translateY(0px); margin-top: 0; }
+.sevenPlayer .bracketTable td .match[data-game-id="3"] { transform: translateY(20px); margin-top: 0; }
+.sevenPlayer .bracketTable td .match[data-game-id="4"] { transform: translateY(-10px); margin-top: 0; }
+.sevenPlayer .bracketTable td .match[data-game-id="5"] { transform: translateY(-70px); margin-top: 0; }
+
+.sevenPlayer .bracketTable td .match[data-game-id="6"] { transform: translateY(0px); margin-top: 0; }
+.ninePlayer .bracketTable td .match[data-game-id="1"] { transform: translateY(50px); margin-top: 0; }
+.tenPlayer .bracketTable td .match[data-game-id="1"] { transform: translateY(50px); margin-top: 0; }
+.tenPlayer .bracketTable td .match[data-game-id="2"] { transform: translateY(50px); margin-top: 0; }
+.elevenPlayer .bracketTable td .match[data-game-id="1"] { transform: translateY(50px); margin-top: 0; }
+.elevenPlayer .bracketTable td .match[data-game-id="2"] { transform: translateY(50px); margin-top: 0; }
+.elevenPlayer .bracketTable td .match[data-game-id="3"] { transform: translateY(50px); margin-top: 0; }
+.twelvePlayer .bracketTable td .match[data-game-id="1"] { transform: translateY(20px); margin-top: 0; }
+.twelvePlayer .bracketTable td .match[data-game-id="2"] { transform: translateY(20px); margin-top: 0; }
+.twelvePlayer .bracketTable td .match[data-game-id="3"] { transform: translateY(20px); margin-top: 0; }
+.twelvePlayer .bracketTable td .match[data-game-id="4"] { transform: translateY(20px); margin-top: 0; }
+.twelvePlayer .bracketTable td .match[data-game-id="5"] { transform: translateY(-20px); margin-top: 0; }
+.twelvePlayer .bracketTable td .match[data-game-id="6"] { transform: translateY(-20px); margin-top: 0; }
+.twelvePlayer .bracketTable td .match[data-game-id="7"] { transform: translateY(-20px); margin-top: 0; }
+.twelvePlayer .bracketTable td .match[data-game-id="8"] { transform: translateY(-20px); margin-top: 0; }
+.twelvePlayer .bracketTable td .match[data-game-id="9"] { transform: translateY(-20px); margin-top: 0; }
+.twelvePlayer .bracketTable td .match[data-game-id="10"] { transform: translateY(-20px); margin-top: 0; }
+.twelvePlayer .bracketTable td .match[data-game-id="11"] { transform: translateY(-20px); margin-top: 0; }
+.thirteenPlayer .bracketTable td .match[data-game-id="1"] { transform: translateY(-10px); margin-top: 0; }
+.thirteenPlayer .bracketTable td .match[data-game-id="2"] { transform: translateY(-20px); margin-top: 0; }
+.thirteenPlayer .bracketTable td .match[data-game-id="3"] { transform: translateY(-10px); margin-top: 0; }
+.thirteenPlayer .bracketTable td .match[data-game-id="4"] { transform: translateY(-10px); margin-top: 0; }
+.thirteenPlayer .bracketTable td .match[data-game-id="5"] { transform: translateY(10px); margin-top: 0; }
+.thirteenPlayer .bracketTable td .match[data-game-id="6"] { transform: translateY(-20px); margin-top: 0; }
+.thirteenPlayer .bracketTable td .match[data-game-id="7"] { transform: translateY(-40px); margin-top: 0; }
+.thirteenPlayer .bracketTable td .match[data-game-id="8"] { transform: translateY(-40px); margin-top: 0; }
+.thirteenPlayer .bracketTable td .match[data-game-id="9"] { transform: translateY(-20px); margin-top: 0; }
+.thirteenPlayer .bracketTable td .match[data-game-id="10"] { transform: translateY(-10px); margin-top: 0; }
+.thirteenPlayer .bracketTable td .match[data-game-id="11"] { transform: translateY(-30px); margin-top: 0; }
+.thirteenPlayer .bracketTable td .match[data-game-id="12"] { transform: translateY(0px); margin-top: 0; }
+.fourteenPlayer .bracketTable td .match[data-game-id="3"] { transform: translateY(0px); margin-top: 0; }
+.fourteenPlayer .bracketTable td .match[data-game-id="4"] { transform: translateY(0px); margin-top: 0; }
+.fourteenPlayer .bracketTable td .match[data-game-id="5"] { transform: translateY(0px); margin-top: 0; }
+.fourteenPlayer .bracketTable td .match[data-game-id="6"] { transform: translateY(10px); margin-top: 0; }
+.fourteenPlayer .bracketTable td .match[data-game-id="7"] { transform: translateY(0px); margin-top: 0; }
+.fourteenPlayer .bracketTable td .match[data-game-id="8"] { transform: translateY(-30px); margin-top: 0; }
+.fourteenPlayer .bracketTable td .match[data-game-id="9"] { transform: translateY(0px); margin-top: 0; }
+.fourteenPlayer .bracketTable td .match[data-game-id="10"] { transform: translateY(-20px); margin-top: 0; }
+.fourteenPlayer .bracketTable td .match[data-game-id="11"] { transform: translateY(10px); margin-top: 0; }
+.fourteenPlayer .bracketTable td .match[data-game-id="12"] { transform: translateY(10px); margin-top: 0; }
+.fourteenPlayer .bracketTable td .match[data-game-id="13"] { transform: translateY(0px); margin-top: 0; }
+.fifteenPlayer .bracketTable td .match[data-game-id="7"] { transform: translateY(10px); margin-top: 0; }
+.fifteenPlayer .bracketTable td .match[data-game-id="11"] { transform: translateY(-20px); margin-top: 0; }
+.fifteenPlayer .bracketTable td .match[data-game-id="13"] { transform: translateY(10px); margin-top: 0; }
+.fifteenPlayer .bracketTable td .match[data-game-id="14"] { transform: translateY(20px); margin-top: 0; }
+
+
+.roundHeaderStrip{
+  display: none !important;
+}
+
+.bracketContainer.threePlayer .match {
+  width: 500px !important;   /* ya 90% if you want responsive */
+  height: 200px !important;  /* ✅ 3-player preset match height */
+  margin: 0 auto !important;
+}
+
+.bracketContainer.threePlayer .participant {
+  height: 60px !important;   /* ✅ 3-player preset participant height */
+  font-size: 22px !important; /* optional */
+}
+
+.bracketContainer.threePlayer .teamBox {
+  height: 35px !important;   /* ✅ 3-player preset team height */
+  font-size: 18px !important; /* optional */
+}
+
+.bracketContainer.fourPlayer .match {
+  width: 500px !important;   /* ya 90% if you want responsive */
+  height: 180px !important;  /* ✅ 3-player preset match height */
+  margin: 0 auto !important;
+}
+
+.bracketContainer.fourPlayer .participant {
+  height: 50px !important;   /* ✅ 3-player preset participant height */
+  font-size: 22px !important; /* optional */
+}
+
+.bracketContainer.fourPlayer .teamBox {
+  height: 35px !important;   /* ✅ 3-player preset team height */
+  font-size: 18px !important; /* optional */
+}
+
+.bracketContainer.fivePlayer .match {
+  width: 330px !important;   /* ya 90% if you want responsive */
+  height: 150px !important;  /* ✅ 3-player preset match height */
+  margin: 0 auto !important;
+}
+
+.bracketContainer.fivePlayer .participant {
+  height: 40px !important;   /* ✅ 3-player preset participant height */
+  font-size: 22px !important; /* optional */
+}
+
+.bracketContainer.fivePlayer .teamBox {
+  height: 30px !important;   /* ✅ 3-player preset team height */
+  font-size: 18px !important; /* optional */
+}
+
+
+.fivePlayer .playerName {
+  font-size: 18px !important;
+}
+
+.fivePlayer .teamName {
+  font-size: 16px !important;
+}
+
+.fivePlayer .matchNumber {
+  font-size: 16px !important;
+}
+
+.bracketContainer.sixPlayer .match {
+  width: 330px !important;   /* ya 90% if you want responsive */
+  height: 150px !important;  /* ✅ 3-player preset match height */
+  margin: 0 auto !important;
+}
+
+.bracketContainer.sixPlayer .participant {
+  height: 40px !important;   /* ✅ 3-player preset participant height */
+  font-size: 22px !important; /* optional */
+}
+
+.bracketContainer.sixPlayer .teamBox {
+  height: 30px !important;   /* ✅ 3-player preset team height */
+  font-size: 18px !important; /* optional */
+}
+
+
+.sixPlayer .playerName {
+  font-size: 18px !important;
+}
+
+.sixPlayer .teamName {
+  font-size: 15px !important;
+}
+
+.sixPlayer .matchNumber {
+  font-size: 16px !important;
+}
+
+
+.sevenPlayer .playerName {
+  font-size: 18px !important;
+}
+
+.sevenPlayer .teamName {
+  font-size: 15px !important;
+}
+
+.sevenPlayer .matchNumber {
+  font-size: 16px !important;
+}
+
+
+.eightPlayer .playerName {
+  font-size: 18px !important;
+}
+
+.eightPlayer .teamName {
+  font-size: 15px !important;
+}
+
+.eightPlayer .matchNumber {
+  font-size: 16px !important;
+}
+
+.bracketContainer.ninePlayer .match {
+  width: 250px !important;   /* ya 90% if you want responsive */
+  height: 100px !important;  /* ✅ 3-player preset match height */
+  margin: 0 auto !important;
+}
+
+.bracketContainer.ninePlayer .participant {
+  height: 25px !important;   /* ✅ 3-player preset participant height */
+  font-size: 10px !important; /* optional */
+}
+
+.bracketContainer.ninePlayer .teamBox {
+  height: 20px !important;   /* ✅ 3-player preset team height */
+  font-size: 16px !important; /* optional */
+}
+
+.ninePlayer .playerName {
+  font-size: 16px !important;
+}
+
+.ninePlayer .teamName {
+  font-size: 14px !important;
+}
+
+.ninePlayer .matchNumber {
+  font-size: 16px !important;
+}
+
+.bracketContainer.tenPlayer .match {
+  width: 250px !important;   /* ya 90% if you want responsive */
+  height: 100px !important;  /* ✅ 3-player preset match height */
+  margin: 0 auto !important;
+}
+
+.bracketContainer.tenPlayer .participant {
+  height: 25px !important;   /* ✅ 3-player preset participant height */
+  font-size: 10px !important; /* optional */
+}
+
+.bracketContainer.tenPlayer .teamBox {
+  height: 20px !important;   /* ✅ 3-player preset team height */
+  font-size: 16px !important; /* optional */
+}
+
+.bracketContainer.elevenPlayer .match {
+  width: 250px !important;   /* ya 90% if you want responsive */
+  height: 100px !important;  /* ✅ 3-player preset match height */
+  margin: 0 auto !important;
+}
+
+.tenPlayer .playerName {
+  font-size: 16px !important;
+}
+
+.tenPlayer .teamName {
+  font-size: 14px !important;
+}
+
+.tenPlayer .matchNumber {
+  font-size: 16px !important;
+}
+
+
+.bracketContainer.elevenPlayer .participant {
+  height: 25px !important;   /* ✅ 3-player preset participant height */
+  font-size: 10px !important; /* optional */
+}
+
+.bracketContainer.elevenPlayer .teamBox {
+  height: 20px !important;   /* ✅ 3-player preset team height */
+  font-size: 16px !important; /* optional */
+}
+
+.elevenPlayer .playerName {
+  font-size: 16px !important;
+}
+
+.elevenPlayer .teamName {
+  font-size: 14px !important;
+}
+
+.elevenPlayer .matchNumber {
+  font-size: 16px !important;
+}
+
+
+.bracketContainer.twelvePlayer .match {
+  width: 250px !important;   /* ya 90% if you want responsive */
+  height: 80px !important;  /* ✅ 3-player preset match height */
+  margin: 0 auto !important;
+}
+
+.bracketContainer.twelvePlayer .participant {
+  height: 20px !important;   /* ✅ 3-player preset participant height */
+  font-size: 10px !important; /* optional */
+
+}
+
+.bracketContainer.twelvePlayer .teamBox {
+  height: 15px !important;   /* ✅ 3-player preset team height */
+  font-size: 16px !important; /* optional */
+}
+
+.twelvePlayer .playerName {
+  font-size: 16px !important;
+}
+
+.twelvePlayer .teamName {
+  font-size: 14px !important;
+}
+
+.twelvePlayer .matchNumber {
+  font-size: 16px !important;
+}
+
+
+.bracketContainer.thirteenPlayer .match {
+  width: 250px !important;   /* ya 90% if you want responsive */
+  height: 70px !important;  /* ✅ 3-player preset match height */
+  margin: 0 auto !important;
+}
+
+.bracketContainer.thirteenPlayer .participant {
+  height: 18px !important;   /* ✅ 3-player preset participant height */
+  font-size: 10px !important; /* optional */
+
+}
+
+.bracketContainer.thirteenPlayer .teamBox {
+  height: 15px !important;   /* ✅ 3-player preset team height */
+  font-size: 16px !important; /* optional */
+}
+
+
+.thirteenPlayer .participant[data-participant-position="first"] + .teamBox,
+.thirteenPlayer .participant.first-participant + .teamBox,
+.thirteenPlayer .teamBox.first-participant-team,
+.thirteenPlayer .participant.bye[data-participant-position="first"] + .teamBox,
+.thirteenPlayer .participant.bye.first-participant + .teamBox {
+  margin-bottom: 3px !important;
+}
+
+.thirteenPlayer .playerName {
+  font-size: 12px !important;
+}
+
+.thirteenPlayer .teamName {
+  font-size: 10px !important;
+}
+
+.thirteenPlayer .matchNumber {
+  font-size: 12px !important;
+}
+
+
+.bracketContainer.fourteenPlayer .match {
+  width: 250px !important;   /* ya 90% if you want responsive */
+  height: 60px !important;  /* ✅ 3-player preset match height */
+  margin: 0 auto !important;
+}
+
+.bracketContainer.fourteenPlayer .participant {
+  height: 15px !important;   /* ✅ 3-player preset participant height */
+  font-size: 10px !important; /* optional */
+
+}
+
+.bracketContainer.fourteenPlayer .teamBox {
+  height: 13px !important;   /* ✅ 3-player preset team height */
+  font-size: 16px !important; /* optional */
+}
+
+.fourteenPlayer .participant[data-participant-position="first"] + .teamBox,
+.fourteenPlayer .participant.first-participant + .teamBox,
+.fourteenPlayer .teamBox.first-participant-team,
+.fourteenPlayer .participant.bye[data-participant-position="first"] + .teamBox,
+.fourteenPlayer .participant.bye.first-participant + .teamBox {
+  margin-bottom: 3px !important;
+}
+
+.fourteenPlayer .playerName {
+  font-size: 12px !important;
+}
+
+.fourteenPlayer .teamName {
+  font-size: 10px !important;
+}
+
+.fourteenPlayer .matchNumber {
+  font-size: 12px !important;
+}
+
+.bracketContainer.fifteenPlayer .match {
+  width: 250px !important;   /* ya 90% if you want responsive */
+  height: 60px !important;  /* ✅ 3-player preset match height */
+  margin: 0 auto !important;
+}
+
+.bracketContainer.fifteenPlayer .participant {
+  height: 15px !important;   /* ✅ 3-player preset participant height */
+  font-size: 10px !important; /* optional */
+
+}
+
+.bracketContainer.fifteenPlayer .teamBox {
+  height: 13px !important;   /* ✅ 3-player preset team height */
+  font-size: 16px !important; /* optional */
+}
+
+.fifteenPlayer .participant[data-participant-position="first"] + .teamBox,
+.fifteenPlayer .participant.first-participant + .teamBox,
+.fifteenPlayer .teamBox.first-participant-team,
+.fifteenPlayer .participant.bye[data-participant-position="first"] + .teamBox,
+.fifteenPlayer .participant.bye.first-participant + .teamBox {
+  margin-bottom: 3px !important;
+}
+
+.fifteenPlayer .playerName {
+  font-size: 12px !important;
+}
+
+.fifteenPlayer .teamName {
+  font-size: 10px !important;
+}
+
+.fifteenPlayer .matchNumber {
+  font-size: 12px !important;
+}
+
+
+.bracketContainer.sixteenPlayer .match {
+  width: 250px !important;   /* ya 90% if you want responsive */
+  height: 55px !important;  /* ✅ 3-player preset match height */
+  margin: 0 auto !important;
+}
+
+.bracketContainer.sixteenPlayer .participant {
+  height: 15px !important;   /* ✅ 3-player preset participant height */
+  font-size: 10px !important; /* optional */
+
+}
+
+.bracketContainer.sixteenPlayer .teamBox {
+  height: 11px !important;   /* ✅ 3-player preset team height */
+  font-size: 16px !important; /* optional */
+}
+
+.sixteenPlayer .participant[data-participant-position="first"] + .teamBox,
+.sixteenPlayer .participant.first-participant + .teamBox,
+.sixteenPlayer .teamBox.first-participant-team,
+.sixteenPlayer .participant.bye[data-participant-position="first"] + .teamBox,
+.sixteenPlayer .participant.bye.first-participant + .teamBox {
+  margin-bottom: 3px !important;
+}
+
+.sixteenPlayer .playerName {
+  font-size: 12px !important;
+}
+
+.sixteenPlayer .teamName {
+  font-size: 10px !important;
+}
+
+.sixteenPlayer .matchNumber {
+  font-size: 12px !important;
+}
+
+/* ================= Winner / Loser Highlights ================= */
+
+/* Player boxes */
+.winnerParticipant {
+  background: #d9fbe0 !important; /* light green */
+  border-color: #bdecc7 !important;
+}
+
+.loserParticipant {
+  background: #ffe0e0 !important; /* light red */
+  border-color: #f2bcbc !important;
+}
+
+/* Team boxes */
+.winnerTeamBox {
+  background: #e9fff0 !important;
+  border-color: #bdecc7 !important;
+}
+
+.loserTeamBox {
+  background: #fff0f0 !important;
+  border-color: #f2bcbc !important;
+}
+
+/* ================= Medal Winner Name Colors ================= */
+
+/* If your MedalSection already uses these classes */
+.goldName {
+  color: #d4af37 !important; /* gold */
+  font-weight: 800;
+}
+
+.silverName {
+  color: #c0c0c0 !important; /* silver */
+  font-weight: 800;
+}
+
+.bronzeName {
+  color: #8b5a2b !important; /* bronze/brown */
+  font-weight: 800;
+}
+
+/* Fallback: if medal section has text inside .medalRow spans */
+.medalRow .gold,
+.medalRow .goldWinner {
+  color: #d4af37 !important;
+  font-weight: 800;
+}
+
+.medalRow .silver,
+.medalRow .silverWinner {
+  color: #c0c0c0 !important;
+  font-weight: 800;
+}
+
+.medalRow .bronze,
+.medalRow .bronzeWinner {
+  color: #8b5a2b !important;
+  font-weight: 800;
+}
+
+/* ================= Medal Winner Layout ================= */
+
+/* Only apply when real winners exist */
+.medalRow.hasWinners {
+  display: flex;
+  justify-content: space-between;   /* full width equal spacing */
+  align-items: center;
+  width: 100%;
+  gap: 20px;
+}
+
+/* Individual medal block */
+.medalItem {
+  flex: 1;
+  text-align: center;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+/* Keep placeholder normal */
+.medalRow:not(.hasWinners) {
+  display: flex;
+  justify-content: space-between;
+}
+
+#print-exact-container > * {
+  break-after: page !important;
+  page-break-after: always !important;
+  break-inside: avoid !important;
+}

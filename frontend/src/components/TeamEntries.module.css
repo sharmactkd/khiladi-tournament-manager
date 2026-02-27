@@ -1,0 +1,102 @@
+.teamEntriesContainer {
+    margin-top: 2rem;
+    padding: 1rem;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    background: #f9f9f9;
+  }
+  
+  .subHeader {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    color: #333;
+  }
+  
+  .searchInput {
+    padding: 8px;
+    font-size: 0.9rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    flex-grow: 1;
+    max-width: 300px;
+  }
+  
+  .searchInput {
+    padding: 8px 12px;
+    font-size: 0.9rem;
+    font-family: Arial, sans-serif;
+    width: 200px; /* Reduced from 300px */
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    outline: none;
+  }
+  
+  .filters {
+    display: flex;
+    gap: 1rem;
+  }
+  
+  .select {
+    width: 150px;
+  }
+  
+  .formHeader {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  
+  .teamNameInput {
+    flex: 1;
+    padding: 0.5rem;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+  }
+  
+  .addButton {
+    background-color: #007bff;
+    color: #fff;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 4px;
+    cursor: pointer;
+  }
+  
+  .addButton:hover {
+    background-color: #0056b3;
+  }
+  
+  .entriesTable {
+    border-top: 2px solid #ccc;
+  }
+  
+  .tableHeader,
+  .tableRow {
+    display: flex;
+    padding: 0.5rem 0;
+  }
+  
+  .tableHeader span {
+    flex: 1;
+    font-weight: bold;
+    border-right: 1px solid #ccc;
+    padding-right: 0.5rem;
+  }
+  
+  .tableRow span {
+    flex: 1;
+    border-right: 1px solid #ccc;
+    padding-right: 0.5rem;
+    display: flex;
+    align-items: center;
+  }
+  
+  .tableRow span:last-child,
+  .tableHeader span:last-child {
+    border-right: none;
+  }
+  

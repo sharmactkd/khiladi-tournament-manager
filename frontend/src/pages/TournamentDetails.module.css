@@ -1,0 +1,198 @@
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  font-family: Arial, sans-serif;
+  box-sizing: border-box;
+  min-height: 100%;
+}
+
+.editButtonContainer {
+  margin: 20px 0;
+  text-align: center;
+}
+
+.editButton {
+  background-color: #cf0006;
+  color: white;
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.editButton:hover {
+  background-color: #a00004;
+}
+
+.nameupdate {
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.headerContainer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.headerLogo {
+  width: 100px;
+  height: auto;
+  object-fit: contain;
+  margin: 0 10px;
+}
+
+.headerRow {
+  font-size: 2.5em;
+  margin: 0 10px;
+  color: #cf0006;
+  text-align: center;
+  flex: 1;
+  min-width: 200px;
+}
+
+.section {
+  margin-bottom: 30px;
+  padding: 15px;
+  background: #f9f9f9;
+  border-radius: 5px;
+}
+
+.section h2 {
+  color: #cf0006;
+  margin-bottom: 15px;
+}
+
+.detailsGrid {
+  display: flex;
+  flex-direction: column;
+}
+
+.infoPart {
+  width: 100%;
+}
+
+.detailRow {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.leftItem {
+  flex: 1;
+  margin-right: 0.5rem;
+}
+
+.rightItem {
+  flex: 1;
+}
+
+.dateRow {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.locationRow {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.posterSection {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.posterTitle {
+  font-size: 1.5em;
+  color: #cf0006;
+  margin-bottom: 10px;
+}
+
+.posterImage {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.error {
+  color: red;
+  text-align: center;
+}
+
+.genderSections {
+  display: flex;
+  gap: 20px;
+}
+
+.genderColumn {
+  flex: 1;
+}
+
+.genderColumn h3 {
+  color: #cf0006;
+  margin-bottom: 10px;
+}
+
+.genderColumn ul {
+  list-style-type: none;
+  padding: 0;
+}
+
+.genderColumn li {
+  margin: 5px 0;
+}
+
+.logoContainer {
+  display: flex;
+  gap: 15px;
+  flex-wrap: wrap;
+}
+
+.logoPreviewImage {
+  width: 150px;
+  height: 150px;
+  object-fit: contain;
+  border-radius: 5px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+.foodsection {
+  display: flex;
+  gap: 130px;
+}
+
+.section ul {
+  list-style-type: none;
+  padding-left: 0;
+}
+
+.section ul li {
+  margin-bottom: 1rem;
+  line-height: 1.5;
+}
+
+.section ul li strong {
+  color: #cf0006;
+}
+
+.pointSystem {
+  display: flex;
+  flex-direction: row;
+  gap: 50px; /* Equal gap between each p element */
+}
+
+@media (max-width: 600px) {
+  .detailRow {
+    flex-direction: column;
+  }
+  .rightItem {
+    margin-left: 0;
+  }
+}

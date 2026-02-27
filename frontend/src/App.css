@@ -1,0 +1,19 @@
+/* D:\Khiladi\frontend\src\App.css */
+
+/* Global Form Reset */
+input, button, textarea, select {
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 0;
+  background: transparent;
+  border: none;
+  outline: none !important;
+  box-shadow: none !important;
+}
+
+/* Mobile Input Zoom Prevention */
+@media screen and (max-width: 767px) {
+  input, textarea {
+    font-size: 16px !important;
+  }
+}

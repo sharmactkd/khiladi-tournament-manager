@@ -1,0 +1,124 @@
+/* Header.module.css */
+
+/* Define CSS variables for consistent theming */
+:root {
+  --primary-color: #007bff;
+  --primary-color-dark: #0056b3;
+  --secondary-color: #ffffff;
+  --nav-bg-color: #343a40;
+  --nav-text-color: #ffffff;
+  --text-color: #CF0006;
+  --font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Main header container */
+.header {
+  width: 100%;
+  background-color: white;
+  font-family: var(--font-family);
+  margin-bottom: 1rem;
+}
+
+/* Top bar with logo and user info/welcome text */
+.topBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem 1rem;
+}
+
+.left {
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: var(--text-color);
+}
+
+.logo {
+  display: inline-block;
+  color: #CF0006;
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: bold;
+}
+
+.right {
+  font-size: 1rem;
+  color: var(--text-color);
+}
+
+.userSection {
+  display: flex;
+  align-items: center;
+}
+
+.userSection span {
+  margin-right: 0.75rem;
+}
+
+.logoutButton {
+  background-color: #CF0006;
+  color: #fff;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  font-size: 0.9rem;
+}
+
+.logoutButton:hover {
+  background-color: var(--ry-color-dark);
+}
+
+.welcomeText {
+  font-size: 1rem;
+  color: var(--text-color);
+}
+
+/* Navigation bar styling */
+.navBar {
+  background-color: white;
+}
+
+.navList {
+  list-style: none;
+  display: flex;
+  justify-content: center;
+  margin: 0;
+  padding: 0.5rem 0;
+}
+
+.navList li {
+  margin: 0 1rem;
+}
+
+.navLink {
+  text-decoration: none;
+  color: #CF0006;
+  font-size: 1rem;
+  transition: color 0.3s ease;
+}
+
+.navLink:hover {
+  color: #dddddd;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+  .topBar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .right {
+    margin-top: 0.5rem;
+  }
+
+  .navList {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .navList li {
+    margin: 0.5rem 0;
+  }
+}

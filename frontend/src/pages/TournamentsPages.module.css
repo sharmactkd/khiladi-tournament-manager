@@ -1,0 +1,139 @@
+/* Container and overall layout */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+  font-family: Arial, sans-serif;
+  height: 100vh; /* Full viewport height */
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header row using three flex sections */
+.headerRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.leftGroup,
+.rightGroup {
+  flex: 1;
+  display: flex;
+  align-items: center;
+}
+
+.pageTitle {
+  flex: 2;
+  text-align: center;
+  font-size: 2.5rem;
+  margin: 0;
+}
+
+/* Button group for header toggles */
+.buttonGroup {
+  display: flex;
+  gap: 10px;
+}
+
+/* Toggle button style */
+.toggleButton {
+  background-color: #cf0006;
+  color: #fff;
+  border: none;
+  padding: 0.8rem 1.5rem;
+  font-size: 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  white-space: nowrap; /* Ensure text stays on one line */
+  min-width: 250px; /* Adjust as needed so text fits on one line */
+}
+
+.toggleButton:hover {
+  background-color: #a50040;
+}
+
+/* Optional: Center align leftGroup content to left and rightGroup content to right */
+.leftGroup {
+  justify-content: flex-start;
+}
+
+.rightGroup {
+  justify-content: flex-end;
+  gap: 10px; /* ✅ ensure multiple buttons have spacing */
+  flex-wrap: wrap; /* ✅ avoid overflow on smaller screens */
+}
+
+/* New My Tournaments toggle group (appears below headerRow when active) */
+.myToggleGroup {
+  margin: 15px 0;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.myToggleButton {
+  background-color: #e0e0e0;
+  color: #333;
+  border: none;
+  padding: 0.8rem 1.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.myToggleButton:hover {
+  background-color: #ccc;
+}
+
+.activeToggle {
+  background-color: #cf0006;
+  color: #fff;
+}
+
+/* Section styling */
+.section {
+  flex: 1; /* Allow section to grow and fill available space */
+  display: flex;
+  flex-direction: column;
+  margin-bottom: 20px;
+}
+
+/* Cards container for tournament preview cards */
+.cardsContainer {
+  padding: 20px;
+  overflow-y: auto; /* Enable vertical scrolling */
+  max-height: 850px; /* Fixed height to force scroll bar */
+  border: 1px solid #ccc; /* Debugging: see container boundaries */
+  scrollbar-width: thin; /* Firefox scroll bar width */
+  scrollbar-color: #cf0006 #f1f1f1; /* Scroll bar color for Firefox */
+}
+
+/* Ensure each card takes full width with some margin */
+.cardsContainer > * {
+  width: 100%;
+  min-width: 300px;
+  max-width: 100%;
+  margin-bottom: 15px;
+}
+
+/* Custom scroll bar styling for Webkit browsers (Chrome, Safari) */
+.cardsContainer::-webkit-scrollbar {
+  width: 8px;
+}
+
+.cardsContainer::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 4px;
+}
+
+.cardsContainer::-webkit-scrollbar-thumb {
+  background: #cf0006;
+  border-radius: 4px;
+}
+
+.cardsContainer::-webkit-scrollbar-thumb:hover {
+  background: #a50040;
+}
