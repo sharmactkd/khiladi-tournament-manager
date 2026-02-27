@@ -1,16 +1,14 @@
 import axios from "axios";
 
 /**
- * IMPORTANT (Root-cause fix):
- * Your backend mounts tournament CRUD at:   /api/tournament/...
- * Your entry routes mount at:               /api/tournaments/:id/entries
+ * IMPORTANT:
+ * - Backend mounts tournament CRUD at: /api/tournament/...
+ * - Entries routes at: /api/tournaments/:id/entries
  *
- * Earlier helper functions were calling:
- *   /tournament/:id/entries   ❌ (wrong route)
- * which results in 404, and many times it looks like "save didn't happen"
- * because UI updates locally and errors are swallowed.
- *
- * This file now provides correct entry endpoints while keeping all existing auth behavior same.
+ * This file keeps the same behavior, but fixes "auto logout" by:
+ * ✅ Avoiding localStorage.clear() (too destructive)
+ * ✅ Avoiding multiple simultaneous refresh calls
+ * ✅ Never nuking app state for transient failures (429)
  */
 
 const normalizeBase = (v) => String(v || "").trim().replace(/\/+$/, "");
@@ -30,6 +28,9 @@ const api = axios.create({
   timeout: 90000,
 });
 
+// Refresh mutex
+let refreshPromise = null;
+
 // Auto attach Bearer token to every request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("authToken");
@@ -41,22 +42,29 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error.config || {};
 
-    // 401 handling with refresh (same behavior as before)
     if (error.response?.status === 401 && !originalRequest._retry) {
       originalRequest._retry = true;
 
       try {
-        const refreshRes = await axios.post(
-          `${API_URL}/auth/refresh`,
-          {},
-          { withCredentials: true }
-        );
+        if (!refreshPromise) {
+          refreshPromise = axios
+            .post(`${API_URL}/auth/refresh`, {}, { withCredentials: true })
+            .then((refreshRes) => {
+              const { accessToken } = refreshRes.data || {};
+              if (!accessToken) throw new Error("Refresh did not return accessToken");
+              localStorage.setItem("authToken", accessToken);
+              return accessToken;
+            })
+            .finally(() => {
+              refreshPromise = null;
+            });
+        }
 
-        const { accessToken } = refreshRes.data;
-        localStorage.setItem("authToken", accessToken);
+        const accessToken = await refreshPromise;
 
+        originalRequest.headers = originalRequest.headers || {};
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
         return api(originalRequest);
       } catch (refreshError) {
@@ -65,16 +73,12 @@ api.interceptors.response.use(
         if (refreshError.response?.status === 429) {
           alert("Too many requests. Please wait a minute before trying again.");
           await new Promise((resolve) => setTimeout(resolve, 60000));
-          try {
-            return api(originalRequest);
-          } catch (finalError) {
-            localStorage.clear();
-            window.location.href = "/login";
-            return Promise.reject(finalError);
-          }
+          return api(originalRequest);
         }
 
-        localStorage.clear();
+        // Minimal clear (do not wipe everything)
+        localStorage.removeItem("authToken");
+        localStorage.removeItem("user");
         window.location.href = "/login";
         return Promise.reject(refreshError);
       }
@@ -103,7 +107,6 @@ const apiCall = async (method, url, data = null, config = {}) => {
 
     const msg = serverMsg || error.message || "Request failed";
 
-    // Keep prior behavior (console + throw)
     console.error(`API ${method.toUpperCase()} ${url} error:`, { status, msg });
 
     const err = new Error(msg);
@@ -137,12 +140,8 @@ export const saveWeightPreset = (name, data) => apiCall("post", "/weight-presets
 export const getWeightPresets = () => apiCall("get", "/weight-presets");
 export const deleteWeightPreset = (id) => apiCall("delete", `/weight-presets/${id}`);
 
-/**
- * ✅ Entries APIs (FIXED ROUTES)
- * Backend: /api/tournaments/:id/entries
- */
+// Entries APIs
 export const getEntries = (tournamentId) => apiCall("get", `/tournaments/${tournamentId}/entries`);
-
 export const saveEntries = (tournamentId, payload) =>
   apiCall("post", `/tournaments/${tournamentId}/entries`, payload);
 

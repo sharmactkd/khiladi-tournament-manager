@@ -1,5 +1,12 @@
-// src/context/AuthContext.jsx
-import React, { createContext, useState, useEffect, useContext, useMemo } from "react";
+import React, {
+  createContext,
+  useState,
+  useEffect,
+  useContext,
+  useMemo,
+  useRef,
+  useCallback,
+} from "react";
 import api from "../api";
 
 const AuthContext = createContext();
@@ -8,6 +15,9 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(localStorage.getItem("authToken"));
   const [loading, setLoading] = useState(true);
+
+  // Prevent multiple simultaneous refresh calls (conflict stopper)
+  const refreshInFlightRef = useRef(null);
 
   const login = (responseData) => {
     const { accessToken, _id, ...rest } = responseData;
@@ -24,7 +34,7 @@ export const AuthProvider = ({ children }) => {
     window.location.href = "/";
   };
 
-  const logout = () => {
+  const logout = useCallback(() => {
     localStorage.removeItem("authToken");
     localStorage.removeItem("user");
 
@@ -32,30 +42,39 @@ export const AuthProvider = ({ children }) => {
     setToken(null);
 
     window.location.href = "/login";
-  };
+  }, []);
 
-  const refreshToken = async () => {
-    try {
-      const response = await api.post("/auth/refresh", {}, { withCredentials: true });
-      const { accessToken } = response.data || {};
-      if (!accessToken) throw new Error("Refresh did not return accessToken");
+  const refreshToken = useCallback(async () => {
+    // If already refreshing, reuse same promise
+    if (refreshInFlightRef.current) return refreshInFlightRef.current;
 
-      localStorage.setItem("authToken", accessToken);
-      setToken(accessToken);
+    refreshInFlightRef.current = (async () => {
+      try {
+        const response = await api.post("/auth/refresh", {}, { withCredentials: true });
+        const { accessToken } = response.data || {};
+        if (!accessToken) throw new Error("Refresh did not return accessToken");
 
-      // Fetch updated user
-      const userRes = await api.get("/auth/me");
-      const userData = { id: userRes.data?._id, ...userRes.data };
-      localStorage.setItem("user", JSON.stringify(userData));
-      setUser(userData);
+        localStorage.setItem("authToken", accessToken);
+        setToken(accessToken);
 
-      return accessToken;
-    } catch (error) {
-      console.error("Token refresh failed:", error);
-      logout();
-      throw error;
-    }
-  };
+        // Fetch updated user
+        const userRes = await api.get("/auth/me");
+        const userData = { id: userRes.data?._id, ...userRes.data };
+        localStorage.setItem("user", JSON.stringify(userData));
+        setUser(userData);
+
+        return accessToken;
+      } catch (error) {
+        console.error("Token refresh failed:", error);
+        logout();
+        throw error;
+      } finally {
+        refreshInFlightRef.current = null;
+      }
+    })();
+
+    return refreshInFlightRef.current;
+  }, [logout]);
 
   // On app load: restore session if token exists
   useEffect(() => {
@@ -68,16 +87,15 @@ export const AuthProvider = ({ children }) => {
       }
 
       try {
-        // api will attach Authorization automatically
         const res = await api.get("/auth/me");
         const userData = { id: res.data?._id, ...res.data };
 
         setUser(userData);
         setToken(storedToken);
+        localStorage.setItem("user", JSON.stringify(userData));
       } catch (error) {
         console.error("Session restore failed:", error);
 
-        // If token invalid (401), clear it
         if (error?.response?.status === 401) {
           localStorage.removeItem("authToken");
           localStorage.removeItem("user");
@@ -92,7 +110,13 @@ export const AuthProvider = ({ children }) => {
     restoreAuth();
   }, []);
 
-  // Periodic token check & refresh (every 5 minutes)
+  /**
+   * ✅ Conflict fix:
+   * Keep periodic refresh BUT make it "non-destructive":
+   * - Only refresh when close to expiry
+   * - Never clear storage here
+   * - Use refreshToken() which is mutex-protected
+   */
   useEffect(() => {
     if (!token) return;
 
@@ -109,27 +133,26 @@ export const AuthProvider = ({ children }) => {
 
     const checkAndRefreshToken = async () => {
       try {
-        const expiryTime = safeParseJwtExp(token);
+        const latestToken = localStorage.getItem("authToken") || token;
+        const expiryTime = safeParseJwtExp(latestToken);
 
-        // If not a JWT or exp missing, don't break the app
         if (!expiryTime) return;
 
-        if (Date.now() >= expiryTime) {
-          await refreshToken();
-          return;
-        }
-
+        // Refresh only if expired or within 60s of expiry
         if (Date.now() >= expiryTime - 60000) {
           await refreshToken();
         }
       } catch (error) {
+        // Do not logout from here; interceptor/refreshToken handles it
         console.error("Token check failed:", error);
       }
     };
 
+    // Run once immediately (safe) + then every 5 minutes
+    checkAndRefreshToken();
     const interval = setInterval(checkAndRefreshToken, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, [token]);
+  }, [token, refreshToken]);
 
   const value = useMemo(
     () => ({
@@ -141,7 +164,7 @@ export const AuthProvider = ({ children }) => {
       logout,
       refreshToken,
     }),
-    [user, token, loading]
+    [user, token, loading, logout, refreshToken]
   );
 
   return (
