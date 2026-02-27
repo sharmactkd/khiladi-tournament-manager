@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://khiladi-tournament-manager.onrender.com/api/:path*"
+    }
+  ]
+}
