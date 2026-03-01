@@ -42,15 +42,30 @@ app.use(
 );
 
 // CORS
+// CORS
+const allowedOrigins = [
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://localhost:5174",
+  "https://khiladi-khoj.vercel.app",
+  "https://khiladi-khoj.com",
+];
+
+// ✅ allow ALL vercel preview deployments for this project (and in general)
+const vercelPreviewRegex = /^https:\/\/.*\.vercel\.app$/;
+
 app.use(
   cors({
-    origin: [
-      "http://localhost:5173",
-      "http://localhost:3000",
-      "http://localhost:5174",
-      "https://khiladi-khoj.vercel.app",
-      "https://khiladi-khoj.com",
-    ],
+    origin: (origin, callback) => {
+      // allow server-to-server / curl / postman (no origin)
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin) || vercelPreviewRegex.test(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`CORS blocked: ${origin}`));
+    },
     credentials: true,
     methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
