@@ -11,6 +11,7 @@ import authRoutes from "./routes/authRoutes.js";
 import tournamentRoutes from "./routes/tournamentRoutes.js";
 import entryRoutes from "./routes/entryRoutes.js";
 import weightPresetRoutes from "./routes/weightPresetRoutes.js";
+import visitorRoutes from "./routes/visitorRoutes.js";
 
 import logger, { logMiddleware } from "./utils/logger.js";
 import { generalRateLimiter, authRateLimiter } from "./middleware/rateLimiter.js";
@@ -61,7 +62,12 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
 
-// Static
+console.log("STATIC UPLOADS PATH:", path.join(__dirname, "uploads"));
+// Static (uploads) — ensure CORP header on /uploads/* so browser doesn't block cross-origin images
+app.use("/uploads", (req, res, next) => {
+  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+  next();
+});
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
 // Request logging
@@ -73,6 +79,7 @@ if (process.env.NODE_ENV === "production") {
   app.use("/api/tournament", generalRateLimiter);
   app.use("/api/tournaments", generalRateLimiter);
   app.use("/api/weight-presets", generalRateLimiter);
+  app.use("/api/visitor", generalRateLimiter);
   app.use(generalRateLimiter);
 }
 
@@ -105,6 +112,9 @@ app.use("/api/tournaments", entryRoutes);
 
 // Weight presets
 app.use("/api/weight-presets", weightPresetRoutes);
+
+// ✅ Visitor counter (public)
+app.use("/api/visitor", visitorRoutes);
 
 // Health check
 app.get("/health", (req, res) => {

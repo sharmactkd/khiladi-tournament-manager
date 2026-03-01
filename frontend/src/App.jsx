@@ -2,6 +2,7 @@ import React, { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import Header from "./components/Header";
+import Footer from "./components/Footer";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import TournamentForm from "./pages/TournamentForm";
@@ -77,6 +78,7 @@ function App() {
         <Route path="/contact" element={<Contact />} />
         <Route path="*" element={<h1>404 - Page Not Found</h1>} />
       </Routes>
+      <Footer />
     </>
   );
 }

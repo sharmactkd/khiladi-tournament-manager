@@ -155,7 +155,12 @@ export const getFullImageUrl = (url) => {
   if (!url) return "/default-poster.jpg";
 
   if (typeof url === "string") {
-    const clean = url.trim();
+    let clean = url.trim();
+
+    // Fix broken protocol: https:/ → https://  and http:/ → http://
+    clean = clean.replace(/^https?:\/(?!\/)/g, (match) => match + "/");
+    clean = clean.replace(/^http?:\/(?!\/)/g, (match) => match + "/");
+
     if (clean.startsWith("http://") || clean.startsWith("https://")) return clean;
 
     const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";

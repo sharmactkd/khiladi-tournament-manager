@@ -5,7 +5,12 @@ import styles from "./TournamentPreviewCard.module.css";
 const getFullImageUrl = (url) => {
   if (!url) return "/default-poster.jpg";
 
-  const cleanUrl = String(url).trim();
+  let cleanUrl = String(url).trim();
+
+  // Fix broken protocol: https:/ → https://  and http:/ → http://
+  cleanUrl = cleanUrl.replace(/^https?:\/(?!\/)/g, (match) => match + "/");
+  cleanUrl = cleanUrl.replace(/^http?:\/(?!\/)/g, (match) => match + "/");
+
   if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) return cleanUrl;
 
   const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";

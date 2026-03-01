@@ -975,10 +975,26 @@ font-size: 1rem;
 /* Gender Column Headings Styling */
 .genderSections {
   display: flex;
+  
 }
 
 .genderColumn {
   width: 52.5%;
+}
+
+/* ========================= */
+/* Custom Weight Categories  */
+/* ========================= */
+
+.customWeightWrapper .genderSections {
+  display: flex;
+  flex-direction: column;   /* Row se column */
+  width: 100%;
+  gap: 20px;                /* Optional spacing */
+}
+
+.customWeightWrapper .genderColumn {
+  width: 100%;              /* 52.5% remove */
 }
 
 .genderColumn h4 {

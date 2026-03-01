@@ -37,7 +37,8 @@ const getFullImageUrl = (url) => {
   // Build uploads URL from API base (VITE_API_URL can include /api)
   const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
   const uploadsBase = String(baseUrl).replace(/\/api\/?$/, "");
-  return `${uploadsBase}/uploads/${cleanUrl.replace(/^\/+/, "")}`;
+  const filename = cleanUrl.replace(/^\/+/, "");
+  return `${uploadsBase}/uploads/${filename}`;
 };
 
 const getAgeCriteria = (currentYear) => ({
@@ -224,6 +225,23 @@ const TournamentDetails = () => {
         <div className={styles.error}>Tournament not found</div>
       </div>
     );
+
+  // ===== Custom weights compatibility helpers =====
+  const getCustomGenderRows = (ageGroup, gender) => {
+    const custom = tournament?.weightCategories?.custom || {};
+    const ageVal = custom?.[ageGroup];
+
+    // legacy: array
+    if (Array.isArray(ageVal)) return ageVal;
+
+    // new: object { Male: [...], Female: [...] }
+    if (ageVal && typeof ageVal === "object") {
+      const g = ageVal?.[gender];
+      if (Array.isArray(g)) return g;
+    }
+
+    return [];
+  };
 
   return (
     <div className={styles.container}>
@@ -524,12 +542,9 @@ const TournamentDetails = () => {
                   let femaleRows = [];
 
                   if (tournament.weightCategories.type === "custom") {
-                    const customData =
-                      tournament.weightCategories.custom?.[ageGroup] || [];
-                    if (Array.isArray(customData) && customData.length > 0) {
-                      maleRows = customData;
-                      femaleRows = customData;
-                    }
+                    // NEW: gender-wise custom, but still support legacy array
+                    maleRows = getCustomGenderRows(ageGroup, "Male");
+                    femaleRows = getCustomGenderRows(ageGroup, "Female");
                   } else {
                     const standard = tournament.weightCategories.type;
                     let maleWeights = [];
@@ -553,7 +568,7 @@ const TournamentDetails = () => {
                     }
 
                     const parseWeight = (str) => {
-                      const parts = str.split(" (");
+                      const parts = String(str).split(" (");
                       return {
                         category: parts[0].trim(),
                         description: parts[1]
@@ -566,8 +581,7 @@ const TournamentDetails = () => {
                     femaleRows = femaleWeights.map(parseWeight);
                   }
 
-                  if (maleRows.length === 0 && femaleRows.length === 0)
-                    return null;
+                  if (maleRows.length === 0 && femaleRows.length === 0) return null;
 
                   return (
                     <div key={ageGroup} className={styles.ageGroupSection}>
@@ -589,12 +603,7 @@ const TournamentDetails = () => {
                                 <li key={`male-${index}`}>
                                   <strong>{row.category}</strong>
                                   {row.description && (
-                                    <span
-                                      style={{
-                                        color: "#666",
-                                        fontSize: "0.9em",
-                                      }}
-                                    >
+                                    <span style={{ color: "#666", fontSize: "0.9em" }}>
                                       {" "}
                                       {row.description}
                                     </span>
@@ -615,12 +624,7 @@ const TournamentDetails = () => {
                                 <li key={`female-${index}`}>
                                   <strong>{row.category}</strong>
                                   {row.description && (
-                                    <span
-                                      style={{
-                                        color: "#666",
-                                        fontSize: "0.9em",
-                                      }}
-                                    >
+                                    <span style={{ color: "#666", fontSize: "0.9em" }}>
                                       {" "}
                                       {row.description}
                                     </span>

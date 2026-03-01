@@ -25,17 +25,28 @@
   background-color: #a00004;
 }
 
+/* Old .nameupdate kept for compatibility (no longer used by header layout) */
 .nameupdate {
   display: flex;
   flex-direction: column-reverse;
 }
 
+/* ===== Header Layout Fix ===== */
 .headerContainer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap; /* desktop: keep single row */
+  gap: 10px;
+}
+
+.logoWrapper {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 110px;
 }
 
 .headerLogo {
@@ -45,14 +56,57 @@
   margin: 0 10px;
 }
 
+.logoNotAvailable {
+  color: #666;
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+/* Center block: title top + button below */
+.centerBlock {
+  flex: 1 1 auto;
+  min-width: 0; /* critical so text can wrap without pushing logos */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
+}
+
 .headerRow {
   font-size: 2.5em;
   margin: 0 10px;
   color: #cf0006;
   text-align: center;
-  flex: 1;
-  min-width: 200px;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
+
+/* Small centered button (not full width) */
+.editButtonSmall {
+  background-color: #cf0006;
+  color: white;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  width: auto;
+  max-width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.editButtonSmall:hover {
+  background-color: #a00004;
+}
+/* ============================= */
 
 .section {
   margin-bottom: 30px;
@@ -188,11 +242,40 @@
   gap: 50px; /* Equal gap between each p element */
 }
 
+@media (max-width: 900px) {
+  /* Allow logos to shrink a bit on smaller screens */
+  .logoWrapper {
+    min-width: 90px;
+  }
+  .headerLogo {
+    width: 80px;
+    margin: 0 6px;
+  }
+  .headerRow {
+    font-size: 2em;
+  }
+}
+
 @media (max-width: 600px) {
   .detailRow {
     flex-direction: column;
   }
   .rightItem {
     margin-left: 0;
+  }
+
+  /* Mobile: stack cleanly */
+  .headerContainer {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .logoWrapper {
+    min-width: 100px;
+  }
+
+  .centerBlock {
+    flex: 1 1 100%;
+    order: 2;
   }
 }

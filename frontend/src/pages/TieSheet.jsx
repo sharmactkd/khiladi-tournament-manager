@@ -1,3 +1,4 @@
+// src/pages/TieSheet.jsx
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useParams, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -314,18 +315,49 @@ const TieSheet = () => {
     const ageCategoryMapping = ageCategoryMappingRef.current;
     const playersData = Array.isArray(rows) ? rows : [];
 
-    const cleaned = playersData
-      .map((p) => ({
-        ...p,
-        gender: p?.gender ? p.gender.charAt(0).toUpperCase() + p.gender.slice(1).toLowerCase() : '',
-        ageCategory: ageCategoryMapping[normalizeString(p?.ageCategory)] || p?.ageCategory,
-        weightCategory: p?.weightCategory,
-        name: p?.name || '',
-        team: p?.team || '',
-      }))
-      .filter((p) => p?.name && p?.gender && p?.ageCategory && p?.weightCategory);
+    // ✅ Single source of truth for gender normalization
+    const normalizeGender = (value) => {
+      if (value === null || value === undefined) return '';
+      const raw = String(value).trim();
+      if (!raw) return '';
+
+      // Keep alpha tokens, normalize spacing
+      const s = raw.toLowerCase().replace(/[^a-z]/g, '');
+
+      // Common variants -> canonical
+      if (s === 'm' || s === 'male' || s === 'man' || s === 'men' || s === 'boy' || s === 'boys') return 'Male';
+      if (s === 'f' || s === 'female' || s === 'woman' || s === 'women' || s === 'girl' || s === 'girls') return 'Female';
+
+      // Fallback: old behavior (Title Case)
+      return raw.charAt(0).toUpperCase() + raw.slice(1).toLowerCase();
+    };
+
+    if (isDev) {
+      console.log('ENTRY KEYS:', rows?.[0] ? Object.keys(rows[0]) : null);
+      console.log('ENTRY SAMPLE:', rows?.[0]);
+    }
+
+    const cleanedMapped = playersData.map((p) => ({
+      ...p,
+      // ✅ apply normalization here
+      gender: normalizeGender(p?.gender),
+      ageCategory: ageCategoryMapping[normalizeString(p?.ageCategory)] || p?.ageCategory,
+      weightCategory: p?.weightCategory,
+      name: p?.name || '',
+      team: p?.team || '',
+    }));
+
+    if (isDev) console.log('BEFORE FILTER SAMPLE:', cleanedMapped?.[0]);
+
+    const cleaned = cleanedMapped.filter((p) => p?.name && p?.gender && p?.ageCategory && p?.weightCategory);
+
+    // ✅ Requested DEV log: first cleaned gender
+    if (isDev) console.log('🧬 [TieSheet] cleaned[0].gender:', cleaned?.[0]?.gender || null);
 
     if (!tournamentData) return cleaned;
+
+    // ✅ Requested DEV log: tournamentData.ageGender
+    if (isDev) console.log('🧬 [TieSheet] tournamentData.ageGender:', tournamentData?.ageGender || null);
 
     const allAgeCategories = [...(tournamentData.ageCategories?.open || []), ...(tournamentData.ageCategories?.official || [])].map(
       (c) => ageCategoryMapping[normalizeString(c)] || c
@@ -336,13 +368,19 @@ const TieSheet = () => {
       if (tournamentData.ageGender?.[type]) {
         Object.values(tournamentData.ageGender[type]).forEach((genders) => {
           if (Array.isArray(genders)) {
-            genders.forEach((g) => allowedGenders.add(g.charAt(0).toUpperCase() + g.slice(1).toLowerCase()));
+            genders.forEach((g) => {
+              const ng = normalizeGender(g);
+              if (ng) allowedGenders.add(ng);
+            });
           }
         });
       }
     });
 
     if (allowedGenders.size === 0) cleaned.forEach((p) => p.gender && allowedGenders.add(p.gender));
+
+    // ✅ Requested DEV log: allowedGenders array
+    if (isDev) console.log('🧬 [TieSheet] allowedGenders:', [...allowedGenders]);
 
     const allowedAgeCategories = new Set(allAgeCategories.length > 0 ? allAgeCategories : ageCategoryOrder);
 
@@ -417,6 +455,9 @@ const TieSheet = () => {
           const shape = Array.isArray(payload?.entries) ? 'entries' : 'unknown';
 
           const rows = Array.isArray(payload.entries) ? payload.entries : [];
+
+          if (isDev) console.log('SAMPLE ENTRY ROW:', rows?.[0]);
+
           const count = typeof payload.count === 'number' ? payload.count : rows.length;
           const lastUpdated = payload.lastUpdated || null;
 
@@ -701,7 +742,11 @@ const TieSheet = () => {
         if (isDev) console.log('ℹ️ [TieSheet] Server outcomes missing -> fallback to LOCAL', { tournamentId: id });
       } catch (err) {
         if (controller.signal.aborted) return;
-        if (isDev) console.log('⚠️ [TieSheet] Server outcomes unavailable -> fallback to LOCAL', { tournamentId: id, err: err?.message || err });
+        if (isDev)
+          console.log('⚠️ [TieSheet] Server outcomes unavailable -> fallback to LOCAL', {
+            tournamentId: id,
+            err: err?.message || err,
+          });
       }
 
       // 2) Local fallback
@@ -717,7 +762,11 @@ const TieSheet = () => {
           }
         }
       } catch (err) {
-        if (isDev) console.warn('⚠️ [TieSheet] Failed to parse LOCAL outcomes, clearing key', { tournamentId: id, err: err?.message || err });
+        if (isDev)
+          console.warn('⚠️ [TieSheet] Failed to parse LOCAL outcomes, clearing key', {
+            tournamentId: id,
+            err: err?.message || err,
+          });
         try {
           localStorage.removeItem(localKey);
         } catch {}
@@ -1116,7 +1165,8 @@ const TieSheet = () => {
       try {
         serverTieSheet = await fetchLatestTieSheetFromServer(controller.signal);
       } catch (err) {
-        if (err?.response?.status !== 404) console.warn('Refresh: failed to fetch tiesheet from server:', err?.message || err);
+        if (err?.response?.status !== 404)
+          console.warn('Refresh: failed to fetch tiesheet from server:', err?.message || err);
       }
 
       const canRestore = shouldRestoreSavedBrackets(serverTieSheet, { count, lastUpdated });
@@ -1337,7 +1387,11 @@ const TieSheet = () => {
                 </h2>
 
                 <div className={styles.actionButtons}>
-                  <button className={styles.toggleButton} onClick={handleRefresh} disabled={isLoading || isProcessing || isPdfSaving}>
+                  <button
+                    className={styles.toggleButton}
+                    onClick={handleRefresh}
+                    disabled={isLoading || isProcessing || isPdfSaving}
+                  >
                     Refresh
                   </button>
 
@@ -1391,38 +1445,38 @@ const TieSheet = () => {
                   bracket.playerCount === 1
                     ? styles.singlePlayer
                     : bracket.playerCount === 2
-                    ? styles.twoPlayer
-                    : bracket.playerCount === 3
-                    ? styles.threePlayer
-                    : bracket.playerCount === 4
-                    ? styles.fourPlayer
-                    : bracket.playerCount === 5
-                    ? styles.fivePlayer
-                    : bracket.playerCount === 6
-                    ? styles.sixPlayer
-                    : bracket.playerCount === 7
-                    ? styles.sevenPlayer
-                    : bracket.playerCount === 8
-                    ? styles.eightPlayer
-                    : bracket.playerCount === 9
-                    ? styles.ninePlayer
-                    : bracket.playerCount === 10
-                    ? styles.tenPlayer
-                    : bracket.playerCount === 11
-                    ? styles.elevenPlayer
-                    : bracket.playerCount === 12
-                    ? styles.twelvePlayer
-                    : bracket.playerCount === 13
-                    ? styles.thirteenPlayer
-                    : bracket.playerCount === 14
-                    ? styles.fourteenPlayer
-                    : bracket.playerCount === 15
-                    ? styles.fifteenPlayer
-                    : bracket.playerCount === 16
-                    ? styles.sixteenPlayer
-                    : bracket.playerCount <= 8
-                    ? styles.smallBracket
-                    : styles.multiPlayer;
+                      ? styles.twoPlayer
+                      : bracket.playerCount === 3
+                        ? styles.threePlayer
+                        : bracket.playerCount === 4
+                          ? styles.fourPlayer
+                          : bracket.playerCount === 5
+                            ? styles.fivePlayer
+                            : bracket.playerCount === 6
+                              ? styles.sixPlayer
+                              : bracket.playerCount === 7
+                                ? styles.sevenPlayer
+                                : bracket.playerCount === 8
+                                  ? styles.eightPlayer
+                                  : bracket.playerCount === 9
+                                    ? styles.ninePlayer
+                                    : bracket.playerCount === 10
+                                      ? styles.tenPlayer
+                                      : bracket.playerCount === 11
+                                        ? styles.elevenPlayer
+                                        : bracket.playerCount === 12
+                                          ? styles.twelvePlayer
+                                          : bracket.playerCount === 13
+                                            ? styles.thirteenPlayer
+                                            : bracket.playerCount === 14
+                                              ? styles.fourteenPlayer
+                                              : bracket.playerCount === 15
+                                                ? styles.fifteenPlayer
+                                                : bracket.playerCount === 16
+                                                  ? styles.sixteenPlayer
+                                                  : bracket.playerCount <= 8
+                                                    ? styles.smallBracket
+                                                    : styles.multiPlayer;
 
                 const roundsCount = bracket?.gamesByRound?.length || 0;
                 const columnData = columnInfo[bracket.key] || [];

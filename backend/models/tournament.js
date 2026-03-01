@@ -95,26 +95,34 @@ const tournamentSchema = new mongoose.Schema(
         poomsae: { type: Map, of: feeSchema, default: undefined },
       },
     },
-    // ========== UPDATED WEIGHT CATEGORIES ==========
- weightCategories: {
-      type: { 
-        type: String, 
-        enum: ["WT", "SGFI", "custom"], 
+
+    // ========== WEIGHT CATEGORIES ==========
+    // Supports:
+    // - Standard mode: selected.male / selected.female arrays
+    // - Custom mode (NEW): custom[ageGroup] = { Male: [rows], Female: [rows] }
+    //   Also supports legacy format: custom[ageGroup] = [rows]
+    weightCategories: {
+      type: {
+        type: String,
+        enum: ["WT", "SGFI", "custom"],
         default: "WT",
-        required: true 
+        required: true,
       },
       custom: {
+        // Use Mixed so it can store either:
+        // - legacy: [ {min,max,category,description}, ... ]
+        // - new: { Male: [...], Female: [...] }
         type: Map,
-        of: [mongoose.Schema.Types.Mixed],  // Array of rows per age (e.g., { Cadet: [{min:20, max:25, ...}] })
-        default: {}
+        of: mongoose.Schema.Types.Mixed,
+        default: {},
       },
       selected: {
         male: { type: [String], default: [] },
         female: { type: [String], default: [] },
       },
     },
+    // ======================================
 
-    // ===============================================
     foodAndLodging: {
       option: { type: String, enum: ["No", "Only Food", "Only Stay", "Food and Stay"], default: "No" },
       type: { type: String, enum: ["Free", "Paid"], default: "Free" },
@@ -296,12 +304,12 @@ tournamentSchema.pre("save", function (next) {
   }
 
   // ====== WEIGHT CATEGORIES FINAL CLEANUP ======
- if (this.weightCategories) {
+  if (this.weightCategories) {
     const wc = this.weightCategories;
 
     if (wc.type === "custom") {
       wc.selected = undefined;
-      // custom अब object है - no trim needed
+      // keep wc.custom as-is (may be legacy array per age or new gender object per age)
     } else {
       wc.custom = undefined;
       if (wc.selected) {

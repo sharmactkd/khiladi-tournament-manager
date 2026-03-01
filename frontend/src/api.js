@@ -24,7 +24,7 @@ const API_URL = API_ROOT.endsWith("/api") ? API_ROOT : `${API_ROOT}/api`;
 // Create axios instance
 const api = axios.create({
   baseURL: API_URL,
-  withCredentials: true, // refresh token cookie
+  withCredentials: true, // refresh token cookie + visitor cookies
   timeout: 90000,
 });
 
@@ -145,4 +145,8 @@ export const getEntries = (tournamentId) => apiCall("get", `/tournaments/${tourn
 export const saveEntries = (tournamentId, payload) =>
   apiCall("post", `/tournaments/${tournamentId}/entries`, payload);
 
+// ✅ Visitor counter (public)
+export const getVisitorCount = () => apiCall("get", "/visitor");
+
 export default api;
+

@@ -51,9 +51,32 @@ const validateFile = (file, fieldName) => {
 };
 
 // Helper Functions के section में add करो (validateFile के नीचे)
+// NOTE: This is now used ONLY for disk storage paths. For Cloudinary URLs we store the URL as-is.
 const getFilenameFromPath = (fullPath) => {
   if (!fullPath) return null;
   return path.basename(fullPath); // सिर्फ filename return करेगा, path नहीं
+};
+
+// ✅ NEW: Decide what to store in DB for an uploaded file
+// - If CloudinaryStorage: file.path is a full URL → store that URL (secure_url equivalent)
+// - If diskStorage: file.path is a local path → store basename(filename) like before
+const getStoredUploadValue = (file) => {
+  if (!file) return undefined;
+
+  const p = typeof file.path === "string" ? file.path.trim() : "";
+  if (p && (p.startsWith("http://") || p.startsWith("https://"))) {
+    return p; // Cloudinary URL
+  }
+
+  // fallback: local disk path or unexpected structure
+  if (p) return getFilenameFromPath(p);
+
+  // some multer variants can store filename
+  if (typeof file.filename === "string" && file.filename.trim()) {
+    return file.filename.trim();
+  }
+
+  return undefined;
 };
 
 const processTournamentType = (tournamentType) => {
@@ -62,17 +85,41 @@ const processTournamentType = (tournamentType) => {
     try {
       return JSON.parse(tournamentType);
     } catch (e) {
-      return tournamentType.split(",").map((t) => t.trim()).filter(Boolean);
+      return tournamentType
+        .split(",")
+        .map((t) => t.trim())
+        .filter(Boolean);
     }
   }
   return Array.isArray(tournamentType)
-    ? [...new Set(tournamentType.flatMap((type) => (typeof type === "string" ? type.split(",") : type)))]
+    ? [
+        ...new Set(
+          tournamentType.flatMap((type) => (typeof type === "string" ? type.split(",") : type))
+        ),
+      ]
     : [tournamentType];
 };
 
+// ✅ IMPORTANT FIX:
+// Existing code used path.normalize() for poster/logos.
+// That BREAKS Cloudinary URLs (https:// becomes https:/).
+// So: if it's already a URL, return as-is.
+// Otherwise normalize local/path-ish strings.
 const normalizePath = (filePath) => {
-  return filePath ? path.normalize(filePath).replace(/\\/g, "/") : undefined;
+  if (!filePath) return undefined;
+
+  const s = String(filePath).trim();
+  if (!s) return undefined;
+
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+
+  return path.normalize(s).replace(/\\/g, "/");
 };
+
+// ✅ Visibility safe filter (respects visibility if the field exists)
+const getPublicVisibilityFilter = () => ({
+  $or: [{ visibility: { $exists: false } }, { visibility: true }],
+});
 
 // ================ PUBLIC ENDPOINTS (No Auth Required) ================
 
@@ -98,19 +145,17 @@ export const getAllTournaments = async (req, res) => {
 
 export const getOngoingTournaments = async (req, res) => {
   try {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0); // midnight today
+    // ✅ Timezone-safe "today start"
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
+    // ✅ Ongoing + Upcoming (NOT ended yet): dateTo >= today
+    // ✅ Respect visibility if it exists
     const tournaments = await Tournament.find({
-      $or: [
-        // 1. Already started and not ended (real ongoing)
-        { dateFrom: { $lte: now }, dateTo: { $gte: now } },
-        // 2. Starting today or tomorrow (upcoming but show as "ongoing/soon")
-        { dateFrom: { $gte: now, $lte: new Date(now.getTime() + 48*60*60*1000) } } // next 2 days
-      ]
+      $and: [{ dateTo: { $gte: today } }, getPublicVisibilityFilter()],
     })
       .populate("createdBy", "name")
-      .sort({ dateFrom: 1 })
+      .sort({ dateFrom: 1 }) // upcoming first by start date
       .lean();
 
     const normalized = tournaments.map((t) => ({
@@ -128,11 +173,14 @@ export const getOngoingTournaments = async (req, res) => {
 
 export const getPreviousTournaments = async (req, res) => {
   try {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
+    // ✅ Timezone-safe "today start"
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
+    // ✅ Only ended tournaments: dateTo < today
+    // ✅ Respect visibility if it exists
     const tournaments = await Tournament.find({
-      dateTo: { $lt: now }  // end date aaj se pehle → only truly previous
+      $and: [{ dateTo: { $lt: today } }, getPublicVisibilityFilter()],
     })
       .populate("createdBy", "name")
       .sort({ dateTo: -1 })
@@ -166,7 +214,10 @@ export const getTournamentById = async (req, res) => {
 
     res.status(200).json(tournament);
   } catch (error) {
-    logger.error("Get tournament by ID failed", { error: error.message, tournamentId: req.params.id });
+    logger.error("Get tournament by ID failed", {
+      error: error.message,
+      tournamentId: req.params.id,
+    });
     res.status(500).json({ message: "Failed to load tournament details" });
   }
 };
@@ -251,7 +302,10 @@ export const saveTieSheetOutcomes = async (req, res) => {
     const saved = updated?.tiesheet?.outcomes || {};
     res.status(200).json({ message: "TieSheet outcomes saved", outcomes: saved });
   } catch (error) {
-    logger.error("Save tiesheet outcomes failed", { error: error.message, tournamentId: req.params.id });
+    logger.error("Save tiesheet outcomes failed", {
+      error: error.message,
+      tournamentId: req.params.id,
+    });
     res.status(500).json({ message: "Failed to save outcomes" });
   }
 };
@@ -346,11 +400,21 @@ export const createTournament = async (req, res) => {
       return res.status(401).json({ message: "Authentication required" });
     }
 
-    const requiredFields = ["organizer", "federation", "tournamentName", "email", "contact", "dateFrom", "dateTo"];
+    const requiredFields = [
+      "organizer",
+      "federation",
+      "tournamentName",
+      "email",
+      "contact",
+      "dateFrom",
+      "dateTo",
+    ];
     const missingFields = requiredFields.filter((field) => !req.body[field]);
     if (missingFields.length > 0) {
       await session.abortTransaction();
-      return res.status(400).json({ message: `Missing required fields: ${missingFields.join(", ")}` });
+      return res
+        .status(400)
+        .json({ message: `Missing required fields: ${missingFields.join(", ")}` });
     }
 
     const contact = validatePhoneNumber(req.body.contact);
@@ -371,11 +435,22 @@ export const createTournament = async (req, res) => {
       req.files.logos.forEach((logo) => validateFile(logo, "Logo"));
     }
 
-    // सिर्फ filename save करो
-    const poster = req.files?.poster?.[0] ? getFilenameFromPath(req.files.poster[0].path) : undefined;
-    const logos = req.files?.logos
-      ? req.files.logos.map(file => getFilenameFromPath(file.path))
-      : [];
+    // ✅ FIX: Cloudinary → store URL, Disk → store filename-only
+    const poster = req.files?.poster?.[0] ? getStoredUploadValue(req.files.poster[0]) : undefined;
+    const logos = req.files?.logos ? req.files.logos.map((file) => getStoredUploadValue(file)) : [];
+
+    // ✅ Dev-only debug logs (no secrets)
+    if (process.env.NODE_ENV !== "production") {
+      const posterPath = req.files?.poster?.[0]?.path;
+      const logoPaths = (req.files?.logos || []).map((f) => f?.path);
+      const isCloudinary =
+        (typeof posterPath === "string" && /^https?:\/\//i.test(posterPath)) ||
+        logoPaths.some((p) => typeof p === "string" && /^https?:\/\//i.test(p));
+
+      console.log("📸 [UPLOAD DEBUG] storage:", isCloudinary ? "cloudinary" : "disk/local");
+      console.log("📸 [UPLOAD DEBUG] poster saved as:", poster);
+      console.log("📸 [UPLOAD DEBUG] logos saved as:", logos);
+    }
 
     let tournamentData = {
       ...req.body,
@@ -393,34 +468,45 @@ export const createTournament = async (req, res) => {
     delete tournamentData._id;
     delete tournamentData.__v;
 
-    const nestedFields = ["venue", "ageCategories", "ageGender", "eventCategories", "entryFees", "weightCategories", "foodAndLodging", "medalPoints"];
+    const nestedFields = [
+      "venue",
+      "ageCategories",
+      "ageGender",
+      "eventCategories",
+      "entryFees",
+      "weightCategories",
+      "foodAndLodging",
+      "medalPoints",
+    ];
     tournamentData = parseNestedFields(tournamentData, nestedFields);
 
     // ====== SPECIAL HANDLING FOR weightCategories.selected ======
     if (tournamentData.weightCategories?.selected) {
       if (typeof tournamentData.weightCategories.selected === "string") {
         try {
-          tournamentData.weightCategories.selected = JSON.parse(tournamentData.weightCategories.selected);
+          tournamentData.weightCategories.selected = JSON.parse(
+            tournamentData.weightCategories.selected
+          );
         } catch (err) {
           logger.warn("Failed to parse weightCategories.selected", { error: err.message });
           tournamentData.weightCategories.selected = { male: [], female: [] };
         }
       }
 
-      // Ensure arrays exist
-      tournamentData.weightCategories.selected.male = Array.isArray(tournamentData.weightCategories.selected.male)
+      tournamentData.weightCategories.selected.male = Array.isArray(
+        tournamentData.weightCategories.selected.male
+      )
         ? tournamentData.weightCategories.selected.male
         : [];
-      tournamentData.weightCategories.selected.female = Array.isArray(tournamentData.weightCategories.selected.female)
+      tournamentData.weightCategories.selected.female = Array.isArray(
+        tournamentData.weightCategories.selected.female
+      )
         ? tournamentData.weightCategories.selected.female
         : [];
     }
 
-    // Custom vs Standard cleanup
-    // createTournament और updateTournament में यह part हटाओ या update करो
-
     if (tournamentData.weightCategories?.type === "custom") {
-      // custom अब object है, string नहीं
+      // custom should be object (may include legacy arrays per age; frontend now sends gender-wise)
       tournamentData.weightCategories.selected = undefined;
     } else {
       tournamentData.weightCategories.custom = undefined;
@@ -431,9 +517,20 @@ export const createTournament = async (req, res) => {
       tournamentData.foodAndLodging = {
         ...tournamentData.foodAndLodging,
         option: tournamentData.foodAndLodging.option || "No",
-        type: tournamentData.foodAndLodging.option === "No" ? "Free" : tournamentData.foodAndLodging.type || "Free",
-        paymentMethod: tournamentData.foodAndLodging.option === "No" || tournamentData.foodAndLodging.type === "Free" ? undefined : tournamentData.foodAndLodging.paymentMethod,
-        amount: tournamentData.foodAndLodging.option === "No" || tournamentData.foodAndLodging.type === "Free" ? undefined : Number(tournamentData.foodAndLodging.amount) || undefined,
+        type:
+          tournamentData.foodAndLodging.option === "No"
+            ? "Free"
+            : tournamentData.foodAndLodging.type || "Free",
+        paymentMethod:
+          tournamentData.foodAndLodging.option === "No" ||
+          tournamentData.foodAndLodging.type === "Free"
+            ? undefined
+            : tournamentData.foodAndLodging.paymentMethod,
+        amount:
+          tournamentData.foodAndLodging.option === "No" ||
+          tournamentData.foodAndLodging.type === "Free"
+            ? undefined
+            : Number(tournamentData.foodAndLodging.amount) || undefined,
       };
     }
 
@@ -449,7 +546,10 @@ export const createTournament = async (req, res) => {
     logger.error("Create tournament failed", { error: error.message });
     res.status(error.name === "ValidationError" ? 400 : 500).json({
       message: error.message || "Server error during creation",
-      details: error.name === "ValidationError" ? Object.values(error.errors).map((e) => e.message) : undefined,
+      details:
+        error.name === "ValidationError"
+          ? Object.values(error.errors).map((e) => e.message)
+          : undefined,
     });
   } finally {
     session.endSession();
@@ -466,7 +566,16 @@ export const updateTournament = async (req, res) => {
     delete updates.__v;
     delete updates.createdBy;
 
-    const nestedFields = ["venue", "ageCategories", "ageGender", "eventCategories", "entryFees", "weightCategories", "foodAndLodging", "medalPoints"];
+    const nestedFields = [
+      "venue",
+      "ageCategories",
+      "ageGender",
+      "eventCategories",
+      "entryFees",
+      "weightCategories",
+      "foodAndLodging",
+      "medalPoints",
+    ];
     updates = parseNestedFields(updates, nestedFields);
 
     if (updates.contact) {
@@ -492,19 +601,44 @@ export const updateTournament = async (req, res) => {
       updates.foodAndLodging = {
         ...updates.foodAndLodging,
         option: updates.foodAndLodging.option || "No",
-        type: updates.foodAndLodging.option === "No" ? "Free" : updates.foodAndLodging.type || "Free",
-        paymentMethod: updates.foodAndLodging.option === "No" || updates.foodAndLodging.type === "Free" ? undefined : updates.foodAndLodging.paymentMethod,
-        amount: updates.foodAndLodging.option === "No" || updates.foodAndLodging.type === "Free" ? undefined : Number(updates.foodAndLodging.amount) || undefined,
+        type:
+          updates.foodAndLodging.option === "No"
+            ? "Free"
+            : updates.foodAndLodging.type || "Free",
+        paymentMethod:
+          updates.foodAndLodging.option === "No" || updates.foodAndLodging.type === "Free"
+            ? undefined
+            : updates.foodAndLodging.paymentMethod,
+        amount:
+          updates.foodAndLodging.option === "No" || updates.foodAndLodging.type === "Free"
+            ? undefined
+            : Number(updates.foodAndLodging.amount) || undefined,
       };
     }
 
+    // ✅ FIX: Cloudinary → store URL, Disk → store filename-only
     if (req.files?.poster?.[0]) {
       validateFile(req.files.poster[0], "Poster");
-      updates.poster = getFilenameFromPath(req.files.poster[0].path);
+      updates.poster = getStoredUploadValue(req.files.poster[0]);
     }
     if (req.files?.logos?.length > 0) {
       req.files.logos.forEach((logo) => validateFile(logo, "Logo"));
-      updates.logos = req.files.logos.map((file) => getFilenameFromPath(file.path));
+      updates.logos = req.files.logos.map((file) => getStoredUploadValue(file));
+    }
+
+    // ✅ Dev-only debug logs (no secrets)
+    if (process.env.NODE_ENV !== "production") {
+      const posterPath = req.files?.poster?.[0]?.path;
+      const logoPaths = (req.files?.logos || []).map((f) => f?.path);
+      const isCloudinary =
+        (typeof posterPath === "string" && /^https?:\/\//i.test(posterPath)) ||
+        logoPaths.some((p) => typeof p === "string" && /^https?:\/\//i.test(p));
+
+      if (req.files?.poster?.[0] || (req.files?.logos && req.files.logos.length > 0)) {
+        console.log("📸 [UPLOAD DEBUG] (update) storage:", isCloudinary ? "cloudinary" : "disk/local");
+        if (req.files?.poster?.[0]) console.log("📸 [UPLOAD DEBUG] (update) poster saved as:", updates.poster);
+        if (req.files?.logos?.length > 0) console.log("📸 [UPLOAD DEBUG] (update) logos saved as:", updates.logos);
+      }
     }
 
     // ====== SPECIAL HANDLING FOR weightCategories.selected (UPDATE) ======
@@ -527,20 +661,18 @@ export const updateTournament = async (req, res) => {
     }
 
     if (updates.weightCategories?.type === "custom") {
-      if (typeof updates.weightCategories.custom === "string") {
-        updates.weightCategories.custom = updates.weightCategories.custom.trim();
-      }
+      // custom should be object; do not trim/normalize strings here
       updates.weightCategories.selected = undefined;
     } else {
       updates.weightCategories.custom = undefined;
     }
     // ====================================================================
 
-    const updated = await Tournament.findByIdAndUpdate(
-      req.params.id,
-      updates,
-      { new: true, runValidators: true, session }
-    ).populate("createdBy", "name phone email");
+    const updated = await Tournament.findByIdAndUpdate(req.params.id, updates, {
+      new: true,
+      runValidators: true,
+      session,
+    }).populate("createdBy", "name phone email");
 
     if (!updated) {
       await session.abortTransaction();
@@ -556,7 +688,10 @@ export const updateTournament = async (req, res) => {
     logger.error("Update tournament failed", { error: error.message });
     res.status(error.name === "ValidationError" ? 400 : 500).json({
       message: error.message || "Server error during update",
-      details: error.name === "ValidationError" ? Object.values(error.errors).map((e) => e.message) : undefined,
+      details:
+        error.name === "ValidationError"
+          ? Object.values(error.errors).map((e) => e.message)
+          : undefined,
     });
   } finally {
     session.endSession();
