@@ -18,7 +18,11 @@ const Header = () => {
     <header className={styles.header}>
       <div className={styles.topBar}>
         <div className={styles.left}>
-          <span className={styles.logo}>KHILADI</span>
+        <img 
+  src="/khiladi-logo.png" 
+  alt="KHILADI Logo" 
+  className={styles.logo}
+/>
         </div>
         
         <nav className={styles.navBar}>
