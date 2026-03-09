@@ -1,5 +1,4 @@
 // backend/middleware/validationMiddleware.js
-
 import { body, validationResult } from "express-validator";
 
 // Helper to handle validation errors
@@ -49,6 +48,34 @@ export const validateRegister = [
   handleValidationErrors,
 ];
 
+// ==================== LOGIN VALIDATION (EMAIL OR PHONE + PASSWORD) ====================
+// NOTE: This export does NOT change behavior unless you wire it to your login route.
+// It validates the same frontend payload shape: { email, password }
+// where "email" may contain email OR mobile number.
+export const validateLogin = [
+  body("email")
+    .trim()
+    .notEmpty()
+    .withMessage("Email or mobile number is required")
+    .custom((value) => {
+      const v = String(value).trim();
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+      const isPhone = /^\d{10,15}$/.test(v.replace(/\s+/g, ""));
+      if (!isEmail && !isPhone) {
+        throw new Error("Enter a valid email or mobile number");
+      }
+      return true;
+    }),
+
+  body("password")
+    .notEmpty()
+    .withMessage("Password is required")
+    .isLength({ min: 8 })
+    .withMessage("Password must be at least 8 characters long"),
+
+  handleValidationErrors,
+];
+
 // ==================== TOURNAMENT CREATION / UPDATE VALIDATION ====================
 export const validateTournament = [
   body("organizer")
@@ -81,6 +108,8 @@ export const validateTournament = [
     .notEmpty()
     .withMessage("Contact phone number is required")
     .custom((value) => {
+      // NOTE: Your original code referenced parsePhoneNumberFromString but didn't show its import.
+      // Keeping as-is to avoid any behavior changes here.
       const parsed = parsePhoneNumberFromString(value);
       if (!parsed || !parsed.isValid()) throw new Error("Invalid phone number format");
       return true;

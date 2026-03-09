@@ -1,10 +1,12 @@
 .container {
   max-width: 1200px;
+  width: 100%;
   margin: 0 auto;
   padding: 20px;
   font-family: Arial, sans-serif;
   box-sizing: border-box;
   min-height: 100%;
+  overflow-x: hidden;
 }
 
 .editButtonContainer {
@@ -25,20 +27,26 @@
   background-color: #a00004;
 }
 
-/* Old .nameupdate kept for compatibility (no longer used by header layout) */
+/* Old .nameupdate kept for compatibility (used in JSX) */
 .nameupdate {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-direction: column-reverse;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 8px;
 }
 
-/* ===== Header Layout Fix ===== */
+/* ===== Header Layout ===== */
 .headerContainer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   margin-bottom: 20px;
-  flex-wrap: nowrap; /* desktop: keep single row */
-  gap: 10px;
+  flex-wrap: nowrap;
+  gap: 12px;
 }
 
 .logoWrapper {
@@ -47,10 +55,13 @@
   align-items: center;
   justify-content: center;
   min-width: 110px;
+  max-width: 140px;
+  text-align: center;
 }
 
 .headerLogo {
   width: 100px;
+  max-width: 100%;
   height: auto;
   object-fit: contain;
   margin: 0 10px;
@@ -60,12 +71,13 @@
   color: #666;
   font-size: 0.9rem;
   text-align: center;
+  word-break: break-word;
 }
 
-/* Center block: title top + button below */
+/* Center block retained for compatibility if referenced later */
 .centerBlock {
   flex: 1 1 auto;
-  min-width: 0; /* critical so text can wrap without pushing logos */
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -79,10 +91,10 @@
   margin: 0 10px;
   color: #cf0006;
   text-align: center;
-  flex: 0 1 auto;
   min-width: 0;
   overflow-wrap: anywhere;
   word-break: break-word;
+  line-height: 1.2;
 }
 
 /* Small centered button (not full width) */
@@ -106,6 +118,7 @@
 .editButtonSmall:hover {
   background-color: #a00004;
 }
+
 /* ============================= */
 
 .section {
@@ -113,16 +126,27 @@
   padding: 15px;
   background: #f9f9f9;
   border-radius: 5px;
+  overflow-x: hidden;
 }
 
 .section h2 {
   color: #cf0006;
   margin-bottom: 15px;
+  word-break: break-word;
+}
+
+.section h3,
+.section h4,
+.section p,
+.section li {
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .detailsGrid {
   display: flex;
   flex-direction: column;
+  gap: 10px;
 }
 
 .infoPart {
@@ -132,27 +156,33 @@
 .detailRow {
   display: flex;
   justify-content: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .leftItem {
-  flex: 1;
+  flex: 1 1 300px;
   margin-right: 0.5rem;
+  min-width: 0;
 }
 
 .rightItem {
-  flex: 1;
+  flex: 1 1 300px;
+  min-width: 0;
 }
 
 .dateRow {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
 }
 
 .locationRow {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  word-break: break-word;
 }
 
 .posterSection {
@@ -168,7 +198,8 @@
 
 .posterImage {
   width: 100%;
-  max-width: 100%;
+  max-width: 800px;   /* poster ki max width */
+  max-height: 600px;  /* poster ki max height */
   height: auto;
   object-fit: contain;
   border-radius: 5px;
@@ -183,10 +214,12 @@
 .genderSections {
   display: flex;
   gap: 20px;
+  flex-wrap: wrap;
 }
 
 .genderColumn {
-  flex: 1;
+  flex: 1 1 300px;
+  min-width: 0;
 }
 
 .genderColumn h3 {
@@ -220,6 +253,7 @@
 .foodsection {
   display: flex;
   gap: 130px;
+  flex-wrap: wrap;
 }
 
 .section ul {
@@ -239,43 +273,242 @@
 .pointSystem {
   display: flex;
   flex-direction: row;
-  gap: 50px; /* Equal gap between each p element */
+  gap: 50px;
+  flex-wrap: wrap;
 }
 
-@media (max-width: 900px) {
-  /* Allow logos to shrink a bit on smaller screens */
-  .logoWrapper {
-    min-width: 90px;
+.ageGroupSection {
+  margin-top: 18px;
+}
+
+.ageGroupTitle {
+  color: #cf0006;
+  margin-bottom: 10px;
+  word-break: break-word;
+}
+
+.weightList {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.noData {
+  color: #666;
+}
+
+/* ========== Laptop / smaller desktop ========== */
+@media (max-width: 1024px) {
+  .container {
+    padding: 16px;
   }
+
+  .headerRow {
+    font-size: 2.1em;
+  }
+
+  .logoWrapper {
+    min-width: 95px;
+  }
+
   .headerLogo {
-    width: 80px;
+    width: 84px;
     margin: 0 6px;
   }
-  .headerRow {
-    font-size: 2em;
+
+  .foodsection {
+    gap: 50px;
+  }
+
+  .pointSystem {
+    gap: 28px;
   }
 }
 
-@media (max-width: 600px) {
-  .detailRow {
-    flex-direction: column;
-  }
-  .rightItem {
-    margin-left: 0;
+/* ========== Tablet ========== */
+@media (max-width: 768px) {
+  .container {
+    padding: 14px;
   }
 
-  /* Mobile: stack cleanly */
   .headerContainer {
     flex-wrap: wrap;
     justify-content: center;
+    gap: 14px;
+  }
+
+  .logoWrapper {
+    min-width: 90px;
+    max-width: 120px;
+  }
+
+  .nameupdate {
+    flex: 1 1 100%;
+    order: 2;
+  }
+
+  .headerRow {
+    font-size: 1.9em;
+    margin: 0;
+  }
+
+  .detailRow {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .leftItem,
+  .rightItem {
+    flex: 1 1 100%;
+    margin-right: 0;
+  }
+
+  .genderSections {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .genderColumn {
+    flex: 1 1 100%;
+  }
+
+  .foodsection {
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .pointSystem {
+    gap: 18px;
+  }
+
+  .section {
+    padding: 14px;
+    margin-bottom: 22px;
+  }
+
+  .section h2 {
+    font-size: 1.35rem;
+  }
+
+  .editButton {
+    width: 100%;
+    max-width: 280px;
+  }
+}
+
+/* ========== Mobile ========== */
+@media (max-width: 600px) {
+  .container {
+    padding: 12px;
+  }
+
+  .headerContainer {
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
   }
 
   .logoWrapper {
     min-width: 100px;
+    max-width: 140px;
   }
 
-  .centerBlock {
-    flex: 1 1 100%;
+  .headerLogo {
+    width: 78px;
+    margin: 0;
+  }
+
+  .nameupdate {
+    width: 100%;
     order: 2;
+  }
+
+  .headerRow {
+    font-size: 1.6em;
+    line-height: 1.25;
+  }
+
+  .editButton,
+  .editButtonSmall {
+    width: 100%;
+    max-width: 260px;
+    white-space: normal;
+  }
+
+  .section {
+    padding: 12px;
+    margin-bottom: 18px;
+  }
+
+  .section h2 {
+    font-size: 1.2rem;
+    margin-bottom: 12px;
+  }
+
+  .section h3 {
+    font-size: 1.05rem;
+  }
+
+  .section p,
+  .section li {
+    font-size: 0.95rem;
+  }
+
+  .posterSection {
+    margin-bottom: 16px;
+  }
+
+  .logoPreviewImage {
+    width: 110px;
+    height: 110px;
+  }
+
+  .pointSystem {
+    flex-direction: column;
+    gap: 10px;
+  }
+}
+
+/* ========== Small mobile ========== */
+@media (max-width: 420px) {
+  .container {
+    padding: 10px;
+  }
+
+  .headerRow {
+    font-size: 1.4em;
+  }
+
+  .headerLogo {
+    width: 68px;
+  }
+
+  .logoNotAvailable {
+    font-size: 0.8rem;
+  }
+
+  .section {
+    padding: 10px;
+    border-radius: 6px;
+  }
+
+  .section h2 {
+    font-size: 1.1rem;
+  }
+
+  .section p,
+  .section li {
+    font-size: 0.9rem;
+  }
+
+  .editButton,
+  .editButtonSmall {
+    font-size: 0.9rem;
+    padding: 9px 12px;
+  }
+
+  .logoPreviewImage {
+    width: 95px;
+    height: 95px;
   }
 }

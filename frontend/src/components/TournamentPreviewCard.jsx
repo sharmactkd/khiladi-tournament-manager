@@ -37,8 +37,11 @@ const TournamentPreviewCard = ({ tournament, onClick }) => {
     ageCategories,
   } = tournament;
 
-  const imageUrl = poster || (logos && logos.length > 0 ? logos[0] : "");
-  const fullImageUrl = getFullImageUrl(imageUrl);
+  const imageUrl =
+  poster || (logos && logos.length > 0 ? logos[0] : "/EVOLVE.png");
+
+const fullImageUrl =
+  imageUrl === "/EVOLVE.png" ? imageUrl : getFullImageUrl(imageUrl);
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "";
@@ -65,19 +68,16 @@ const TournamentPreviewCard = ({ tournament, onClick }) => {
 
   return (
     <div className={styles.card} onClick={handleCardClick}>
-      {imageUrl && !imageFailed ? (
-        <img
-          src={fullImageUrl}
-          alt={tournamentName}
-          className={styles.image}
-          onLoad={() =>
-            console.log("TournamentPreviewCard -> Image loaded successfully:", fullImageUrl)
-          }
-          onError={() => {
-            console.error("TournamentPreviewCard -> Image load failed:", fullImageUrl);
-            setImageFailed(true);
-          }}
-        />
+     {!imageFailed ? (
+       <img
+  src={fullImageUrl}
+  alt={tournamentName}
+  className={styles.image}
+  onError={(e) => {
+    e.target.onerror = null;
+    e.target.src = "/EVOLVE.png";
+  }}
+/>
       ) : (
         <div className={styles.imagePlaceholder}>
           <p className={styles.error}>Poster not available</p>

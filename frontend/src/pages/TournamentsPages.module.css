@@ -1,12 +1,14 @@
 /* Container and overall layout */
 .container {
   max-width: 1200px;
+  width: 100%;
   margin: 0 auto;
   padding: 1rem;
   font-family: Arial, sans-serif;
-  height: 100vh; /* Full viewport height */
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow-x: hidden;
 }
 
 /* Header row using three flex sections */
@@ -14,7 +16,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 1rem;
   margin-bottom: 1rem;
+  flex-wrap: wrap;
 }
 
 .leftGroup,
@@ -22,6 +26,7 @@
   flex: 1;
   display: flex;
   align-items: center;
+  min-width: 0;
 }
 
 .pageTitle {
@@ -29,12 +34,14 @@
   text-align: center;
   font-size: 2.5rem;
   margin: 0;
+  word-break: break-word;
 }
 
 /* Button group for header toggles */
 .buttonGroup {
   display: flex;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* Toggle button style */
@@ -47,8 +54,9 @@
   border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.2s ease;
-  white-space: nowrap; /* Ensure text stays on one line */
-  min-width: 250px; /* Adjust as needed so text fits on one line */
+  white-space: nowrap;
+  min-width: 250px;
+  max-width: 100%;
 }
 
 .toggleButton:hover {
@@ -62,8 +70,8 @@
 
 .rightGroup {
   justify-content: flex-end;
-  gap: 10px; /* ✅ ensure multiple buttons have spacing */
-  flex-wrap: wrap; /* ✅ avoid overflow on smaller screens */
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* New My Tournaments toggle group (appears below headerRow when active) */
@@ -72,6 +80,7 @@
   display: flex;
   gap: 10px;
   justify-content: center;
+  flex-wrap: wrap;
 }
 
 .myToggleButton {
@@ -82,6 +91,8 @@
   border-radius: 4px;
   cursor: pointer;
   transition: background-color 0.3s;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .myToggleButton:hover {
@@ -95,28 +106,43 @@
 
 /* Section styling */
 .section {
-  flex: 1; /* Allow section to grow and fill available space */
+  flex: 1;
   display: flex;
   flex-direction: column;
   margin-bottom: 20px;
+  min-height: 0;
+}
+
+.section h2 {
+  margin: 0 0 12px 0;
+  font-size: 1.5rem;
+  word-break: break-word;
 }
 
 /* Cards container for tournament preview cards */
 .cardsContainer {
   padding: 20px;
-  overflow-y: auto; /* Enable vertical scrolling */
-  max-height: 850px; /* Fixed height to force scroll bar */
-  border: 1px solid #ccc; /* Debugging: see container boundaries */
-  scrollbar-width: thin; /* Firefox scroll bar width */
-  scrollbar-color: #cf0006 #f1f1f1; /* Scroll bar color for Firefox */
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  scrollbar-width: thin;
+  scrollbar-color: #cf0006 #f1f1f1;
+  overflow-x: hidden;
 }
 
 /* Ensure each card takes full width with some margin */
 .cardsContainer > * {
   width: 100%;
-  min-width: 300px;
+  min-width: 0;
   max-width: 100%;
   margin-bottom: 15px;
+}
+
+.cardsContainer > *:last-child {
+  margin-bottom: 0;
 }
 
 /* Custom scroll bar styling for Webkit browsers (Chrome, Safari) */
@@ -136,4 +162,159 @@
 
 .cardsContainer::-webkit-scrollbar-thumb:hover {
   background: #a50040;
+}
+
+/* Loading / error helpers if used */
+.loading,
+.error {
+  width: 100%;
+  text-align: center;
+  padding: 2rem 1rem;
+  font-size: 1rem;
+}
+
+.error {
+  color: #cf0006;
+}
+
+/* Large tablets / smaller laptops */
+@media (max-width: 1024px) {
+  .container {
+    padding: 0.9rem;
+  }
+
+  .pageTitle {
+    font-size: 2.1rem;
+  }
+
+  .toggleButton {
+    min-width: 220px;
+    font-size: 0.9rem;
+    padding: 0.75rem 1.2rem;
+  }
+
+  .cardsContainer {
+    padding: 16px;
+  }
+}
+
+/* Tablets */
+@media (max-width: 768px) {
+  .container {
+    min-height: auto;
+    padding: 0.85rem;
+  }
+
+  .headerRow {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.85rem;
+  }
+
+  .leftGroup,
+  .rightGroup {
+    width: 100%;
+    flex: none;
+    justify-content: center;
+  }
+
+  .pageTitle {
+    flex: none;
+    width: 100%;
+    font-size: 2rem;
+    text-align: center;
+    order: -1;
+  }
+
+  .rightGroup {
+    gap: 0.75rem;
+  }
+
+  .toggleButton {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .myToggleGroup {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .myToggleButton {
+    width: 100%;
+  }
+
+  .section h2 {
+    font-size: 1.35rem;
+    text-align: center;
+  }
+
+  .cardsContainer {
+    padding: 14px;
+    max-height: none;
+  }
+}
+
+/* Mobile */
+@media (max-width: 480px) {
+  .container {
+    padding: 0.75rem;
+  }
+
+  .headerRow {
+    gap: 0.75rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .pageTitle {
+    font-size: 1.7rem;
+  }
+
+  .toggleButton,
+  .myToggleButton {
+    font-size: 0.95rem;
+    padding: 0.75rem 1rem;
+  }
+
+  .section {
+    margin-bottom: 16px;
+  }
+
+  .section h2 {
+    font-size: 1.2rem;
+  }
+
+  .cardsContainer {
+    padding: 10px;
+    border-radius: 6px;
+  }
+
+  .cardsContainer > * {
+    margin-bottom: 12px;
+  }
+}
+
+/* Very small mobile */
+@media (max-width: 360px) {
+  .container {
+    padding: 0.6rem;
+  }
+
+  .pageTitle {
+    font-size: 1.5rem;
+  }
+
+  .toggleButton,
+  .myToggleButton {
+    font-size: 0.9rem;
+    padding: 0.7rem 0.9rem;
+  }
+
+  .section h2 {
+    font-size: 1.1rem;
+  }
+
+  .cardsContainer {
+    padding: 8px;
+  }
 }

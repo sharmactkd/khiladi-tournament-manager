@@ -32,11 +32,7 @@ function App() {
     <>
       <Header />
       <Routes>
-        <Route
-          path="/"
-          element={isAuthenticated ? <TournamentsPages /> : <Login />}
-        />
-        <Route
+        <Route path="/" element={<TournamentsPages />} /> <Route
           path="/login"
           element={!isAuthenticated ? <Login /> : <Navigate to="/" replace />}
         />

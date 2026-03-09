@@ -1,5 +1,4 @@
 // backend/controllers/authController.js
-
 import User from "../models/user.js";
 import bcrypt from "bcryptjs";
 import { generateToken, generateRefreshToken } from "../utils/generateToken.js";
@@ -30,7 +29,9 @@ export const getMe = async (req, res) => {
     });
   } catch (error) {
     logger.error("getMe failed", { error: error.message, stack: error.stack });
-    res.status(500).json({ message: "Server error while fetching user details" });
+    res
+      .status(500)
+      .json({ message: "Server error while fetching user details" });
   }
 };
 
@@ -44,14 +45,18 @@ export const registerUser = async (req, res) => {
     // Basic validation
     if (!name || !email || !password) {
       logger.warn("Register attempt with missing fields", { ip: req.ip });
-      return res.status(400).json({ message: "Name, email and password are required" });
+      return res
+        .status(400)
+        .json({ message: "Name, email and password are required" });
     }
 
     // Check if user already exists
     const userExists = await User.findOne({ email }).lean();
     if (userExists) {
       logger.warn("Register attempt with existing email", { email, ip: req.ip });
-      return res.status(400).json({ message: "User already exists with this email" });
+      return res
+        .status(400)
+        .json({ message: "User already exists with this email" });
     }
 
     // Hash password
@@ -68,7 +73,7 @@ export const registerUser = async (req, res) => {
     });
 
     // Generate long-lived tokens
-    const accessToken = generateToken(user);        // expiresIn: '7d' (set in generateToken.js)
+    const accessToken = generateToken(user); // expiresIn: '7d'
     const refreshToken = generateRefreshToken(user); // expiresIn: '30d'
 
     // Store refresh token in DB
@@ -98,32 +103,69 @@ export const registerUser = async (req, res) => {
   }
 };
 
+const looksLikeEmail = (value) =>
+  typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+const normalizePhone = (value) => {
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/g, "");
+};
+
+const looksLikePhone = (value) =>
+  typeof value === "string" && /^\d{10,15}$/.test(normalizePhone(value));
+
 /**
- * Login user (email + password)
+ * Login user (email OR phone + password)
+ * Frontend keeps sending { email, password }.
+ * In phone mode, "email" field contains the mobile number.
  */
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
+    // Keep same "required" behavior, but allow phone in the same field.
     if (!email || !password) {
       logger.warn("Login attempt with missing credentials", { ip: req.ip });
       return res.status(400).json({ message: "Email and password are required" });
     }
 
-    const user = await User.findOne({ email }).select("+password +refreshTokens");
+    const identifierRaw = String(email).trim();
+    const identifier = normalizePhone(identifierRaw);
+
+    let query = null;
+
+    if (looksLikeEmail(identifierRaw)) {
+      query = { email: identifierRaw.toLowerCase() };
+    } else if (looksLikePhone(identifier)) {
+      query = { phone: identifier };
+    } else {
+      logger.warn("Login attempt with invalid identifier format", {
+        identifier: identifierRaw,
+        ip: req.ip,
+      });
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    const user = await User.findOne(query).select("+password +refreshTokens");
     if (!user || !user.password) {
-      logger.warn("Login attempt with invalid email", { email, ip: req.ip });
+      logger.warn("Login attempt with invalid identifier", {
+        query,
+        ip: req.ip,
+      });
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      logger.warn("Login attempt with wrong password", { email, ip: req.ip });
+      logger.warn("Login attempt with wrong password", {
+        query,
+        ip: req.ip,
+      });
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
     // Generate long-lived tokens
-    const accessToken = generateToken(user);        // 7 days
+    const accessToken = generateToken(user); // 7 days
     const refreshToken = generateRefreshToken(user); // 30 days
 
     // Store refresh token in DB
@@ -139,12 +181,18 @@ export const loginUser = async (req, res) => {
       maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
     });
 
-    logger.info("User logged in successfully", { userId: user._id, email });
+    logger.info("User logged in successfully", {
+      userId: user._id,
+      identifier: looksLikeEmail(identifierRaw) ? user.email : user.phone,
+      method: looksLikeEmail(identifierRaw) ? "email" : "phone",
+    });
 
+    // Keep response shape compatible with existing frontend
     res.json({
       _id: user._id,
       name: user.name,
-      email: user.email,
+      email: user.email || null,
+      phone: user.phone || null,
       accessToken,
     });
   } catch (error) {
@@ -162,7 +210,9 @@ export const logoutUser = async (req, res) => {
 
     if (refreshToken && req.user) {
       // Remove this refresh token from user's array
-      req.user.refreshTokens = req.user.refreshTokens.filter(t => t !== refreshToken);
+      req.user.refreshTokens = req.user.refreshTokens.filter(
+        (t) => t !== refreshToken
+      );
       await req.user.save({ validateBeforeSave: false });
     }
 
@@ -197,15 +247,19 @@ export const socialAuthSuccess = (req, res) => {
   try {
     if (!req.user) {
       logger.warn("Social auth failed - no user", { path: req.path, ip: req.ip });
-      return res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=auth_failed`);
+      return res.redirect(
+        `${
+          process.env.FRONTEND_URL || "http://localhost:5173"
+        }/login?error=auth_failed`
+      );
     }
 
-    const accessToken = generateToken(req.user);        // 7 days
+    const accessToken = generateToken(req.user); // 7 days
     const refreshToken = generateRefreshToken(req.user); // 30 days
 
     // Store refresh token in DB
     req.user.refreshTokens.push(refreshToken);
-    req.user.save({ validateBeforeSave: false }).catch(err =>
+    req.user.save({ validateBeforeSave: false }).catch((err) =>
       logger.error("Refresh token save failed", { error: err.message })
     );
 
@@ -227,11 +281,21 @@ export const socialAuthSuccess = (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
     });
 
-    logger.info("Social auth successful", { userId: req.user._id, provider: req.user.loginProvider });
+    logger.info("Social auth successful", {
+      userId: req.user._id,
+      provider: req.user.loginProvider,
+    });
 
     res.redirect(process.env.FRONTEND_URL || "http://localhost:5173");
   } catch (error) {
-    logger.error("Social auth success failed", { error: error.message, stack: error.stack });
-    res.redirect(`${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=server_error`);
+    logger.error("Social auth success failed", {
+      error: error.message,
+      stack: error.stack,
+    });
+    res.redirect(
+      `${
+        process.env.FRONTEND_URL || "http://localhost:5173"
+      }/login?error=server_error`
+    );
   }
 };

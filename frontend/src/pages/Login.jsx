@@ -5,7 +5,7 @@ import { useFormik } from "formik";
 import * as Yup from "yup";
 import { FiLock, FiMail } from "react-icons/fi";
 import { FcGoogle } from "react-icons/fc";
-import { FaFacebook, FaEye, FaEyeSlash } from "react-icons/fa";
+import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
 import { loginUser } from "../api";
 import styles from "./Login.module.css";
@@ -15,7 +15,8 @@ const Login = () => {
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [serverError, setServerError] = useState("");
 
-  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+  const BACKEND_URL =
+    import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 
   const validationSchema = Yup.object({
     email: Yup.string()
@@ -49,10 +50,6 @@ const Login = () => {
     window.location.href = `${BACKEND_URL}/api/auth/google`;
   };
 
-  const handleFacebookLogin = () => {
-    window.location.href = `${BACKEND_URL}/api/auth/facebook`;
-  };
-
   return (
     <div className={styles.container}>
       <div className={styles.leftSection}>
@@ -61,11 +58,14 @@ const Login = () => {
           <span className={styles.socialAccountsText}>via Social Accounts</span>
 
           <div className={styles.socialButtons}>
-            <button type="button" className={styles.socialBtn} onClick={handleGoogleLogin}>
+            <button
+              type="button"
+              className={styles.socialBtn}
+              onClick={handleGoogleLogin}
+              aria-label="Login with Google"
+              title="Login with Google"
+            >
               <FcGoogle className={styles.socialIcon} />
-            </button>
-            <button type="button" className={styles.socialBtn} onClick={handleFacebookLogin}>
-              <FaFacebook className={styles.socialIcon} style={{ color: "#1877F2" }} />
             </button>
           </div>
 
@@ -74,7 +74,9 @@ const Login = () => {
           </div>
 
           <form onSubmit={formik.handleSubmit} className={styles.loginForm}>
-            {serverError && <div className={styles.errorMessage}>{serverError}</div>}
+            {serverError && (
+              <div className={styles.errorMessage}>{serverError}</div>
+            )}
 
             <div className={styles.inputGroup}>
               <FiMail className={styles.icon} />
@@ -83,7 +85,11 @@ const Login = () => {
                 placeholder="Email"
                 autoComplete="email"
                 {...formik.getFieldProps("email")}
-                className={formik.touched.email && formik.errors.email ? styles.inputError : ""}
+                className={
+                  formik.touched.email && formik.errors.email
+                    ? styles.inputError
+                    : ""
+                }
               />
               {formik.touched.email && formik.errors.email && (
                 <span className={styles.error}>{formik.errors.email}</span>
@@ -97,11 +103,18 @@ const Login = () => {
                 placeholder="Password"
                 autoComplete="current-password"
                 {...formik.getFieldProps("password")}
-                className={formik.touched.password && formik.errors.password ? styles.inputError : ""}
+                className={
+                  formik.touched.password && formik.errors.password
+                    ? styles.inputError
+                    : ""
+                }
               />
               <span
                 className={styles.eyeIcon}
                 onClick={() => setPasswordVisible(!passwordVisible)}
+                role="button"
+                tabIndex={0}
+                aria-label={passwordVisible ? "Hide password" : "Show password"}
               >
                 {passwordVisible ? <FaEyeSlash /> : <FaEye />}
               </span>

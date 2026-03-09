@@ -1,11 +1,21 @@
+/* Global box-sizing rule */
+*,
+*:before,
+*:after {
+  box-sizing: border-box;
+}
+
 /* Main Container */
 .authContainer {
   display: flex;
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background: linear-gradient(to right, white 50%, #CF0006 50%);
+  background:
+    linear-gradient(to right, white 50%, transparent 50%),
+    linear-gradient(#CF0006, rgb(100, 6, 6));
   padding: 1rem;
+  width: 100%;
 }
 
 /* Register Card */
@@ -17,7 +27,7 @@
   text-align: center;
   width: 100%;
   max-width: 400px;
-} 
+}
 
 /* Title & Subtitle */
 .title {
@@ -52,6 +62,7 @@
   align-items: center;
   cursor: pointer;
   transition: background 0.3s ease;
+  flex-shrink: 0;
 }
 
 .socialButton:hover {
@@ -72,7 +83,8 @@
   justify-content: center;
 }
 
-.divider::before, .divider::after {
+.divider::before,
+.divider::after {
   content: "";
   flex: 1;
   height: 1px;
@@ -127,8 +139,8 @@
   box-sizing: border-box;
 }
 
-
-.input:focus {
+.input:focus,
+.inputGroup input:focus {
   outline: none;
   border-color: #CF0006;
 }
@@ -156,6 +168,7 @@
   transition: background 0.3s;
   width: 100%;
   max-width: 350px;
+  border: none;
 }
 
 .primaryButton:hover {
@@ -181,4 +194,119 @@
 
 .link:hover {
   text-decoration: underline;
+}
+
+/* ========================= */
+/* Tablet */
+/* ========================= */
+@media (max-width: 992px) {
+  .authContainer {
+    padding: 1.25rem;
+    background:
+      linear-gradient(to right, white 55%, transparent 55%),
+      linear-gradient(#CF0006, rgb(100, 6, 6));
+  }
+
+  .authCard {
+    max-width: 420px;
+    padding: 1.75rem;
+  }
+
+  .title {
+    font-size: 1.6rem;
+  }
+}
+
+/* ========================= */
+/* Mobile */
+/* ========================= */
+@media (max-width: 768px) {
+  .authContainer {
+    padding: 1rem;
+    align-items: center;
+    background: linear-gradient(#CF0006, rgb(100, 6, 6));
+  }
+
+  .authCard {
+    max-width: 100%;
+    width: 100%;
+    padding: 1.5rem 1.25rem;
+    border-radius: 14px;
+  }
+
+  .title {
+    font-size: 1.5rem;
+    line-height: 1.3;
+  }
+
+  .subtitle {
+    font-size: 0.95rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .inputGroup,
+  .primaryButton {
+    max-width: 100%;
+  }
+
+  .socialButton {
+    width: 46px;
+    height: 46px;
+  }
+
+  .socialIcon {
+    font-size: 1.35rem;
+  }
+}
+
+/* ========================= */
+/* Small Mobile */
+/* ========================= */
+@media (max-width: 480px) {
+  .authContainer {
+    padding: 0.75rem;
+  }
+
+  .authCard {
+    padding: 1.2rem 1rem;
+    border-radius: 12px;
+  }
+
+  .title {
+    font-size: 1.3rem;
+  }
+
+  .subtitle {
+    font-size: 0.9rem;
+    margin-bottom: 1rem;
+  }
+
+  .divider {
+    margin: 0.85rem 0;
+  }
+
+  .divider::before,
+  .divider::after {
+    margin: 0 8px;
+  }
+
+  .inputGroup input {
+    font-size: 0.95rem;
+    padding: 0.75rem 0.9rem 0.75rem 2.4rem !important;
+  }
+
+  .inputIcon {
+    left: 0.85rem;
+    font-size: 0.95rem;
+  }
+
+  .primaryButton {
+    font-size: 0.95rem;
+    padding: 0.75rem;
+  }
+
+  .authFooter {
+    font-size: 0.85rem;
+    line-height: 1.5;
+  }
 }
