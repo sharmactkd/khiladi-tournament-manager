@@ -8,12 +8,16 @@ import EntryHeader from '../components/Entry/EntryHeader';
 import EntryTable from '../components/Entry/EntryTable';
 import ExceededPlayers from '../components/Entry/ExceededPlayers';
 import ImportModal from '../components/Entry/ImportModal';
+import ImageImport from '../components/import/ImageImport';
 
 import { baseColumnsDef, optionalColumnsDef } from '../components/Entry/constants';
 
 import styles from './Entry.module.css';
 
 const isDev = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV;
+
+// Temporary feature flag to hide image import UI without removing code.
+const ENABLE_IMAGE_IMPORT = false;
 
 // ---- API base URL (behavior-preserving, fixes localhost-hardcoding) ----
 // Priority:
@@ -95,6 +99,7 @@ const Entry = () => {
 
   // ── Import Modal States ─────────────────────────────────────────────────
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showImageImportModal, setShowImageImportModal] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
 
   // ── Undo/Redo History ───────────────────────────────────────────────────
@@ -405,6 +410,64 @@ const Entry = () => {
     setSelectedImportFile(file);
   }, []);
 
+  const handleImportedRows = useCallback(
+    (importedRows) => {
+      saveToHistory();
+
+      const cleanedRows = importedRows.map((row) => {
+        const cleaned = { ...row };
+
+        if (cleaned.name) cleaned.name = String(cleaned.name).trim().toUpperCase();
+        if (cleaned.team) cleaned.team = String(cleaned.team).trim().toUpperCase();
+
+        const titleCaseFields = ['event', 'subEvent', 'ageCategory', 'weightCategory', 'medal', 'coach', 'manager'];
+        titleCaseFields.forEach((field) => {
+          if (cleaned[field]) {
+            cleaned[field] = String(cleaned[field])
+              .trim()
+              .toLowerCase()
+              .replace(/(^|\s)\w/g, (letter) => letter.toUpperCase());
+          }
+        });
+
+        if (cleaned.gender) {
+          const g = String(cleaned.gender).trim().toLowerCase();
+          cleaned.gender = ['male', 'boy', 'boys', 'm'].includes(g)
+            ? 'Male'
+            : ['female', 'girl', 'girls', 'f'].includes(g)
+              ? 'Female'
+              : '';
+        }
+
+        if (cleaned.weight) {
+          cleaned.weight = String(cleaned.weight).trim().replace(/[^0-9.]/g, '') || '';
+        }
+
+        return cleaned;
+      });
+
+      const numberedRows = cleanedRows.map((row, idx) => ({
+        ...row,
+        sr: (data.length + idx + 1).toString(),
+      }));
+
+      let newData = [...data, ...numberedRows];
+      newData = newData.filter((row) =>
+        Object.entries(row).some(([key, val]) => key !== 'sr' && key !== 'actions' && val !== '' && val !== undefined && val !== null)
+      );
+
+      if (newData.length === 0) {
+        const emptyRow = Object.fromEntries(columnsDef.map((col) => [col.id, col.id === 'actions' ? '' : '']));
+        newData = [emptyRow];
+      }
+
+      setData(regenerateSrNumbers(newData));
+      debouncedRecalculate();
+      setSelectedImportFile(null);
+    },
+    [data, columnsDef, saveToHistory, regenerateSrNumbers, debouncedRecalculate]
+  );
+
   const handleExport = useCallback(() => {
     try {
       const wb = XLSX.utils.book_new();
@@ -482,6 +545,34 @@ const Entry = () => {
         showImportModal={showImportModal}
       />
 
+      {ENABLE_IMAGE_IMPORT && (
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'flex-end',
+            margin: '8px 0 14px',
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setShowImageImportModal(true)}
+            style={{
+              background: '#111827',
+              color: '#ffffff',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '10px 16px',
+              fontSize: '14px',
+              fontWeight: 600,
+              cursor: 'pointer',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
+            }}
+          >
+            Import Data From Image
+          </button>
+        </div>
+      )}
+
       <ExceededPlayers
         filteredData={data}
         tournamentData={tournamentData}
@@ -548,55 +639,7 @@ const Entry = () => {
           setShowImportModal(false);
           setSelectedImportFile(null);
         }}
-        onImportSuccess={(importedRows) => {
-          saveToHistory();
-
-          const cleanedRows = importedRows.map((row) => {
-            const cleaned = { ...row };
-            if (cleaned.name) cleaned.name = String(cleaned.name).trim().toUpperCase();
-            if (cleaned.team) cleaned.team = String(cleaned.team).trim().toUpperCase();
-
-            const titleCaseFields = ['event', 'subEvent', 'ageCategory', 'weightCategory', 'medal', 'coach', 'manager'];
-            titleCaseFields.forEach((field) => {
-              if (cleaned[field]) {
-                cleaned[field] = String(cleaned[field])
-                  .trim()
-                  .toLowerCase()
-                  .replace(/(^|\s)\w/g, (letter) => letter.toUpperCase());
-              }
-            });
-
-            if (cleaned.gender) {
-              const g = String(cleaned.gender).trim().toLowerCase();
-              cleaned.gender = ['male', 'boy', 'boys'].includes(g) ? 'Male' : ['female', 'girl', 'girls'].includes(g) ? 'Female' : '';
-            }
-
-            if (cleaned.weight) {
-              cleaned.weight = String(cleaned.weight).trim().replace(/[^0-9.]/g, '') || '';
-            }
-
-            return cleaned;
-          });
-
-          const numberedRows = cleanedRows.map((row, idx) => ({
-            ...row,
-            sr: (data.length + idx + 1).toString(),
-          }));
-
-          let newData = [...data, ...numberedRows];
-          newData = newData.filter((row) =>
-            Object.entries(row).some(([key, val]) => key !== 'sr' && key !== 'actions' && val !== '' && val !== undefined && val !== null)
-          );
-
-          if (newData.length === 0) {
-            const emptyRow = Object.fromEntries(columnsDef.map((col) => [col.id, col.id === 'actions' ? '' : '']));
-            newData = [emptyRow];
-          }
-
-          setData(regenerateSrNumbers(newData));
-          debouncedRecalculate();
-          setSelectedImportFile(null);
-        }}
+        onImportSuccess={handleImportedRows}
         tournamentData={tournamentData}
         columnsDef={columnsDef}
         saveToHistory={saveToHistory}
@@ -604,6 +647,15 @@ const Entry = () => {
         recalculateColumnWidths={debouncedRecalculate}
         selectedFile={selectedImportFile}
       />
+
+      {ENABLE_IMAGE_IMPORT && (
+        <ImageImport
+          show={showImageImportModal}
+          onClose={() => setShowImageImportModal(false)}
+          onImportSuccess={handleImportedRows}
+          columnsDef={columnsDef}
+        />
+      )}
 
       {isLoading && (
         <div className={styles.loadingOverlay}>

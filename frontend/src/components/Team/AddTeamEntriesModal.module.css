@@ -1,0 +1,276 @@
+/* src/components/Team/AddTeamEntriesModal.module.css */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 16px;
+}
+
+.modal {
+  background: white;
+  border-radius: 12px;
+  width: 98%;
+  max-width: 1900px;
+  max-height: 96vh;
+  overflow: hidden;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+  display: flex;
+  flex-direction: column;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e0e0e0;
+  background: #f8f9fa;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.title {
+  margin: 0;
+  font-size: 1.8rem;
+  color: #cf0006;
+  font-weight: bold;
+}
+
+.closeButton {
+  background: none;
+  border: none;
+  font-size: 1.8rem;
+  cursor: pointer;
+  color: #666;
+  padding: 4px 10px;
+  border-radius: 50%;
+  transition: all 0.2s ease;
+}
+
+.closeButton:hover:not(:disabled) {
+  color: #d32f2f;
+  background: #ffebee;
+  transform: scale(1.08);
+}
+
+.closeButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.body {
+  padding: 16px 20px;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: white;
+}
+
+.teamSection,
+.playersSection {
+  background: #fff;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+}
+
+.teamSection {
+  padding: 16px;
+}
+
+.sectionTitle {
+  margin: 0;
+  font-size: 1.2rem;
+  color: #cf0006;
+  font-weight: bold;
+}
+
+.teamGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(180px, 1fr));
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.label {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #444;
+}
+
+.input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #dee2e6;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  box-sizing: border-box;
+  background: #fff;
+  color: #222;
+}
+
+.input:focus {
+  outline: none;
+  border-color: #cf0006;
+  box-shadow: 0 0 0 3px rgba(207, 0, 6, 0.2);
+}
+
+.playersHeader {
+  padding: 16px;
+  border-bottom: 1px solid #e9ecef;
+  background: #fff;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.errorText {
+  margin-top: 4px;
+  color: #cf0006;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.submitError {
+  background: #ffe6e6;
+  color: #cf0006;
+  padding: 12px;
+  border-radius: 6px;
+  margin-top: 4px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.footer {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  padding: 16px 20px;
+  border-top: 1px solid #e0e0e0;
+  background: #f8f9fa;
+}
+
+.cancelButton,
+.submitButton {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.cancelButton {
+  background: #6c757d;
+  color: white;
+}
+
+.cancelButton:hover:not(:disabled) {
+  background: #5a6268;
+}
+
+.submitButton {
+  background: #cf0006;
+  color: white;
+}
+
+.submitButton:hover:not(:disabled) {
+  background: #a00005;
+  transform: translateY(-1px);
+}
+
+.cancelButton:disabled,
+.submitButton:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+@media (max-width: 1400px) {
+  .teamGrid {
+    grid-template-columns: repeat(3, minmax(180px, 1fr));
+  }
+}
+
+@media (max-width: 992px) {
+  .modal {
+    width: 99%;
+    max-height: 97vh;
+  }
+
+  .teamGrid {
+    grid-template-columns: repeat(2, minmax(180px, 1fr));
+  }
+
+  .title {
+    font-size: 1.45rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .overlay {
+    padding: 8px;
+  }
+
+  .teamGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .playersHeader {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .footer {
+    flex-direction: column-reverse;
+  }
+
+  .cancelButton,
+  .submitButton {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ===== Team Table Overrides ===== */
+
+.teamTable button {
+  font-size: 12px !important;
+  padding: 2px 6px !important;
+  height: 24px !important;
+  min-width: 24px !important;
+}
+
+/* agar icons span ya svg hain */
+.teamTable svg {
+  width: 14px !important;
+  height: 14px !important;
+}
+
+.teamTable th {
+  font-size: 12px !important;
+  padding: 6px 4px !important;
+}
+
+.teamTable .headerText {
+  font-size: 12px !important;
+  font-weight: 600;
+}

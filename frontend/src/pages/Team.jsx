@@ -3,9 +3,10 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import jsPDF from "jspdf";
-import { useAuth } from "../context/AuthContext";  // ← ये line add करो
+import { useAuth } from "../context/AuthContext";
 import html2canvas from "html2canvas";
-import styles from './Team.module.css';
+import AddTeamEntriesModal from "../components/Team/AddTeamEntriesModal";
+import styles from "./Team.module.css";
 
 const getFullImageUrl = (filename) => {
   if (!filename) return "";
@@ -16,86 +17,132 @@ const getFullImageUrl = (filename) => {
   return `${uploadsUrl}/uploads/${cleanFilename}?t=${Date.now()}`;
 };
 
+const getApiBaseForEntries = () => {
+  const envApi = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+  if (envApi.endsWith("/api")) return envApi;
+  return `${envApi.replace(/\/+$/, "")}/api`;
+};
+
+const createEmptyEntryState = () => ({
+  sorting: [],
+  filters: {},
+  columnWidths: [],
+  searchTerm: "",
+});
+
+const defaultVisibleColumns = {
+  fathersName: false,
+  school: false,
+  class: false,
+};
+
 const Team = () => {
- const { id: rawId } = useParams();
+  const { id: rawId } = useParams();
   const id = rawId?.trim();
   const navigate = useNavigate();
   const { token } = useAuth();
+
   const [entryData, setEntryData] = useState([]);
   const [teamStats, setTeamStats] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tournament, setTournament] = useState(null);
+  const [showAddTeamEntriesModal, setShowAddTeamEntriesModal] = useState(false);
+  const [entryVisibleColumns, setEntryVisibleColumns] = useState(defaultVisibleColumns);
 
   const conditionalColumns = {
-    kyorugi: 'Kyorugi',
-    fresher: 'Fresher',
-    tagTeam: 'Tag Team',
-    poomsae: 'Poomsae',
-    individual: 'Individual',
-    pair: 'Pair',
-    teamPoomsae: 'Team Poomsae',
+    kyorugi: "Kyorugi",
+    fresher: "Fresher",
+    tagTeam: "Tag Team",
+    poomsae: "Poomsae",
+    individual: "Individual",
+    pair: "Pair",
+    teamPoomsae: "Team Poomsae",
   };
 
-  const [visibleSubEventColumns, setVisibleSubEventColumns] = useState({ ...conditionalColumns });
-  const [teamsSortConfig, setTeamsSortConfig] = useState({ key: null, direction: 'desc' });
+  const [visibleSubEventColumns, setVisibleSubEventColumns] = useState({
+    ...conditionalColumns,
+  });
+  const [teamsSortConfig, setTeamsSortConfig] = useState({
+    key: null,
+    direction: "desc",
+  });
 
-  // Payment editing state per team (only editable fields)
-  const [paymentData, setPaymentData] = useState({}); // { teamName: { foodMembers, mode, cash, online, txnId } }
+  const [paymentData, setPaymentData] = useState({});
 
   const teamsPageRef = useRef(null);
   const playersPageRef = useRef(null);
 
-  // Load payment data from server
-// Load payment data from server
-useEffect(() => {
-  const loadPayments = async () => {
-    if (!token) {
-      console.warn("No token found - user not logged in. Skipping server payment load.");
-      return;
-    }
-
-    try {
-      const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-
-      const res = await axios.get(`${baseUrl}/tournament/${id}/team-payments`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      setPaymentData(res.data.teamPayments || {});
-      console.log("Payment data loaded from server");
-    } catch (err) {
-      console.warn("No payment data on server or error:", err.message);
-    }
-  };
-
-  if (teamStats.length > 0) loadPayments();
-}, [teamStats.length, id, token]);  // ← token dependency add करो
-
-// Auto-save payment changes
-useEffect(() => {
-  if (Object.keys(paymentData).length === 0 || !token) return;
-
-  const timeoutId = setTimeout(async () => {
-    try {
-      const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-
-      await axios.put(
-        `${baseUrl}/tournament/${id}/team-payments`,
-        { teamPayments: paymentData },
-        {
-          headers: { Authorization: `Bearer ${token}` }
+  useEffect(() => {
+    const loadEntryVisibleColumns = () => {
+      try {
+        const saved = localStorage.getItem(`visibleColumns_${id}`);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          setEntryVisibleColumns({
+            fathersName: !!parsed?.fathersName,
+            school: !!parsed?.school,
+            class: !!parsed?.class,
+          });
+        } else {
+          setEntryVisibleColumns(defaultVisibleColumns);
         }
-      );
+      } catch (error) {
+        console.error("Error loading visible columns:", error);
+        setEntryVisibleColumns(defaultVisibleColumns);
+      }
+    };
 
-      console.log("Payment data auto-saved to server");
-    } catch (err) {
-      console.error("Auto-save failed:", err.message);
-    }
-  }, 1000);
+    loadEntryVisibleColumns();
+  }, [id, showAddTeamEntriesModal]);
 
-  return () => clearTimeout(timeoutId);
-}, [paymentData, id, token]);  // ← token dependency add करो
+  useEffect(() => {
+    const loadPayments = async () => {
+      if (!token) {
+        console.warn("No token found - user not logged in. Skipping server payment load.");
+        return;
+      }
+
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
+        const res = await axios.get(`${baseUrl}/tournament/${id}/team-payments`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+
+        setPaymentData(res.data.teamPayments || {});
+        console.log("Payment data loaded from server");
+      } catch (err) {
+        console.warn("No payment data on server or error:", err.message);
+      }
+    };
+
+    if (teamStats.length > 0) loadPayments();
+  }, [teamStats.length, id, token]);
+
+  useEffect(() => {
+    if (Object.keys(paymentData).length === 0 || !token) return;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+
+        await axios.put(
+          `${baseUrl}/tournament/${id}/team-payments`,
+          { teamPayments: paymentData },
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
+        );
+
+        console.log("Payment data auto-saved to server");
+      } catch (err) {
+        console.error("Auto-save failed:", err.message);
+      }
+    }, 1000);
+
+    return () => clearTimeout(timeoutId);
+  }, [paymentData, id, token]);
 
   useEffect(() => {
     const fetchTournament = async () => {
@@ -116,7 +163,12 @@ useEffect(() => {
       try {
         const savedData = localStorage.getItem(`entryData_${id}`);
         if (savedData) {
-          const data = JSON.parse(savedData).filter(row => row.team && row.team.trim() !== '');
+          const parsed = JSON.parse(savedData);
+          const data = Array.isArray(parsed?.entries)
+            ? parsed.entries.filter((row) => row.team && row.team.trim() !== "")
+            : Array.isArray(parsed)
+            ? parsed.filter((row) => row.team && row.team.trim() !== "")
+            : [];
           setEntryData(data);
           processTeamStats(data);
         } else {
@@ -125,7 +177,7 @@ useEffect(() => {
           setVisibleSubEventColumns({});
         }
       } catch (error) {
-        console.error('Error loading entry data:', error);
+        console.error("Error loading entry data:", error);
       } finally {
         setLoading(false);
       }
@@ -140,9 +192,17 @@ useEffect(() => {
 
   const processTeamStats = (data) => {
     const teamMap = new Map();
-    const globalCounts = { kyorugi: 0, fresher: 0, tagTeam: 0, poomsae: 0, individual: 0, pair: 0, teamPoomsae: 0 };
+    const globalCounts = {
+      kyorugi: 0,
+      fresher: 0,
+      tagTeam: 0,
+      poomsae: 0,
+      individual: 0,
+      pair: 0,
+      teamPoomsae: 0,
+    };
 
-    data.forEach(row => {
+    data.forEach((row) => {
       const teamName = row.team.trim();
       if (!teamMap.has(teamName)) {
         teamMap.set(teamName, {
@@ -150,29 +210,50 @@ useEffect(() => {
           totalPlayers: 0,
           malePlayers: 0,
           femalePlayers: 0,
-          kyorugi: 0, fresher: 0, tagTeam: 0, poomsae: 0, individual: 0, pair: 0, teamPoomsae: 0,
-          coach: row.coach || '',
-          coachContact: row.coachContact || '',
-          manager: row.manager || '',
-          managerContact: row.managerContact || '',
-          players: []
+          kyorugi: 0,
+          fresher: 0,
+          tagTeam: 0,
+          poomsae: 0,
+          individual: 0,
+          pair: 0,
+          teamPoomsae: 0,
+          coach: row.coach || "",
+          coachContact: row.coachContact || "",
+          manager: row.manager || "",
+          managerContact: row.managerContact || "",
+          players: [],
         });
       }
 
       const team = teamMap.get(teamName);
       team.totalPlayers += 1;
-      if (row.gender === 'Male') team.malePlayers += 1;
-      if (row.gender === 'Female') team.femalePlayers += 1;
+      if (row.gender === "Male") team.malePlayers += 1;
+      if (row.gender === "Female") team.femalePlayers += 1;
 
-      if (row.event === 'Kyorugi') {
-        if (row.subEvent === 'Kyorugi') { team.kyorugi += 1; globalCounts.kyorugi += 1; }
-        else if (row.subEvent === 'Fresher') { team.fresher += 1; globalCounts.fresher += 1; }
-        else if (row.subEvent === 'Tag Team') { team.tagTeam += 1; globalCounts.tagTeam += 1; }
-      } else if (row.event === 'Poomsae') {
-        team.poomsae += 1; globalCounts.poomsae += 1;
-        if (row.subEvent === 'Individual') { team.individual += 1; globalCounts.individual += 1; }
-        else if (row.subEvent === 'Pair') { team.pair += 1; globalCounts.pair += 1; }
-        else if (row.subEvent === 'Team') { team.teamPoomsae += 1; globalCounts.teamPoomsae += 1; }
+      if (row.event === "Kyorugi") {
+        if (row.subEvent === "Kyorugi") {
+          team.kyorugi += 1;
+          globalCounts.kyorugi += 1;
+        } else if (row.subEvent === "Fresher") {
+          team.fresher += 1;
+          globalCounts.fresher += 1;
+        } else if (row.subEvent === "Tag Team") {
+          team.tagTeam += 1;
+          globalCounts.tagTeam += 1;
+        }
+      } else if (row.event === "Poomsae") {
+        team.poomsae += 1;
+        globalCounts.poomsae += 1;
+        if (row.subEvent === "Individual") {
+          team.individual += 1;
+          globalCounts.individual += 1;
+        } else if (row.subEvent === "Pair") {
+          team.pair += 1;
+          globalCounts.pair += 1;
+        } else if (row.subEvent === "Team") {
+          team.teamPoomsae += 1;
+          globalCounts.teamPoomsae += 1;
+        }
       }
 
       if (!team.coach && row.coach) team.coach = row.coach;
@@ -184,7 +265,7 @@ useEffect(() => {
     });
 
     const newVisible = { ...conditionalColumns };
-    Object.keys(conditionalColumns).forEach(key => globalCounts[key] === 0 && delete newVisible[key]);
+    Object.keys(conditionalColumns).forEach((key) => globalCounts[key] === 0 && delete newVisible[key]);
     setVisibleSubEventColumns(newVisible);
 
     const sortedTeams = Array.from(teamMap.values()).sort((a, b) => a.name.localeCompare(b.name));
@@ -202,10 +283,10 @@ useEffect(() => {
       list.sort((a, b) => {
         const aVal = a[teamsSortConfig.key];
         const bVal = b[teamsSortConfig.key];
-        if (typeof aVal === 'number') {
-          return teamsSortConfig.direction === 'asc' ? aVal - bVal : bVal - aVal;
+        if (typeof aVal === "number") {
+          return teamsSortConfig.direction === "asc" ? aVal - bVal : bVal - aVal;
         }
-        return teamsSortConfig.direction === 'asc'
+        return teamsSortConfig.direction === "asc"
           ? String(aVal).localeCompare(String(bVal))
           : String(bVal).localeCompare(String(aVal));
       });
@@ -216,20 +297,19 @@ useEffect(() => {
   }, [teamStats, teamsSortConfig]);
 
   const handleTeamsSort = (key) => {
-    setTeamsSortConfig(curr => {
+    setTeamsSortConfig((curr) => {
       if (curr.key === key) {
-        return curr.direction === 'desc' ? { key: null, direction: 'desc' } : { key, direction: 'desc' };
+        return curr.direction === "desc" ? { key: null, direction: "desc" } : { key, direction: "desc" };
       }
-      return { key, direction: 'desc' };
+      return { key, direction: "desc" };
     });
   };
 
-  // Calculate event fee per team
   const calculateEventFee = (teamName) => {
     if (!tournament?.entryFees || tournament.entryFees.amounts === undefined) return 0;
-    const players = entryData.filter(p => p.team === teamName);
+    const players = entryData.filter((p) => p.team === teamName);
     let total = 0;
-    players.forEach(p => {
+    players.forEach((p) => {
       const eventKey = p.event?.toLowerCase();
       const subKey = p.subEvent;
       const feeObj = tournament.entryFees.amounts[eventKey]?.[subKey];
@@ -240,14 +320,13 @@ useEffect(() => {
     return total;
   };
 
-  // Food & Lodging fee
-  const foodLodgingFee = tournament?.foodAndLodging?.type === "Paid" ? (tournament.foodAndLodging.amount || 0) : 0;
+  const foodLodgingFee =
+    tournament?.foodAndLodging?.type === "Paid" ? tournament.foodAndLodging.amount || 0 : 0;
 
-  // Update payment data
   const updatePayment = (teamName, field, value) => {
-    setPaymentData(prev => ({
+    setPaymentData((prev) => ({
       ...prev,
-      [teamName]: { ...prev[teamName], [field]: value }
+      [teamName]: { ...prev[teamName], [field]: value },
     }));
   };
 
@@ -258,113 +337,215 @@ useEffect(() => {
     return eventFee + flFee;
   };
 
-  const hasFees = tournament?.entryFees && Object.values(tournament.entryFees.amounts || {}).some(cat => 
-    Object.values(cat || {}).some(sub => sub.type !== "Free")
-  );
+  const hasFees =
+    tournament?.entryFees &&
+    Object.values(tournament.entryFees.amounts || {}).some((cat) =>
+      Object.values(cat || {}).some((sub) => sub.type !== "Free")
+    );
 
-  const hasFoodLodging = tournament?.foodAndLodging?.option && tournament.foodAndLodging.type === "Paid";
+  const hasFoodLodging =
+    tournament?.foodAndLodging?.option && tournament.foodAndLodging.type === "Paid";
 
   const logoLeft = tournament?.logos?.[0] ? getFullImageUrl(tournament.logos[0]) : null;
   const logoRight = tournament?.logos?.[1] ? getFullImageUrl(tournament.logos[1]) : logoLeft;
-  
-  /* ────── PDF Generation ────── */
- const generatePDFDoc = async (pageRef) => {
-  if (!pageRef.current) {
-    alert("Page not ready for PDF generation");
-    return null;
-  }
 
-  const element = pageRef.current;
-  const clone = element.cloneNode(true);
+  const handleTeamEntriesSubmit = async (preparedRows) => {
+    const cleanRows = Array.isArray(preparedRows)
+      ? preparedRows.filter((row) =>
+          Object.entries(row || {}).some(
+            ([key, value]) =>
+              key !== "sr" &&
+              key !== "actions" &&
+              value !== "" &&
+              value !== null &&
+              value !== undefined
+          )
+        )
+      : [];
 
-  // Hidden container - no fixed width, let content decide
-  const container = document.createElement("div");
-  Object.assign(container.style, {
-    position: "absolute",
-    left: "-9999px",
-    top: "-9999px",
-    width: "auto",
-    maxWidth: "none",
-    background: "#ffffff",
-   
-    boxSizing: "border-box",
-  });
-  container.appendChild(clone);
-  document.body.appendChild(container);
-
-  // Critical PDF styles - force full table visibility
-  const style = document.createElement("style");
-  style.textContent = `
-    
-  `;
-  clone.appendChild(style);
-
-  try {
-    const scale = 2;
-    const canvas = await html2canvas(clone, {
-      scale: scale,
-      useCORS: true,
-      backgroundColor: "#ffffff",
-      logging: false,
-      width: clone.scrollWidth,
-      height: clone.scrollHeight,
-      scrollX: 0,
-      scrollY: 0,
-      windowWidth: clone.scrollWidth,
-      windowHeight: clone.scrollHeight,
-    });
-
-    const imgData = canvas.toDataURL("image/jpeg", 0.95);
-    const imgWidth = canvas.width;
-    const imgHeight = canvas.height;
-
-    const pdf = new jsPDF("l", "mm", "a4");
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = pdf.internal.pageSize.getHeight();
-
-    // Minimal margins
-    const margin = 1;
-    const availableWidth = pdfWidth - 2 * margin;
-    const availableHeight = pdfHeight - 2 * margin;
-
-    // Scale to fit width exactly, height natural
-    const widthRatio = availableWidth / imgWidth;
-    const scaledWidth = imgWidth * widthRatio;
-    const scaledHeight = imgHeight * widthRatio;
-
-    const totalPages = Math.ceil(scaledHeight / availableHeight);
-
-    for (let i = 0; i < totalPages; i++) {
-      if (i > 0) pdf.addPage();
-
-      const yOffset = -i * availableHeight;
-
-      pdf.addImage(
-        imgData,
-        "JPEG",
-        margin,
-        margin + yOffset,
-        scaledWidth,
-        scaledHeight
-      );
+    if (cleanRows.length === 0) {
+      throw new Error("No valid player rows to submit.");
     }
 
-    return pdf;
-  } catch (err) {
-    console.error("PDF generation failed:", err);
-    alert("Failed to generate PDF");
-    return null;
-  } finally {
-    document.body.removeChild(container);
-  }
-};
+    const apiBase = getApiBaseForEntries();
+    let existingEntries = [];
+    let existingState = createEmptyEntryState();
 
-const savePDF = async () => {
+    if (token) {
+      try {
+        const serverRes = await fetch(`${apiBase}/tournaments/${id}/entries`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (serverRes.ok) {
+          const serverPayload = await serverRes.json();
+          existingEntries = Array.isArray(serverPayload.entries) ? serverPayload.entries : [];
+          existingState =
+            serverPayload.userState && typeof serverPayload.userState === "object"
+              ? serverPayload.userState
+              : createEmptyEntryState();
+        } else {
+          const localRaw = localStorage.getItem(`entryData_${id}`);
+          if (localRaw) {
+            const parsed = JSON.parse(localRaw);
+            existingEntries = Array.isArray(parsed?.entries)
+              ? parsed.entries
+              : Array.isArray(parsed)
+              ? parsed
+              : [];
+          }
+        }
+      } catch (error) {
+        console.warn("Could not load latest server entries before merge:", error);
+        const localRaw = localStorage.getItem(`entryData_${id}`);
+        if (localRaw) {
+          const parsed = JSON.parse(localRaw);
+          existingEntries = Array.isArray(parsed?.entries)
+            ? parsed.entries
+            : Array.isArray(parsed)
+            ? parsed
+            : [];
+        }
+      }
+    } else {
+      const localRaw = localStorage.getItem(`entryData_${id}`);
+      if (localRaw) {
+        const parsed = JSON.parse(localRaw);
+        existingEntries = Array.isArray(parsed?.entries)
+          ? parsed.entries
+          : Array.isArray(parsed)
+          ? parsed
+          : [];
+      }
+    }
+
+    const mergedEntries = [...existingEntries, ...cleanRows].map((row, index) => ({
+      ...row,
+      sr: String(index + 1),
+    }));
+
+    localStorage.setItem(`entryData_${id}`, JSON.stringify(mergedEntries));
+
+    if (token) {
+      const payload = {
+        entries: mergedEntries,
+        state: {
+          sorting: existingState.sorting || [],
+          filters: existingState.filters || {},
+          columnWidths: existingState.columnWidths || [],
+          searchTerm: existingState.searchTerm || "",
+        },
+      };
+
+      const saveRes = await fetch(`${apiBase}/tournaments/${id}/entries`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!saveRes.ok) {
+        const message = await saveRes.text().catch(() => "Failed to save team entries.");
+        throw new Error(message || "Failed to save team entries.");
+      }
+    }
+
+    window.dispatchEvent(new Event(`entryDataUpdated_${id}`));
+    setShowAddTeamEntriesModal(false);
+  };
+
+  const generatePDFDoc = async (pageRef) => {
+    if (!pageRef.current) {
+      alert("Page not ready for PDF generation");
+      return null;
+    }
+
+    const element = pageRef.current;
+    const clone = element.cloneNode(true);
+
+    const container = document.createElement("div");
+    Object.assign(container.style, {
+      position: "absolute",
+      left: "-9999px",
+      top: "-9999px",
+      width: "auto",
+      maxWidth: "none",
+      background: "#ffffff",
+      boxSizing: "border-box",
+    });
+    container.appendChild(clone);
+    document.body.appendChild(container);
+
+    const style = document.createElement("style");
+    style.textContent = ``;
+    clone.appendChild(style);
+
+    try {
+      const scale = 2;
+      const canvas = await html2canvas(clone, {
+        scale,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        logging: false,
+        width: clone.scrollWidth,
+        height: clone.scrollHeight,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: clone.scrollWidth,
+        windowHeight: clone.scrollHeight,
+      });
+
+      const imgData = canvas.toDataURL("image/jpeg", 0.95);
+      const imgWidth = canvas.width;
+      const imgHeight = canvas.height;
+
+      const pdf = new jsPDF("l", "mm", "a4");
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = pdf.internal.pageSize.getHeight();
+
+      const margin = 1;
+      const availableWidth = pdfWidth - 2 * margin;
+      const availableHeight = pdfHeight - 2 * margin;
+
+      const widthRatio = availableWidth / imgWidth;
+      const scaledWidth = imgWidth * widthRatio;
+      const scaledHeight = imgHeight * widthRatio;
+
+      const totalPages = Math.ceil(scaledHeight / availableHeight);
+
+      for (let i = 0; i < totalPages; i++) {
+        if (i > 0) pdf.addPage();
+
+        const yOffset = -i * availableHeight;
+
+        pdf.addImage(imgData, "JPEG", margin, margin + yOffset, scaledWidth, scaledHeight);
+      }
+
+      return pdf;
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+      alert("Failed to generate PDF");
+      return null;
+    } finally {
+      document.body.removeChild(container);
+    }
+  };
+
+  const savePDF = async () => {
     const ref = selectedTeam ? playersPageRef : teamsPageRef;
     const doc = await generatePDFDoc(ref);
     if (doc) {
-      const suffix = selectedTeam ? `_${selectedTeam.name.replace(/[^a-z0-9]/gi, '_')}` : "_Overview";
-      doc.save(`Teams_${tournament?.name.replace(/[^a-z0-9]/gi, '_') || "Tournament"}${suffix}_${id}.pdf`);
+      const suffix = selectedTeam
+        ? `_${selectedTeam.name.replace(/[^a-z0-9]/gi, "_")}`
+        : "_Overview";
+      doc.save(
+        `Teams_${tournament?.name.replace(/[^a-z0-9]/gi, "_") || "Tournament"}${suffix}_${id}.pdf`
+      );
     }
   };
 
@@ -380,21 +561,55 @@ const savePDF = async () => {
   };
 
   if (loading) return <div className={styles.loading}>Loading Team Data...</div>;
-  if (teamStats.length === 0) return (
-    <div className={styles.container}>
-      <h2>No Teams Found</h2>
-      <button onClick={() => navigate(`/tournaments/${id}/entry`)} className={styles.backButton}>
-        Go to Entry Page
-      </button>
-    </div>
-  );
+
+  if (teamStats.length === 0) {
+    return (
+      <div className={styles.container}>
+        <div className={styles.buttonSection}>
+          <div className={styles.pdfButtonWrapper}>
+            <button
+              type="button"
+              onClick={() => setShowAddTeamEntriesModal(true)}
+              className={styles.pdfButton}
+            >
+              Add Team Entries
+            </button>
+          </div>
+        </div>
+
+        <h2>No Teams Found</h2>
+        <button onClick={() => navigate(`/tournaments/${id}/entry`)} className={styles.backButton}>
+          Go to Entry Page
+        </button>
+
+        <AddTeamEntriesModal
+          show={showAddTeamEntriesModal}
+          onClose={() => setShowAddTeamEntriesModal(false)}
+          onSubmit={handleTeamEntriesSubmit}
+          tournamentData={tournament}
+          visibleColumns={entryVisibleColumns}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className={styles.container}>
       <div className={styles.buttonSection}>
         <div className={styles.pdfButtonWrapper}>
-          <button onClick={printPDF} className={styles.printButton}>Print</button>
-          <button onClick={savePDF} className={styles.pdfButton}>Save PDF</button>
+          <button onClick={printPDF} className={styles.printButton}>
+            Print
+          </button>
+          <button onClick={savePDF} className={styles.pdfButton}>
+            Save PDF
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowAddTeamEntriesModal(true)}
+            className={styles.pdfButton}
+          >
+            Add Team Entries
+          </button>
         </div>
       </div>
 
@@ -404,7 +619,9 @@ const savePDF = async () => {
             {logoLeft && <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} />}
             <div className={styles.headerContent}>
               <h1 className={styles.tournamentName}>
-                {tournament?.tournamentName ? tournament.tournamentName.toUpperCase() : "TOURNAMENT TEAMS"}
+                {tournament?.tournamentName
+                  ? tournament.tournamentName.toUpperCase()
+                  : "TOURNAMENT TEAMS"}
               </h1>
               <p className={styles.federation}>{tournament?.federation || "N/A"}</p>
               <h2 className={styles.title}>TOTAL TEAMS - {totalTeams}</h2>
@@ -412,42 +629,62 @@ const savePDF = async () => {
             {logoRight && <img src={logoRight} alt="Logo Right" className={styles.logoRight} />}
           </div>
 
-          <div className={styles.tableWrapper} style={{ overflowX: 'auto' }}>
+          <div className={styles.tableWrapper} style={{ overflowX: "auto" }}>
             <table className={styles.table}>
               <thead>
                 <tr>
                   <th className={styles.colSN}>S.N.</th>
                   <th className={styles.colTeamName}>Team Name</th>
-                  <th 
-                    onClick={() => handleTeamsSort('totalPlayers')}
+                  <th
+                    onClick={() => handleTeamsSort("totalPlayers")}
                     className={`${styles.sortableHeader} ${styles.colTotalPlayers}`}
                   >
-                    Total<br />Players
-                    {teamsSortConfig.key === 'totalPlayers' && (
+                    Total
+                    <br />
+                    Players
+                    {teamsSortConfig.key === "totalPlayers" && (
                       <span className={styles.sortIndicator}>
-                        {teamsSortConfig.direction === 'desc' ? ' ▼' : ' ▲'}
+                        {teamsSortConfig.direction === "desc" ? " ▼" : " ▲"}
                       </span>
                     )}
                   </th>
                   <th className={styles.colGender}>Male</th>
                   <th className={styles.colGender}>Female</th>
-                  {visibleSubEventColumns.kyorugi && <th className={styles.colSubEvent}>Kyorugi</th>}
-                  {visibleSubEventColumns.fresher && <th className={styles.colSubEvent}>Fresher</th>}
-                  {visibleSubEventColumns.tagTeam && <th className={styles.colSubEvent}>Tag Team</th>}
-                  {visibleSubEventColumns.poomsae && <th className={styles.colSubEvent}>Poomsae</th>}
-                  {visibleSubEventColumns.individual && <th className={styles.colSubEvent}>Individual</th>}
+                  {visibleSubEventColumns.kyorugi && (
+                    <th className={styles.colSubEvent}>Kyorugi</th>
+                  )}
+                  {visibleSubEventColumns.fresher && (
+                    <th className={styles.colSubEvent}>Fresher</th>
+                  )}
+                  {visibleSubEventColumns.tagTeam && (
+                    <th className={styles.colSubEvent}>Tag Team</th>
+                  )}
+                  {visibleSubEventColumns.poomsae && (
+                    <th className={styles.colSubEvent}>Poomsae</th>
+                  )}
+                  {visibleSubEventColumns.individual && (
+                    <th className={styles.colSubEvent}>Individual</th>
+                  )}
                   {visibleSubEventColumns.pair && <th className={styles.colSubEvent}>Pair</th>}
-                  {visibleSubEventColumns.teamPoomsae && <th className={styles.colSubEvent}>Team Poomsae</th>}
-                  {hasFoodLodging && <th className={styles.colFoodLodging}>Food & Lodging<br />(Members)</th>}
+                  {visibleSubEventColumns.teamPoomsae && (
+                    <th className={styles.colSubEvent}>Team Poomsae</th>
+                  )}
+                  {hasFoodLodging && (
+                    <th className={styles.colFoodLodging}>
+                      Food & Lodging
+                      <br />
+                      (Members)
+                    </th>
+                  )}
                   {hasFees && <th className={styles.colTotalFee}>Total Fee</th>}
                   {hasFees && <th className={styles.colDueAmount}>Due Amount</th>}
                   {hasFees && <th className={styles.colPaymentMode}>Payment Mode</th>}
                   {hasFees && <th className={styles.colCashOnline}>Cash Payment</th>}
                   {hasFees && <th className={styles.colCashOnline}>Online Payment</th>}
                   {hasFees && <th className={styles.colTxnId}>Transaction ID</th>}
-                 {hasFees && <th className={styles.colPaymentStatus}>Payment Status</th>}
-                  
-                   <th className={styles.colCoachManager}>Coach</th>
+                  {hasFees && <th className={styles.colPaymentStatus}>Payment Status</th>}
+
+                  <th className={styles.colCoachManager}>Coach</th>
                   <th className={styles.colContact}>Contact</th>
                   <th className={styles.colCoachManager}>Manager</th>
                   <th className={styles.colContact}>Contact</th>
@@ -463,61 +700,80 @@ const savePDF = async () => {
                   const paidAmount = Number(pay.cash || 0) + Number(pay.online || 0);
                   const totalDue = getTotalFee(team);
 
-                  // Automatic Payment Status
                   const isPaid = paidAmount >= totalDue && paidAmount > 0;
                   const isPartial = paidAmount > 0 && paidAmount < totalDue;
-                  const isDue = paidAmount === 0;
 
-                  const statusCellClass = isPaid 
-                    ? styles.statusPaidCell 
-                    : isPartial 
-                      ? styles.statusPartialCell 
-                      : styles.statusDueCell;
-
-                  const dueCellClass = isPartial ? styles.dueAmountCell : "";
+                  const statusCellClass = isPaid
+                    ? styles.statusPaidCell
+                    : isPartial
+                    ? styles.statusPartialCell
+                    : styles.statusDueCell;
 
                   return (
-                    <tr key={index} onClick={() => handleTeamClick(team)} className={styles.clickableRow}>
+                    <tr
+                      key={index}
+                      onClick={() => handleTeamClick(team)}
+                      className={styles.clickableRow}
+                    >
                       <td className={styles.colSN}>{index + 1}</td>
                       <td className={styles.colTeamName}>{team.name}</td>
                       <td className={styles.colTotalPlayers}>{team.totalPlayers}</td>
                       <td className={styles.colGender}>{team.malePlayers}</td>
                       <td className={styles.colGender}>{team.femalePlayers}</td>
-                      {visibleSubEventColumns.kyorugi && <td className={styles.colSubEvent}>{team.kyorugi}</td>}
-                      {visibleSubEventColumns.fresher && <td className={styles.colSubEvent}>{team.fresher}</td>}
-                      {visibleSubEventColumns.tagTeam && <td className={styles.colSubEvent}>{team.tagTeam}</td>}
-                      {visibleSubEventColumns.poomsae && <td className={styles.colSubEvent}>{team.poomsae}</td>}
-                      {visibleSubEventColumns.individual && <td className={styles.colSubEvent}>{team.individual}</td>}
-                      {visibleSubEventColumns.pair && <td className={styles.colSubEvent}>{team.pair}</td>}
-                      {visibleSubEventColumns.teamPoomsae && <td className={styles.colSubEvent}>{team.teamPoomsae}</td>}
+                      {visibleSubEventColumns.kyorugi && (
+                        <td className={styles.colSubEvent}>{team.kyorugi}</td>
+                      )}
+                      {visibleSubEventColumns.fresher && (
+                        <td className={styles.colSubEvent}>{team.fresher}</td>
+                      )}
+                      {visibleSubEventColumns.tagTeam && (
+                        <td className={styles.colSubEvent}>{team.tagTeam}</td>
+                      )}
+                      {visibleSubEventColumns.poomsae && (
+                        <td className={styles.colSubEvent}>{team.poomsae}</td>
+                      )}
+                      {visibleSubEventColumns.individual && (
+                        <td className={styles.colSubEvent}>{team.individual}</td>
+                      )}
+                      {visibleSubEventColumns.pair && (
+                        <td className={styles.colSubEvent}>{team.pair}</td>
+                      )}
+                      {visibleSubEventColumns.teamPoomsae && (
+                        <td className={styles.colSubEvent}>{team.teamPoomsae}</td>
+                      )}
                       {hasFoodLodging && (
                         <td className={styles.colFoodLodging}>
                           <input
                             type="number"
                             min="0"
                             value={pay.foodMembers || 0}
-                            onChange={(e) => updatePayment(team.name, 'foodMembers', Number(e.target.value))}
+                            onChange={(e) =>
+                              updatePayment(team.name, "foodMembers", Number(e.target.value))
+                            }
                             onClick={(e) => e.stopPropagation()}
                             className={styles.paymentInput}
                           />
                         </td>
                       )}
-                     {hasFees && <td className={styles.colTotalFee}><strong>₹{totalDue}</strong></td>}
-                      
-                       {/* Automatic Payment Status */}
-                     
-                     {hasFees && (
-  <td className={`${styles.colDueAmount} ${!isPaid ? styles.dueAmountCell : ""}`}>
-    <strong>
-      {isPaid ? "-" : `₹${totalDue - paidAmount}`}
-    </strong>
-  </td>
-)}
+                      {hasFees && (
+                        <td className={styles.colTotalFee}>
+                          <strong>₹{totalDue}</strong>
+                        </td>
+                      )}
+                      {hasFees && (
+                        <td
+                          className={`${styles.colDueAmount} ${
+                            !isPaid ? styles.dueAmountCell : ""
+                          }`}
+                        >
+                          <strong>{isPaid ? "-" : `₹${totalDue - paidAmount}`}</strong>
+                        </td>
+                      )}
                       {hasFees && (
                         <td className={styles.colPaymentMode}>
                           <select
                             value={mode}
-                            onChange={(e) => updatePayment(team.name, 'mode', e.target.value)}
+                            onChange={(e) => updatePayment(team.name, "mode", e.target.value)}
                             onClick={(e) => e.stopPropagation()}
                             className={styles.paymentInput}
                           >
@@ -533,12 +789,14 @@ const savePDF = async () => {
                             <input
                               type="number"
                               value={pay.cash || ""}
-                              onChange={(e) => updatePayment(team.name, 'cash', e.target.value)}
+                              onChange={(e) => updatePayment(team.name, "cash", e.target.value)}
                               onClick={(e) => e.stopPropagation()}
                               placeholder="Cash"
                               className={styles.paymentInput}
                             />
-                          ) : "-"}
+                          ) : (
+                            "-"
+                          )}
                         </td>
                       )}
                       {hasFees && (
@@ -547,12 +805,16 @@ const savePDF = async () => {
                             <input
                               type="number"
                               value={pay.online || ""}
-                              onChange={(e) => updatePayment(team.name, 'online', e.target.value)}
+                              onChange={(e) =>
+                                updatePayment(team.name, "online", e.target.value)
+                              }
                               onClick={(e) => e.stopPropagation()}
                               placeholder="Online"
                               className={styles.paymentInput}
                             />
-                          ) : "-"}
+                          ) : (
+                            "-"
+                          )}
                         </td>
                       )}
                       {hasFees && (
@@ -561,22 +823,22 @@ const savePDF = async () => {
                             <input
                               type="text"
                               value={pay.txnId || ""}
-                              onChange={(e) => updatePayment(team.name, 'txnId', e.target.value)}
+                              onChange={(e) => updatePayment(team.name, "txnId", e.target.value)}
                               onClick={(e) => e.stopPropagation()}
                               placeholder="Txn ID"
                               className={styles.paymentInput}
                             />
-                          ) : "-"}
+                          ) : (
+                            "-"
+                          )}
                         </td>
                       )}
                       {hasFees && (
                         <td className={`${styles.colPaymentStatus} ${statusCellClass}`}>
-                          <strong>
-                            {isPaid ? "Paid" : isPartial ? "Partial Paid" : "Due"}
-                          </strong>
+                          <strong>{isPaid ? "Paid" : isPartial ? "Partial Paid" : "Due"}</strong>
                         </td>
                       )}
-                       <td className={styles.colCoachManager}>{team.coach || "-"}</td>
+                      <td className={styles.colCoachManager}>{team.coach || "-"}</td>
                       <td className={styles.colContact}>{team.coachContact || "-"}</td>
                       <td className={styles.colCoachManager}>{team.manager || "-"}</td>
                       <td className={styles.colContact}>{team.managerContact || "-"}</td>
@@ -588,7 +850,6 @@ const savePDF = async () => {
           </div>
         </div>
       ) : (
-        /* Selected Team Players Page */
         <div>
           <button onClick={handleBackToTeams} className={styles.backButton}>
             ← Back to Teams List
@@ -598,23 +859,22 @@ const savePDF = async () => {
             <div className={styles.header}>
               {logoLeft && <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} />}
               <div className={styles.headerContent}>
-               <h1 className={styles.tournamentName}>
-  {tournament?.tournamentName ? tournament.tournamentName.toUpperCase() : "TOURNAMENT TEAMS"}
-</h1>
-               <p className={styles.federation}>{tournament?.federation || "N/A"}</p>
+                <h1 className={styles.tournamentName}>
+                  {tournament?.tournamentName
+                    ? tournament.tournamentName.toUpperCase()
+                    : "TOURNAMENT TEAMS"}
+                </h1>
+                <p className={styles.federation}>{tournament?.federation || "N/A"}</p>
                 <h2 className={styles.title}>TEAM - {selectedTeam.name.toUpperCase()}</h2>
               </div>
               {logoRight && <img src={logoRight} alt="Logo Right" className={styles.logoRight} />}
             </div>
 
-           <h3 className={styles.playersListHeading}>
-  Players List
-</h3>
-<p className={styles.playersSummary}>
-  Total Players: {selectedTeam.totalPlayers} | 
-  Male: {selectedTeam.malePlayers} | 
-  Female: {selectedTeam.femalePlayers}
-</p>
+            <h3 className={styles.playersListHeading}>Players List</h3>
+            <p className={styles.playersSummary}>
+              Total Players: {selectedTeam.totalPlayers} | Male: {selectedTeam.malePlayers} | Female:{" "}
+              {selectedTeam.femalePlayers}
+            </p>
 
             <div className={styles.tableWrapper}>
               <table className={styles.table}>
@@ -669,6 +929,14 @@ const savePDF = async () => {
           </div>
         </div>
       )}
+
+      <AddTeamEntriesModal
+        show={showAddTeamEntriesModal}
+        onClose={() => setShowAddTeamEntriesModal(false)}
+        onSubmit={handleTeamEntriesSubmit}
+        tournamentData={tournament}
+        visibleColumns={entryVisibleColumns}
+      />
     </div>
   );
 };

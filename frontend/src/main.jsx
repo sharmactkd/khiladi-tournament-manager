@@ -4,7 +4,10 @@ import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
-import store, { persistor } from './store'; // ← Import both store and persistor
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
+
+import store, { persistor } from './store';
 import App from './App.jsx';
 import { AuthProvider } from './context/AuthContext';
 import './index.css';
@@ -16,6 +19,16 @@ ReactDOM.createRoot(document.getElementById('root')).render(
         <BrowserRouter>
           <AuthProvider>
             <App />
+            <ToastContainer
+              position="top-right"
+              autoClose={2500}
+              hideProgressBar={false}
+              newestOnTop={false}
+              closeOnClick
+              pauseOnHover
+              draggable
+              theme="colored"
+            />
           </AuthProvider>
         </BrowserRouter>
       </PersistGate>

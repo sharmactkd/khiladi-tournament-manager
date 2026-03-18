@@ -1225,3 +1225,21 @@
   background-color: rgba(255, 240, 240, 0.8) !important;
 }
 
+.sheetSection select {
+  border: 1px solid #cf0006;
+  border-radius: 6px;
+  padding: 10px 12px;
+  background: #fff;
+  cursor: pointer;
+  outline: none;
+  min-width: 220px;
+}
+
+.sheetSection select:focus {
+  border-color: #a30005;
+  
+}
+
+.sheetSection select:hover {
+  border-color: #b30008;
+}

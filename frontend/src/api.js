@@ -21,10 +21,19 @@ const API_ROOT =
 
 const API_URL = API_ROOT.endsWith("/api") ? API_ROOT : `${API_ROOT}/api`;
 
+const isImageAnalyzeRequest = (configOrUrl) => {
+  const value =
+    typeof configOrUrl === "string"
+      ? configOrUrl
+      : configOrUrl?.url || "";
+
+  return String(value).includes("/import/image/analyze");
+};
+
 // Create axios instance
 const api = axios.create({
   baseURL: API_URL,
-  withCredentials: true, // refresh token cookie + visitor cookies
+  withCredentials: true,
   timeout: 90000,
 });
 
@@ -76,7 +85,6 @@ api.interceptors.response.use(
           return api(originalRequest);
         }
 
-        // Minimal clear (do not wipe everything)
         localStorage.removeItem("authToken");
         localStorage.removeItem("user");
         window.location.href = "/login";
@@ -86,7 +94,10 @@ api.interceptors.response.use(
 
     if (error.response?.status === 429) {
       console.warn("Rate limited (429)", error.response.data);
-      alert("Too many requests. Please slow down and try again in a minute.");
+
+      if (!isImageAnalyzeRequest(originalRequest)) {
+        alert("Too many requests. Please slow down and try again in a minute.");
+      }
     }
 
     return Promise.reject(error);
@@ -96,7 +107,15 @@ api.interceptors.response.use(
 // Helper for API calls with clean error handling
 const apiCall = async (method, url, data = null, config = {}) => {
   try {
-    const response = await api[method.toLowerCase()](url, data, config);
+    const normalizedMethod = method.toLowerCase();
+
+    let response;
+    if (normalizedMethod === "get" || normalizedMethod === "delete") {
+      response = await api[normalizedMethod](url, config);
+    } else {
+      response = await api[normalizedMethod](url, data, config);
+    }
+
     return response.data;
   } catch (error) {
     const status = error.response?.status;
@@ -145,8 +164,16 @@ export const getEntries = (tournamentId) => apiCall("get", `/tournaments/${tourn
 export const saveEntries = (tournamentId, payload) =>
   apiCall("post", `/tournaments/${tournamentId}/entries`, payload);
 
+// Image import APIs
+export const analyzeImageImport = (formData) =>
+  apiCall("post", "/import/image/analyze", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
+export const confirmImageImport = (payload) =>
+  apiCall("post", "/import/image/confirm", payload);
+
 // ✅ Visitor counter (public)
 export const getVisitorCount = () => apiCall("get", "/visitor");
 
 export default api;
-

@@ -1847,7 +1847,7 @@ textarea {
 }
 
 .openCategoryHint::before {
-  content: "💡";
+  content: "";
   font-size: 28px;
   position: absolute;
   left: 16px;

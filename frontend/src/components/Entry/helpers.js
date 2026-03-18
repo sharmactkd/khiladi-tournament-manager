@@ -1,5 +1,7 @@
 // src/components/Entry/helpers.js
 
+import { WT_WEIGHTS, SGFI_WEIGHTS } from '../TournamentForm/constants';
+
 /**
  * Converts Excel serial date to DD-MM-YYYY format
  * @param {number} serial - Excel serial date number
@@ -105,6 +107,73 @@ export const validateContactNumber = (digits) => {
 };
 
 /**
+ * Normalize gender value
+ * @param {string} gender
+ * @returns {string} 'Male' | 'Female' | ''
+ */
+const normalizeGender = (gender = '') => {
+  const g = String(gender).trim().toLowerCase();
+
+  if (['male', 'm', 'boy', 'boys'].includes(g)) return 'Male';
+  if (['female', 'f', 'girl', 'girls'].includes(g)) return 'Female';
+
+  return '';
+};
+
+/**
+ * Parse DOB safely from DD-MM-YYYY format
+ * @param {string} dob
+ * @returns {Date|null}
+ */
+const parseDobToDate = (dob) => {
+  if (!dob || typeof dob !== 'string') return null;
+
+  const parts = dob.split('-');
+  if (parts.length !== 3) return null;
+
+  let [day, month, year] = parts.map(Number);
+  if ([day, month, year].some((num) => Number.isNaN(num))) return null;
+
+  if (year < 100) year += year < 50 ? 2000 : 1900;
+
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return null;
+
+  if (
+    date.getFullYear() !== year ||
+    date.getMonth() !== month - 1 ||
+    date.getDate() !== day
+  ) {
+    return null;
+  }
+
+  return date;
+};
+
+/**
+ * Returns reference year for age calculation
+ * Uses tournament date first so categories stay tied to tournament year
+ * @param {Object} tournamentData
+ * @returns {number}
+ */
+const getReferenceYear = (tournamentData) => {
+  const tournamentDate =
+    tournamentData?.dateFrom ||
+    tournamentData?.startDate ||
+    tournamentData?.tournamentDate ||
+    null;
+
+  if (tournamentDate) {
+    const parsed = new Date(tournamentDate);
+    if (!Number.isNaN(parsed.getTime())) {
+      return parsed.getFullYear();
+    }
+  }
+
+  return new Date().getFullYear();
+};
+
+/**
  * Determines age category based on DOB and tournament data
  * @param {string} dob - Date of birth in DD-MM-YYYY
  * @param {Object} tournamentData - Tournament configuration
@@ -113,12 +182,12 @@ export const validateContactNumber = (digits) => {
 export const getAgeCategory = (dob, tournamentData) => {
   if (!dob || !tournamentData) return '';
 
-  const currentYear = new Date().getFullYear();
-  const birthDate = new Date(dob.split('-').reverse().join('-'));
-  if (isNaN(birthDate.getTime())) return 'Not Eligible';
+  const birthDate = parseDobToDate(dob);
+  if (!birthDate) return 'Not Eligible';
 
+  const referenceYear = getReferenceYear(tournamentData);
   const birthYear = birthDate.getFullYear();
-  const age = currentYear - birthYear;
+  const age = referenceYear - birthYear;
 
   const allCategories = [
     ...(tournamentData.ageCategories?.open || []),
@@ -140,18 +209,266 @@ export const getAgeCategory = (dob, tournamentData) => {
   };
 
   const matches = [];
+
   allCategories.forEach((category) => {
     const criteria = ageCriteria.WT[category] || ageCriteria.SGFI[category];
-    if (criteria && (criteria.min === undefined || age >= criteria.min) && (criteria.max === undefined || age <= criteria.max)) {
-      matches.push({ category, max: criteria.max || Infinity });
+
+    if (
+      criteria &&
+      (criteria.min === undefined || age >= criteria.min) &&
+      (criteria.max === undefined || age <= criteria.max)
+    ) {
+      matches.push({
+        category,
+        max: criteria.max ?? Infinity,
+        min: criteria.min ?? -Infinity,
+      });
     }
   });
 
   if (matches.length === 0) return 'Not Eligible';
 
-  // Most restrictive (lowest max age) wins
-  const bestMatch = matches.reduce((best, curr) => (curr.max < best.max ? curr : best));
+  // Most restrictive category wins:
+  // 1) lower max age first
+  // 2) if same max, higher min first
+  const bestMatch = matches.reduce((best, curr) => {
+    if (curr.max < best.max) return curr;
+    if (curr.max === best.max && curr.min > best.min) return curr;
+    return best;
+  });
+
   return bestMatch.category;
+};
+
+/**
+ * Clean numeric weight
+ * @param {string|number} weight
+ * @returns {number}
+ */
+const normalizeWeightNumber = (weight) => {
+  if (weight === null || weight === undefined || weight === '') return NaN;
+  const clean = String(weight).replace(/[^0-9.]/g, '');
+  return parseFloat(clean);
+};
+
+/**
+ * Extract category label from custom row/string
+ * @param {string|Object} item
+ * @returns {string}
+ */
+const getCategoryLabelFromItem = (item) => {
+  if (typeof item === 'string') return item.trim();
+  if (item && typeof item === 'object') {
+    if (typeof item.category === 'string') return item.category.trim();
+    if (typeof item.name === 'string') return item.name.trim();
+    if (typeof item.label === 'string') return item.label.trim();
+  }
+  return '';
+};
+
+/**
+ * Parse one weight label into range
+ * Supports:
+ * - Under 54kg
+ * - Under - 54 KG
+ * - 58kg
+ * - 58 KG
+ * - Over 87kg
+ * - 87+ KG
+ * - 148cm (33-45kg)
+ * - Over 180cm (52-80kg)
+ * - Under 54kg (Over 50kg)
+ */
+const parseWeightCategory = (label) => {
+  if (!label) return null;
+
+  const raw = String(label).trim();
+  const lower = raw.toLowerCase();
+
+  // Handle bracket range first: 148cm (33-45kg)
+  const bracketRangeMatch = lower.match(/\((\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*kg\)/i);
+  if (bracketRangeMatch) {
+    const min = parseFloat(bracketRangeMatch[1]);
+    const max = parseFloat(bracketRangeMatch[2]);
+
+    return {
+      label: raw,
+      min,
+      max,
+      includeMin: true,
+      includeMax: true,
+    };
+  }
+
+  // Handle Under 54kg (Over 50kg)
+  const underOverConditionMatch = lower.match(
+    /under\s*-?\s*(\d+(?:\.\d+)?)\s*kg\s*\(\s*over\s*(\d+(?:\.\d+)?)\s*kg\s*\)/i
+  );
+  if (underOverConditionMatch) {
+    return {
+      label: raw,
+      min: parseFloat(underOverConditionMatch[2]),
+      max: parseFloat(underOverConditionMatch[1]),
+      includeMin: false,
+      includeMax: true,
+    };
+  }
+
+  // Under 54kg / Under - 54 KG
+  const underMatch = lower.match(/under\s*-?\s*(\d+(?:\.\d+)?)\s*kg/i);
+  if (underMatch) {
+    return {
+      label: raw,
+      min: -Infinity,
+      max: parseFloat(underMatch[1]),
+      includeMin: false,
+      includeMax: true,
+    };
+  }
+
+  // Over 87kg
+  const overMatch = lower.match(/over\s*-?\s*(\d+(?:\.\d+)?)\s*kg/i);
+  if (overMatch) {
+    return {
+      label: raw,
+      min: parseFloat(overMatch[1]),
+      max: Infinity,
+      includeMin: false,
+      includeMax: true,
+    };
+  }
+
+  // 87+ KG
+  const plusMatch = lower.match(/(\d+(?:\.\d+)?)\s*\+\s*kg/i);
+  if (plusMatch) {
+    return {
+      label: raw,
+      min: parseFloat(plusMatch[1]),
+      max: Infinity,
+      includeMin: true,
+      includeMax: true,
+    };
+  }
+
+  // Exact-like upper-bound style: 58kg / 58 KG
+  const exactMatch = lower.match(/^(\d+(?:\.\d+)?)\s*kg$/i);
+  if (exactMatch) {
+    return {
+      label: raw,
+      min: -Infinity,
+      max: parseFloat(exactMatch[1]),
+      includeMin: false,
+      includeMax: true,
+    };
+  }
+
+  return null;
+};
+
+/**
+ * Check if weight belongs to parsed range
+ * @param {number} weightNum
+ * @param {Object} parsed
+ * @returns {boolean}
+ */
+const isWeightInCategory = (weightNum, parsed) => {
+  if (!parsed || Number.isNaN(weightNum)) return false;
+
+  const minOk = parsed.includeMin ? weightNum >= parsed.min : weightNum > parsed.min;
+  const maxOk = parsed.includeMax ? weightNum <= parsed.max : weightNum < parsed.max;
+
+  return minOk && maxOk;
+};
+
+/**
+ * Returns allowed genders for specific age category from tournament config
+ * @param {Object} tournamentData
+ * @param {string} ageCategory
+ * @returns {string[]}
+ */
+const getAllowedGendersForAgeCategory = (tournamentData, ageCategory) => {
+  const fromOpen = tournamentData?.ageGender?.open?.[ageCategory];
+  const fromOfficial = tournamentData?.ageGender?.official?.[ageCategory];
+
+  if (Array.isArray(fromOpen) && fromOpen.length > 0) return fromOpen;
+  if (Array.isArray(fromOfficial) && fromOfficial.length > 0) return fromOfficial;
+
+  return ['Male', 'Female'];
+};
+
+/**
+ * Returns standard WT/SGFI/custom labels for requested age and gender
+ * @param {string} gender
+ * @param {string} ageCategory
+ * @param {Object} tournamentData
+ * @returns {string[]}
+ */
+const getTournamentWeightLabels = (gender, ageCategory, tournamentData) => {
+  if (!gender || !ageCategory || !tournamentData?.weightCategories) return [];
+
+  const normalizedGender = normalizeGender(gender);
+  if (!normalizedGender) return [];
+
+  const allSelectedAgeCategories = [
+    ...(tournamentData.ageCategories?.open || []),
+    ...(tournamentData.ageCategories?.official || []),
+  ];
+
+  if (!allSelectedAgeCategories.includes(ageCategory)) return [];
+
+  const allowedGenders = getAllowedGendersForAgeCategory(tournamentData, ageCategory);
+  if (
+    Array.isArray(allowedGenders) &&
+    allowedGenders.length > 0 &&
+    !allowedGenders.includes(normalizedGender)
+  ) {
+    return [];
+  }
+
+  const weightType = tournamentData.weightCategories?.type;
+
+  // CUSTOM
+  if (weightType === 'custom') {
+    const custom = tournamentData.weightCategories?.custom || {};
+    const ageBlock = custom?.[ageCategory];
+
+    // New structure: { Senior: { Male: [...], Female: [...] } }
+    if (ageBlock && typeof ageBlock === 'object' && !Array.isArray(ageBlock)) {
+      return (ageBlock?.[normalizedGender] || [])
+        .map(getCategoryLabelFromItem)
+        .filter(Boolean);
+    }
+
+    // Legacy structure: { Senior: [...] }
+    if (Array.isArray(ageBlock)) {
+      return ageBlock.map(getCategoryLabelFromItem).filter(Boolean);
+    }
+
+    return [];
+  }
+
+  // WT
+  if (weightType === 'WT') {
+    if (ageCategory === 'Cadet') {
+      const cadetMode = tournamentData?.cadetCategoryType === 'height' ? 'height' : 'weight';
+      const cadetList = WT_WEIGHTS?.Cadet?.[cadetMode]?.[normalizedGender] || [];
+      return Array.isArray(cadetList) ? cadetList : [];
+    }
+
+    const wtList = WT_WEIGHTS?.[ageCategory]?.[normalizedGender] || [];
+    return Array.isArray(wtList) ? wtList : [];
+  }
+
+  // SGFI
+  if (weightType === 'SGFI') {
+    const sgfiList = SGFI_WEIGHTS?.[ageCategory]?.[normalizedGender] || [];
+    return Array.isArray(sgfiList) ? sgfiList : [];
+  }
+
+  // Fallback for older selected structure if it exists
+  const fallbackGenderKey = normalizedGender.toLowerCase();
+  const fallbackSelected = tournamentData.weightCategories?.selected?.[fallbackGenderKey] || [];
+  return Array.isArray(fallbackSelected) ? fallbackSelected.map(getCategoryLabelFromItem).filter(Boolean) : [];
 };
 
 /**
@@ -162,57 +479,30 @@ export const getAgeCategory = (dob, tournamentData) => {
  * @param {Object} tournamentData - Tournament configuration
  * @returns {string} Weight category or 'Not Eligible'
  */
-
-
 export const getWeightCategory = (gender, ageCategory, weight, tournamentData) => {
-  if (!gender || !ageCategory || !weight || !tournamentData || ageCategory === 'Not Eligible') {
-    return '';
-  }
+  if (!gender || !ageCategory || !weight || !tournamentData) return '';
+  if (ageCategory === 'Not Eligible') return 'Not Eligible';
 
-  // Clean weight: remove non-digits except decimal
-  const cleanWeight = String(weight).replace(/[^0-9.]/g, '');
-  const weightNum = parseFloat(cleanWeight);
-  if (isNaN(weightNum)) return 'Not Eligible';
+  const normalizedGender = normalizeGender(gender);
+  const weightNum = normalizeWeightNumber(weight);
 
-  const weightCategories = tournamentData.weightCategories?.selected || {};
-  const genderKey = gender.toLowerCase() === 'male' ? 'male' : 'female';
-  const categories = weightCategories[genderKey] || [];
+  if (!normalizedGender || Number.isNaN(weightNum)) return 'Not Eligible';
 
-  if (!Array.isArray(categories) || categories.length === 0) return 'Not Eligible';
+  const labels = getTournamentWeightLabels(normalizedGender, ageCategory, tournamentData);
+  if (!Array.isArray(labels) || labels.length === 0) return 'Not Eligible';
 
-  // Parse range from category string
-  const parseWeightRange = (categoryStr) => {
-    const match = categoryStr.match(/(Under|Over|\d+\+)\s*-?\s*(\d*)\s*KG\s*(?:\((.*?)\))?/i);
-    if (!match) return null;
+  const parsedCategories = labels
+    .map((label) => ({
+      original: label,
+      parsed: parseWeightCategory(label),
+    }))
+    .filter((item) => item.parsed);
 
-    let type = match[1];
-    let kg = parseFloat(match[2] || 0);
-    let condition = match[3] || '';
+  if (parsedCategories.length === 0) return 'Not Eligible';
 
-    let min = -Infinity;
-    let max = Infinity;
+  const matched = parsedCategories.find((item) => isWeightInCategory(weightNum, item.parsed));
 
-    if (type.includes('+')) {
-      min = kg;
-      type = 'Over';
-    } else if (type === 'Under') {
-      max = kg;
-      if (condition.toLowerCase().includes('over')) {
-        const overMatch = condition.match(/Over\s*(\d+)kg/i);
-        min = overMatch ? parseFloat(overMatch[1]) : -Infinity;
-      }
-    } else if (type === 'Over') {
-      min = kg;
-    }
-
-    const name = type === 'Over' && kg > 0 ? `${kg}+ KG` : `${type} - ${kg} KG`;
-    return { name, min, max };
-  };
-
-  const parsed = categories.map(parseWeightRange).filter(Boolean);
-
-  const match = parsed.find(cat => weightNum > cat.min && weightNum <= cat.max);
-  return match ? match.name : 'Not Eligible';
+  return matched ? matched.original : 'Not Eligible';
 };
 
 /**
@@ -223,11 +513,10 @@ export const getWeightCategory = (gender, ageCategory, weight, tournamentData) =
 export const getPlayerCounts = (data = []) => {
   const counts = {};
 
-  data.forEach(row => {
+  data.forEach((row) => {
     const { team, gender, ageCategory, weightCategory } = row || {};
-    
-    if (!team || !gender || !ageCategory || !weightCategory || 
-        weightCategory === 'Not Eligible') {
+
+    if (!team || !gender || !ageCategory || !weightCategory || weightCategory === 'Not Eligible') {
       return;
     }
 
@@ -259,8 +548,7 @@ export const isKyorugi = (subEvent) => {
 export const shouldHighlightRow = (row, data, tournamentData) => {
   const { team, gender, ageCategory, weightCategory } = row.original || {};
 
-  if (!team || !gender || !ageCategory || !weightCategory || 
-      weightCategory === 'Not Eligible') {
+  if (!team || !gender || !ageCategory || !weightCategory || weightCategory === 'Not Eligible') {
     return false;
   }
 
@@ -270,12 +558,13 @@ export const shouldHighlightRow = (row, data, tournamentData) => {
   const playerLimit = tournamentData?.playerLimit;
   if (!playerLimit) return false;
 
-  const count = data.filter(r =>
-    r.team === team &&
-    r.gender === gender &&
-    r.ageCategory === ageCategory &&
-    r.weightCategory === weightCategory &&
-    r.weightCategory !== 'Not Eligible'
+  const count = data.filter(
+    (r) =>
+      r.team === team &&
+      r.gender === gender &&
+      r.ageCategory === ageCategory &&
+      r.weightCategory === weightCategory &&
+      r.weightCategory !== 'Not Eligible'
   ).length;
 
   return count > playerLimit;

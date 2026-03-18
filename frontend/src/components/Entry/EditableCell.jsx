@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { toast } from 'react-toastify';
 import ActionsCell from './ActionsCell';
 import {
   shouldHighlightRow,
@@ -44,6 +45,9 @@ const EditableCell = ({ getValue, row, column, table }) => {
   const commitLockRef = useRef(false);
   const lastCommitKeyRef = useRef('');
 
+  // Prevent duplicate toast spam for same invalid attempt
+  const lastToastKeyRef = useRef('');
+
   const {
     updateData,
     updateColumnWidth,
@@ -58,12 +62,33 @@ const EditableCell = ({ getValue, row, column, table }) => {
     editingCell?.rowIndex === row.index && editingCell?.colIndex === column.getIndex();
   const highlightRow = shouldHighlightRow(row, data, tournamentData);
 
+  const showValidationToast = useCallback((message, uniqueKey = '') => {
+    const normalizedMessage = String(message || '').trim();
+    if (!normalizedMessage) return;
+
+    const finalKey = uniqueKey || `${row.index}-${column.id}-${normalizedMessage}`;
+    if (lastToastKeyRef.current === finalKey) return;
+
+    lastToastKeyRef.current = finalKey;
+
+    toast.error(normalizedMessage, {
+      toastId: finalKey,
+      position: 'top-right',
+      autoClose: 2500,
+      hideProgressBar: false,
+      closeOnClick: true,
+      pauseOnHover: true,
+      draggable: true,
+    });
+  }, [row.index, column.id]);
+
   // Sync value only when NOT editing
   useEffect(() => {
     if (!isEditing) {
       const formatted = column.id === 'dob' ? formatDOB(rawInitial) : rawInitial;
       setValue(formatted);
       setErrorMessage('');
+      lastToastKeyRef.current = '';
 
       if (['coachContact', 'managerContact'].includes(column.id)) {
         const digits = String(formatted || '').replace(/[^0-9]/g, '');
@@ -84,10 +109,6 @@ const EditableCell = ({ getValue, row, column, table }) => {
     (e) => {
       if (['actions', 'sr', 'title'].includes(column.id)) return;
 
-      // IMPORTANT (Issue #1 fix):
-      // When another cell is editing, we must NOT block outside clicks/focus transitions.
-      // preventDefault on pointerdown can stop focus from moving and make the UI feel "unclickable".
-      // So: only preventDefault for click/dblclick; for pointerdown just stopPropagation.
       if (e?.type === 'pointerdown' || e?.type === 'mousedown' || e?.type === 'touchstart') {
         e.stopPropagation();
       } else {
@@ -95,7 +116,6 @@ const EditableCell = ({ getValue, row, column, table }) => {
         e.stopPropagation();
       }
 
-      // Defer to next frame so any pending commit-from-outside-click can run first.
       requestAnimationFrame(() => {
         setEditingCell?.({ rowIndex: row.index, colIndex: column.getIndex() });
       });
@@ -108,15 +128,17 @@ const EditableCell = ({ getValue, row, column, table }) => {
     (commitValue = value) => {
       let finalValue = String(commitValue ?? '').trim();
       let isValid = true;
+      let validationMessage = '';
 
-      // Clear previous error synchronously for this commit attempt
       setErrorMessage('');
 
       if (column.id === 'dob') {
         if (finalValue) {
           const validation = validateDOB(finalValue);
           if (!validation.isValid) {
+            validationMessage = validation.message;
             setErrorMessage(validation.message);
+            showValidationToast(validation.message, `${row.index}-${column.id}-${finalValue}-${validation.message}`);
             isValid = false;
           } else {
             finalValue = validation.formatted;
@@ -128,26 +150,35 @@ const EditableCell = ({ getValue, row, column, table }) => {
                 ? getWeightCategory(row.original.gender, ageCat, row.original.weight, tournamentData)
                 : '';
             updateData?.(row.index, 'weightCategory', wtCat);
+
+            lastToastKeyRef.current = '';
           }
         } else {
           updateData?.(row.index, 'ageCategory', '');
           updateData?.(row.index, 'weightCategory', '');
+          lastToastKeyRef.current = '';
         }
       } else if (['coachContact', 'managerContact'].includes(column.id)) {
         const digits = finalValue.replace(/[^0-9]/g, '');
         const validation = validateContactNumber(digits);
         if (!validation.isValid) {
+          validationMessage = validation.message;
           setErrorMessage(validation.message);
+          setIsContactValid(false);
+          showValidationToast(validation.message, `${row.index}-${column.id}-${digits}-${validation.message}`);
           isValid = false;
         } else {
           finalValue = validation.formatted;
           setIsContactValid(true);
+          lastToastKeyRef.current = '';
         }
       } else if (column.id === 'weight') {
         if (finalValue) {
           const num = Number(finalValue);
           if (isNaN(num) || num <= 0) {
-            setErrorMessage('Invalid weight: Must be a positive number');
+            validationMessage = 'Invalid weight: Must be a positive number';
+            setErrorMessage(validationMessage);
+            showValidationToast(validationMessage, `${row.index}-${column.id}-${finalValue}-${validationMessage}`);
             isValid = false;
           } else {
             const wtCat =
@@ -155,10 +186,14 @@ const EditableCell = ({ getValue, row, column, table }) => {
                 ? getWeightCategory(row.original.gender, row.original.ageCategory, num, tournamentData)
                 : 'Not Eligible';
             updateData?.(row.index, 'weightCategory', wtCat);
+            lastToastKeyRef.current = '';
           }
         } else {
           updateData?.(row.index, 'weightCategory', '');
+          lastToastKeyRef.current = '';
         }
+      } else {
+        lastToastKeyRef.current = '';
       }
 
       if (isValid) {
@@ -170,13 +205,13 @@ const EditableCell = ({ getValue, row, column, table }) => {
         return true;
       }
 
-      console.log('[COMMIT FAIL] Validation failed for', column.id);
+      console.log('[COMMIT FAIL] Validation failed for', column.id, validationMessage);
       return false;
     },
-    [value, column.id, updateData, updateColumnWidth, tournamentData, row]
+    [value, column.id, updateData, updateColumnWidth, tournamentData, row, showValidationToast]
   );
 
-  // Global click-outside commit (Issue #1 + virtualization-safe)
+  // Global click-outside commit
   useEffect(() => {
     if (!isEditing) return;
 
@@ -187,22 +222,18 @@ const EditableCell = ({ getValue, row, column, table }) => {
         const target = ev.target;
         const inputEl = inputRef.current;
 
-        // If click is inside this input, do nothing
         if (inputEl && (target === inputEl || inputEl.contains(target))) return;
 
-        // Only act if THIS cell is still the active editing cell
         const stillEditing =
           table.options.meta?.editingCell?.rowIndex === row.index &&
           table.options.meta?.editingCell?.colIndex === column.getIndex();
 
         if (!stillEditing) return;
 
-        // Avoid double-commit (pointerdown + blur)
         if (commitLockRef.current) return;
 
         const commitKey = `${row.index}:${column.id}:${String(value ?? '').trim()}`;
         if (lastCommitKeyRef.current === commitKey) {
-          // Already committed same value in this edit session
           commitLockRef.current = true;
           setEditingCell?.(null);
           return;
@@ -214,7 +245,6 @@ const EditableCell = ({ getValue, row, column, table }) => {
         const ok = validateAndCommit(currentValue);
 
         if (!ok) {
-          // Re-focus this cell if still mounted
           commitLockRef.current = false;
           if (inputRef.current) {
             inputRef.current.focus();
@@ -224,11 +254,8 @@ const EditableCell = ({ getValue, row, column, table }) => {
         }
 
         lastCommitKeyRef.current = commitKey;
-
-        // Exit editing so user can click anywhere immediately
         setEditingCell?.(null);
 
-        // Flush save if available (your code already calls this in blur too)
         const needsFlush = ['dob', 'weight', 'gender'].includes(column.id);
         if (needsFlush && window.debouncedSaveInstance && typeof window.debouncedSaveInstance.flush === 'function') {
           window.debouncedSaveInstance.flush();
@@ -238,7 +265,6 @@ const EditableCell = ({ getValue, row, column, table }) => {
       }
     };
 
-    // Capture phase ensures we run even if other handlers preventDefault/stopPropagation.
     document.addEventListener('pointerdown', handlePointerDownCapture, true);
     return () => {
       document.removeEventListener('pointerdown', handlePointerDownCapture, true);
@@ -330,6 +356,7 @@ const EditableCell = ({ getValue, row, column, table }) => {
       if (e.key === 'Escape') {
         setValue(initialValue);
         setErrorMessage('');
+        lastToastKeyRef.current = '';
         setEditingCell?.(null);
         return;
       }
@@ -368,6 +395,11 @@ const EditableCell = ({ getValue, row, column, table }) => {
 
       if (value.length > 0 && ['gender', 'event', 'subEvent', 'medal'].includes(column.id)) {
         return;
+      }
+
+      if (column.id === 'dob') {
+        setErrorMessage('');
+        lastToastKeyRef.current = '';
       }
 
       if (column.id === 'event') {
@@ -425,6 +457,13 @@ const EditableCell = ({ getValue, row, column, table }) => {
         }
       }
 
+      if (['coachContact', 'managerContact'].includes(column.id)) {
+        const digits = newValue.replace(/[^0-9]/g, '');
+        const result = formatContactNumberRealTime(digits);
+        newValue = result.formatted;
+        setIsContactValid(result.digitCount === 0 || result.digitCount >= 10);
+      }
+
       setValue(newValue);
       console.log('[CHANGE] Local value updated to:', newValue);
     },
@@ -436,7 +475,6 @@ const EditableCell = ({ getValue, row, column, table }) => {
     (e) => {
       console.log('[BLUR START] Editing cell:', isEditing, 'Current local value:', value);
 
-      // If outside-click already committed in capture, skip blur commit.
       if (commitLockRef.current) {
         console.log('[BLUR SKIP] Commit already handled by outside click handler');
         return;
@@ -444,7 +482,6 @@ const EditableCell = ({ getValue, row, column, table }) => {
 
       const currentValue = String(value ?? '').trim();
 
-      // Only commit if this cell is still considered editing
       if (!isEditing) {
         console.log('[BLUR SKIP] Not editing anymore');
         return;
@@ -461,7 +498,6 @@ const EditableCell = ({ getValue, row, column, table }) => {
 
       console.log('[BLUR COMMIT SUCCESS] Committed:', currentValue);
 
-      // Post-commit logic (same as before)
       if (column.id === 'event') {
         if (!currentValue) updateData?.(row.index, 'subEvent', '');
         updateData?.(row.index, 'event', currentValue);
@@ -563,7 +599,9 @@ const EditableCell = ({ getValue, row, column, table }) => {
         role="textbox"
         aria-invalid={!!errorMessage || (!isContactValid && ['coachContact', 'managerContact'].includes(column.id))}
       />
-      {errorMessage && <div className={styles.cellErrorTooltip}>{errorMessage}</div>}
+      {errorMessage && !['dob', 'coachContact', 'managerContact', 'weight'].includes(column.id) && (
+        <div className={styles.cellErrorTooltip}>{errorMessage}</div>
+      )}
     </div>
   );
 };

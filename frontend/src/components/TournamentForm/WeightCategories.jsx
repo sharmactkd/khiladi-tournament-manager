@@ -592,41 +592,50 @@ const Weights = ({ values, setFieldValue }) => {
         </>
       )}
 
-      {/* Custom Weight Categories (AGE + GENDER) */}
-     {values.weightCategories?.type === 'custom' && (
-  <div className={`${styles.fieldWrapper} ${styles.customWeightWrapper}`}>
+          {/* Custom Weight Categories (AGE + GENDER) */}
+      {values.weightCategories?.type === 'custom' && (
+        <div className={`${styles.fieldWrapper} ${styles.customWeightWrapper}`}>
           {/* Preset Controls - Server Based */}
           <div className={styles.presetControls}>
             <select
-              onChange={async (e) => {
-                const presetId = e.target.value;
-                if (!presetId) {
-                  e.target.value = "";
-                  return;
-                }
+             onChange={async (e) => {
+  const presetId = e.target.value;
+  if (!presetId) {
+    e.target.value = "";
+    return;
+  }
 
-                try {
-                  const res = await api.get(`/weight-presets/${presetId}`);
-                  const presetData = res.data?.data || res.data?.preset?.data || res.data;
+  const selectedPreset = presets.find((preset) => String(preset.id) === String(presetId));
 
-                  if (presetData && typeof presetData === "object") {
-                    // Normalize incoming preset to ensure age+gender structure
-                    const nextCustom = { ...(presetData || {}) };
-                    selectedAges.forEach((age) => {
-                      nextCustom[age] = normalizeAgeGenderCustom(nextCustom[age]);
-                    });
-                    setFieldValue("weightCategories.custom", nextCustom);
-                    alert("Preset loaded successfully!");
-                  } else {
-                    alert("Preset data not found");
-                  }
-                } catch (err) {
-                  console.error("Failed to load preset:", err);
-                  alert("Failed to load preset. Please try again.");
-                }
+  try {
+    const res = await api.get(`/weight-presets/${presetId}`);
+    const presetData = res.data?.data || res.data?.preset?.data || res.data;
 
-                e.target.value = "";
-              }}
+    if (presetData && typeof presetData === "object") {
+      // Normalize incoming preset to ensure age+gender structure
+      const nextCustom = { ...(presetData || {}) };
+      selectedAges.forEach((age) => {
+        nextCustom[age] = normalizeAgeGenderCustom(nextCustom[age]);
+      });
+
+      setFieldValue("weightCategories.custom", nextCustom);
+
+      // Show loaded preset name in input field
+      if (selectedPreset?.name) {
+        setPresetName(selectedPreset.name);
+      }
+
+      alert("Preset loaded successfully!");
+    } else {
+      alert("Preset data not found");
+    }
+  } catch (err) {
+    console.error("Failed to load preset:", err);
+    alert("Failed to load preset. Please try again.");
+  }
+
+  e.target.value = "";
+}}
               value=""
               disabled={presetLoading}
             >
@@ -678,6 +687,15 @@ const Weights = ({ values, setFieldValue }) => {
             >
               Save Preset
             </button>
+          </div>
+
+          {/* Single global hint - shown only once */}
+          <div className={styles.openCategoryHint}>
+            💡 <strong>To create "Over" (Open-Ended) category:</strong>
+            <br />
+            Simply leave the <strong>Max. Weight</strong> field blank in the last row;
+           
+            It will automatically become <strong>"Over Category"</strong> with description, Example "(Over 80kg)".
           </div>
 
           {/* Age-wise + Gender-wise Custom Tables */}
@@ -770,15 +788,6 @@ const Weights = ({ values, setFieldValue }) => {
                           })}
                         </tbody>
                       </table>
-                    </div>
-
-                    <div className={styles.openCategoryHint}>
-                      💡 <strong>To create "Over" (Open-Ended) category:</strong>
-                      <br />
-                      Simply leave the <strong>Max. Weight</strong> field blank in the last row.
-                      <br />
-                      It will automatically become <strong>"Over Category"</strong> with description, Example "(Over
-                      80kg)".
                     </div>
 
                     <button
@@ -874,15 +883,6 @@ const Weights = ({ values, setFieldValue }) => {
                           })}
                         </tbody>
                       </table>
-                    </div>
-
-                    <div className={styles.openCategoryHint}>
-                      💡 <strong>To create "Over" (Open-Ended) category:</strong>
-                      <br />
-                      Simply leave the <strong>Max. Weight</strong> field blank in the last row.
-                      <br />
-                      It will automatically become <strong>"Over Category"</strong> with description, Example "(Over
-                      80kg)".
                     </div>
 
                     <button

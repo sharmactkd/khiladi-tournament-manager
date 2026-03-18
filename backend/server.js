@@ -12,6 +12,7 @@ import tournamentRoutes from "./routes/tournamentRoutes.js";
 import entryRoutes from "./routes/entryRoutes.js";
 import weightPresetRoutes from "./routes/weightPresetRoutes.js";
 import visitorRoutes from "./routes/visitorRoutes.js";
+import importRoutes from "./routes/importRoutes.js";
 
 import logger, { logMiddleware } from "./utils/logger.js";
 import { generalRateLimiter, authRateLimiter } from "./middleware/rateLimiter.js";
@@ -41,7 +42,6 @@ app.use(
   })
 );
 
-// CORS
 // CORS
 const allowedOrigins = [
   "http://localhost:5173",
@@ -95,6 +95,7 @@ if (process.env.NODE_ENV === "production") {
   app.use("/api/tournaments", generalRateLimiter);
   app.use("/api/weight-presets", generalRateLimiter);
   app.use("/api/visitor", generalRateLimiter);
+  app.use("/api/import", generalRateLimiter);
   app.use(generalRateLimiter);
 }
 
@@ -130,6 +131,9 @@ app.use("/api/weight-presets", weightPresetRoutes);
 
 // ✅ Visitor counter (public)
 app.use("/api/visitor", visitorRoutes);
+
+// ✅ Image import routes
+app.use("/api/import", importRoutes);
 
 // Health check
 app.get("/health", (req, res) => {

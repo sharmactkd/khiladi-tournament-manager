@@ -1,7 +1,17 @@
 /* D:\Khiladi\frontend\src\App.css */
 
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
 /* Global Form Reset */
-input, button, textarea, select {
+input,
+button,
+textarea,
+select {
   appearance: none;
   -webkit-appearance: none;
   border-radius: 0;
@@ -11,9 +21,23 @@ input, button, textarea, select {
   box-shadow: none !important;
 }
 
+/* Sticky footer layout */
+.appLayout {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.mainContent {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
 /* Mobile Input Zoom Prevention */
 @media screen and (max-width: 767px) {
-  input, textarea {
+  input,
+  textarea {
     font-size: 16px !important;
   }
 }

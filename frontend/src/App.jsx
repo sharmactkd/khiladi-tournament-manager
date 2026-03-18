@@ -29,53 +29,57 @@ function App() {
   }, [isAuthenticated]);
 
   return (
-    <>
+    <div className="appLayout">
       <Header />
-      <Routes>
-        <Route path="/" element={<TournamentsPages />} /> <Route
-          path="/login"
-          element={!isAuthenticated ? <Login /> : <Navigate to="/" replace />}
-        />
-        <Route
-          path="/register"
-          element={!isAuthenticated ? <Register /> : <Navigate to="/" replace />}
-        />
-        <Route
-          path="/social-login"
-          element={!isAuthenticated ? <SocialLogin /> : <Navigate to="/" replace />}
-        />
-        <Route
-          path="/tournament/create"
-          element={
-            isAuthenticated ? <TournamentForm /> : <Navigate to="/login" replace />
-          }
-        />
-        <Route
-          path="/tournament-form"
-          element={
-            isAuthenticated ? <TournamentForm /> : <Navigate to="/login" replace />
-          }
-        />
-        <Route path="/tournaments" element={<TournamentsPages />} />
 
-        {/* Tournament-related routes wrapped in TournamentLayout */}
-        <Route path="/tournaments/:id" element={<TournamentLayout />}>
-          <Route index element={<TournamentDetails />} />
-          <Route path="entry" element={<Entry />} />
-          <Route path="tie-sheet" element={<TieSheet />} />
-          <Route path="tie-sheet-record" element={<TieSheetRecord />} />
-          <Route path="winner" element={<Winner />} />
-          <Route path="team-championship" element={<TeamChampionship />} />
-          <Route path="official" element={<Official />} />
-          <Route path="team" element={<Team />} />
-        </Route>
+      <main className="mainContent">
+        <Routes>
+          <Route path="/" element={<TournamentsPages />} />
+          <Route
+            path="/login"
+            element={!isAuthenticated ? <Login /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/register"
+            element={!isAuthenticated ? <Register /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/social-login"
+            element={!isAuthenticated ? <SocialLogin /> : <Navigate to="/" replace />}
+          />
+          <Route
+            path="/tournament/create"
+            element={
+              isAuthenticated ? <TournamentForm /> : <Navigate to="/login" replace />
+            }
+          />
+          <Route
+            path="/tournament-form"
+            element={
+              isAuthenticated ? <TournamentForm /> : <Navigate to="/login" replace />
+            }
+          />
+          <Route path="/tournaments" element={<TournamentsPages />} />
 
-        <Route path="/about" element={<About />} />
-        <Route path="/contact" element={<Contact />} />
-        <Route path="*" element={<h1>404 - Page Not Found</h1>} />
-      </Routes>
+          <Route path="/tournaments/:id" element={<TournamentLayout />}>
+            <Route index element={<TournamentDetails />} />
+            <Route path="entry" element={<Entry />} />
+            <Route path="tie-sheet" element={<TieSheet />} />
+            <Route path="tie-sheet-record" element={<TieSheetRecord />} />
+            <Route path="winner" element={<Winner />} />
+            <Route path="team-championship" element={<TeamChampionship />} />
+            <Route path="official" element={<Official />} />
+            <Route path="team" element={<Team />} />
+          </Route>
+
+          <Route path="/about" element={<About />} />
+          <Route path="/contact" element={<Contact />} />
+          <Route path="*" element={<h1>404 - Page Not Found</h1>} />
+        </Routes>
+      </main>
+
       <Footer />
-    </>
+    </div>
   );
 }
 

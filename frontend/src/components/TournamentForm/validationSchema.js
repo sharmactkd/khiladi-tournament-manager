@@ -1,5 +1,3 @@
-// src/components/TournamentForm/validationSchema.js
-
 import * as Yup from "yup";
 
 // Helpers (kept local + deterministic)
@@ -17,10 +15,21 @@ const toNumberOrNull = (v) => {
   return null;
 };
 
-// Validates a single custom row:
+const isRowCompletelyEmpty = (row) => {
+  if (!row || typeof row !== "object") return true;
+
+  const minEmpty = row.min === "" || row.min === null || row.min === undefined;
+  const maxEmpty = row.max === "" || row.max === null || row.max === undefined;
+  const categoryEmpty = !isNonEmptyString(row.category);
+  const descriptionEmpty = !isNonEmptyString(row.description);
+
+  return minEmpty && maxEmpty && categoryEmpty && descriptionEmpty;
+};
+
+// Validates a single meaningful custom row:
+// - completely blank placeholder rows are ignored by caller
 // - min must be present and >= 0
 // - max can be blank (open-ended). If provided, must be > min
-// - if max blank: ok (your UI uses this for "Over" category)
 const isValidCustomRow = (row) => {
   if (!row || typeof row !== "object") return false;
 
@@ -36,27 +45,36 @@ const isValidCustomRow = (row) => {
   return max > min;
 };
 
-// Detect new format vs old format and check at least one division exists
+const getMeaningfulRowsFromAgeGroupValue = (ageGroupVal) => {
+  if (!ageGroupVal) return [];
+
+  // NEW FORMAT: { Male: [...], Female: [...] }
+  if (typeof ageGroupVal === "object" && !Array.isArray(ageGroupVal)) {
+    const maleArr = Array.isArray(ageGroupVal.Male) ? ageGroupVal.Male : [];
+    const femaleArr = Array.isArray(ageGroupVal.Female) ? ageGroupVal.Female : [];
+    return [...maleArr, ...femaleArr].filter((row) => !isRowCompletelyEmpty(row));
+  }
+
+  // OLD FORMAT: [...]
+  if (Array.isArray(ageGroupVal)) {
+    return ageGroupVal.filter((row) => !isRowCompletelyEmpty(row));
+  }
+
+  return [];
+};
+
+// Check at least one meaningful valid division exists somewhere
 const hasAtLeastOneDivision = (custom) => {
   if (!custom || typeof custom !== "object") return false;
 
-  return Object.values(custom).some((ageGroupVal) => {
-    if (!ageGroupVal) return false;
-
-    // NEW FORMAT: { Male: [...], Female: [...] }
-    if (typeof ageGroupVal === "object" && !Array.isArray(ageGroupVal)) {
-      const maleArr = Array.isArray(ageGroupVal.Male) ? ageGroupVal.Male : [];
-      const femaleArr = Array.isArray(ageGroupVal.Female) ? ageGroupVal.Female : [];
-      return maleArr.length > 0 || femaleArr.length > 0;
+  for (const ageGroupVal of Object.values(custom)) {
+    const meaningfulRows = getMeaningfulRowsFromAgeGroupValue(ageGroupVal);
+    if (meaningfulRows.some((row) => isValidCustomRow(row))) {
+      return true;
     }
+  }
 
-    // OLD FORMAT: [...]
-    if (Array.isArray(ageGroupVal)) {
-      return ageGroupVal.length > 0;
-    }
-
-    return false;
-  });
+  return false;
 };
 
 // Validate rows for both new + old custom formats
@@ -66,30 +84,19 @@ const allRowsAreValid = (custom) => {
   for (const ageGroupVal of Object.values(custom)) {
     if (!ageGroupVal) continue;
 
-    // NEW FORMAT: { Male: [...], Female: [...] }
-    if (typeof ageGroupVal === "object" && !Array.isArray(ageGroupVal)) {
-      const maleArr = Array.isArray(ageGroupVal.Male) ? ageGroupVal.Male : [];
-      const femaleArr = Array.isArray(ageGroupVal.Female) ? ageGroupVal.Female : [];
+    const meaningfulRows = getMeaningfulRowsFromAgeGroupValue(ageGroupVal);
 
-      for (const row of maleArr) {
-        if (!isValidCustomRow(row)) return false;
-      }
-      for (const row of femaleArr) {
-        if (!isValidCustomRow(row)) return false;
-      }
-      continue;
+    for (const row of meaningfulRows) {
+      if (!isValidCustomRow(row)) return false;
     }
 
-    // OLD FORMAT: [...]
-    if (Array.isArray(ageGroupVal)) {
-      for (const row of ageGroupVal) {
-        if (!isValidCustomRow(row)) return false;
-      }
-      continue;
-    }
+    // Unknown structure should fail only if value exists but is malformed
+    const isNewFormatObject = typeof ageGroupVal === "object" && !Array.isArray(ageGroupVal);
+    const isOldFormatArray = Array.isArray(ageGroupVal);
 
-    // Unknown structure
-    return false;
+    if (!isNewFormatObject && !isOldFormatArray) {
+      return false;
+    }
   }
 
   return true;
@@ -190,7 +197,7 @@ const validationSchema = Yup.object({
       is: "custom",
       then: (schema) =>
         schema
-          .test("has-data", "At least one age group must have divisions", (value) => {
+          .test("has-data", "At least one valid custom weight division is required", (value) => {
             return hasAtLeastOneDivision(value);
           })
           .test("valid-rows", "Invalid weight divisions", (value) => {

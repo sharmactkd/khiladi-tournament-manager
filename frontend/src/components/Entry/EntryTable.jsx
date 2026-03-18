@@ -146,7 +146,7 @@ const EntryTable = forwardRef(
     ref
   ) => {
     const [saveStatus, setSaveStatus] = useState("idle");
-
+const [jumpHighlightedSr, setJumpHighlightedSr] = useState("");
     const parentRef = useRef(null);
 
     const debouncedSaveRef = useRef(null);
@@ -470,16 +470,26 @@ const EntryTable = forwardRef(
     useImperativeHandle(
       ref,
       () => ({
-        scrollToRow: (sr) => {
-          if (!parentRef.current || !data.length) return;
-          const index = data.findIndex((r) => String(r.sr) === String(sr));
-          if (index < 0) return;
-          const rowHeight = 48;
-          const container = parentRef.current;
-          const containerHeight = container.clientHeight;
-          const targetScrollTop = Math.max(0, index * rowHeight - containerHeight * 0.4);
-          container.scrollTo({ top: targetScrollTop, behavior: "smooth" });
-        },
+       scrollToRow: (sr) => {
+  if (!parentRef.current || !data.length) return;
+
+  const srStr = String(sr);
+  const index = data.findIndex((r) => String(r.sr) === srStr);
+  if (index < 0) return;
+
+  const rowHeight = 48;
+  const container = parentRef.current;
+  const containerHeight = container.clientHeight;
+  const targetScrollTop = Math.max(0, index * rowHeight - containerHeight * 0.4);
+
+  setJumpHighlightedSr(srStr);
+  container.scrollTo({ top: targetScrollTop, behavior: "smooth" });
+
+  // remove highlight after some time
+  setTimeout(() => {
+    setJumpHighlightedSr((prev) => (prev === srStr ? "" : prev));
+  }, 2200);
+},
         // ✅ New: force immediate server save and await it (used before TieSheet navigation)
         flushSaveNow: (reason = "flush") => flushSaveNow(data, reason),
         // Optional helpers (non-breaking)
@@ -662,23 +672,28 @@ const EntryTable = forwardRef(
 
               const rowData = row.original;
               const sr = rowData?.sr || "";
+const isJumpHighlighted = String(sr) === String(jumpHighlightedSr);
 
               return (
-                <div
-                  key={virtualRow.key}
-                  className={styles.virtualRow}
-                  style={{
-                    position: "absolute",
-                    top: 0,
-                    left: 0,
-                    width: "100%",
-                    height: `${virtualRow.size}px`,
-                    transform: `translateY(${virtualRow.start}px)`,
-                    display: "flex",
-                  }}
-                  data-row-index={virtualRow.index}
-                  data-row-id={sr}
-                >
+              <div
+  key={virtualRow.key}
+  className={`${styles.virtualRow} ${isJumpHighlighted ? styles.jumpHighlightRow : ""}`}
+  style={{
+    position: "absolute",
+    top: 0,
+    left: 0,
+    width: "100%",
+    height: `${virtualRow.size}px`,
+    transform: `translateY(${virtualRow.start}px)`,
+    display: "flex",
+    background: isJumpHighlighted ? "rgba(255, 59, 59, 0.35)" : undefined,
+  
+    transition: "background 0.25s ease, box-shadow 0.25s ease",
+    zIndex: isJumpHighlighted ? 2 : 1,
+  }}
+  data-row-index={virtualRow.index}
+  data-row-id={sr}
+>
                   {row.getVisibleCells().map((cell) => (
                     <div
                       key={cell.id}

@@ -1,5 +1,3 @@
-// src/pages/TournamentForm.jsx
-
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -77,7 +75,7 @@ const getInitialValues = (initialTournament) => ({
   },
   weightCategories: {
     type: initialTournament?.weightCategories?.type || "WT",
-    custom: initialTournament?.weightCategories?.custom || "",
+    custom: initialTournament?.weightCategories?.custom || {},
     selected: initialTournament?.weightCategories?.selected || { male: [], female: [] },
   },
   cadetCategoryType: initialTournament?.cadetCategoryType || "weight",
@@ -109,7 +107,7 @@ const TournamentForm = () => {
   const [cities, setCities] = useState([]);
   const [currencyOptions, setCurrencyOptions] = useState([]);
   const [serverError, setServerError] = useState("");
-const [presetName, setPresetName] = useState("");
+  const [presetName, setPresetName] = useState("");
 
   useEffect(() => {
     if (!token || !user) {
@@ -142,61 +140,55 @@ const [presetName, setPresetName] = useState("");
       .catch(() => setCurrencyOptions([]));
   }, []);
 
- const scrollToFirstError = (errors) => {
-  if (Object.keys(errors).length === 0) return;
+  const scrollToFirstError = (errors) => {
+    if (Object.keys(errors).length === 0) return;
 
-  // Find the first error key
-  const firstErrorKey = Object.keys(errors)[0];
+    const firstErrorKey = Object.keys(errors)[0];
 
-  // Handle nested fields like venue.country
-  let selector;
-  if (firstErrorKey.includes('.')) {
-    selector = `[name="${firstErrorKey.replace('.', '\\.')}"]`;
-  } else {
-    selector = `[name="${firstErrorKey}"]`;
-  }
+    let selector;
+    if (firstErrorKey.includes(".")) {
+      selector = `[name="${firstErrorKey.replace(".", "\\.")}"]`;
+    } else {
+      selector = `[name="${firstErrorKey}"]`;
+    }
 
-  // Special handling for venue dropdowns (React Select)
-  if (firstErrorKey.startsWith('venue.')) {
-    const fieldMap = {
-      'venue.country': 'country',
-      'venue.state': 'state',
-      'venue.district': 'district',
-    };
-    const className = fieldMap[firstErrorKey];
-    if (className) {
-      const element = document.querySelector(`.react-select__${className} .react-select__control`);
-      if (element) {
-        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        element.focus();
-        element.style.borderColor = '#cf0006';
-        element.style.boxShadow = '0 0 0 3px rgba(207, 0, 6, 0.2)';
-        return;
+    if (firstErrorKey.startsWith("venue.")) {
+      const fieldMap = {
+        "venue.country": "country",
+        "venue.state": "state",
+        "venue.district": "district",
+      };
+      const className = fieldMap[firstErrorKey];
+      if (className) {
+        const element = document.querySelector(`.react-select__${className} .react-select__control`);
+        if (element) {
+          element.scrollIntoView({ behavior: "smooth", block: "center" });
+          element.focus();
+          element.style.borderColor = "#cf0006";
+          element.style.boxShadow = "0 0 0 3px rgba(207, 0, 6, 0.2)";
+          return;
+        }
       }
     }
-  }
 
-  // For regular inputs (text, textarea, etc.)
-  const element = document.querySelector(selector);
-  if (element) {
-    element.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    element.focus();
-    element.style.borderColor = '#cf0006';
-    element.style.boxShadow = '0 0 0 3px rgba(207, 0, 6, 0.2)';
+    const element = document.querySelector(selector);
+    if (element) {
+      element.scrollIntoView({ behavior: "smooth", block: "center" });
+      element.focus();
+      element.style.borderColor = "#cf0006";
+      element.style.boxShadow = "0 0 0 3px rgba(207, 0, 6, 0.2)";
 
-    // Optional: Highlight removal after 3 seconds
-    setTimeout(() => {
-      element.style.borderColor = '#ccc';
-      element.style.boxShadow = 'none';
-    }, 3000);
-  } else {
-    // Fallback: If not found, scroll to top error message
-    const errorContainer = document.querySelector(`.${styles.generalError}`);
-    if (errorContainer) {
-      errorContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(() => {
+        element.style.borderColor = "#ccc";
+        element.style.boxShadow = "none";
+      }, 3000);
+    } else {
+      const errorContainer = document.querySelector(`.${styles.generalError}`);
+      if (errorContainer) {
+        errorContainer.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
     }
-  }
-};
+  };
 
   // Preset functions
   const savePreset = (name, customData) => {
@@ -211,8 +203,8 @@ const [presetName, setPresetName] = useState("");
 
   const getPresetNames = () => {
     return Object.keys(localStorage)
-      .filter(key => key.startsWith('customPreset_'))
-      .map(key => key.replace('customPreset_', ''));
+      .filter((key) => key.startsWith("customPreset_"))
+      .map((key) => key.replace("customPreset_", ""));
   };
 
   return (
@@ -290,26 +282,25 @@ const [presetName, setPresetName] = useState("");
           }
         }}
       >
-       {({ values, setFieldValue, errors, touched, isSubmitting, handleSubmit, validateForm, setTouched }) => {
+        {({ values, setFieldValue, errors, touched, isSubmitting, handleSubmit, validateForm, setTouched }) => {
           useEffect(() => {
             if (isSubmitting && Object.keys(errors).length > 0) {
               scrollToFirstError(errors);
             }
           }, [isSubmitting, errors]);
 
-         const onFormSubmit = async (e) => {
-  e.preventDefault();
-  const validationErrors = await validateForm();
-  setTouched(true);
+          const onFormSubmit = async (e) => {
+            e.preventDefault();
+            const validationErrors = await validateForm();
+            setTouched(true);
 
-  if (Object.keys(validationErrors).length > 0) {
-    scrollToFirstError(validationErrors); // ← यह call already है – good!
-  } else {
-    handleSubmit(e);
-  }
-};
-          
-          // Country/State handlers
+            if (Object.keys(validationErrors).length > 0) {
+              scrollToFirstError(validationErrors);
+            } else {
+              handleSubmit(e);
+            }
+          };
+
           const handleCountryChange = (countryCode) => {
             const stateList = State.getStatesOfCountry(countryCode);
             setStates(stateList);
@@ -326,7 +317,6 @@ const [presetName, setPresetName] = useState("");
             setFieldValue("venue.district", "");
           };
 
-          // Age handlers
           const handleAgeChange = (e, age, type) => {
             e.preventDefault();
             const isSelected = values.ageCategories[type].includes(age);
@@ -377,7 +367,6 @@ const [presetName, setPresetName] = useState("");
             setFieldValue(`ageGender.${type}`, newGender);
           };
 
-          // Event handlers
           const handleKyorugiSubEventToggle = (subKey) => {
             const currentSub = values.eventCategories.kyorugi.sub;
             const newSubValue = !currentSub[subKey];
@@ -427,8 +416,7 @@ const [presetName, setPresetName] = useState("");
             setFieldValue(`entryFees.amounts.${category}.${sub}.amount`, value ? Number(value) : 0);
           };
 
-          // Auto-update Tournament Type (Open/Official)
-         useEffect(() => {
+          useEffect(() => {
             const hasOpen = values.ageCategories.open.length > 0;
             const hasOfficial = values.ageCategories.official.length > 0;
 
@@ -442,7 +430,6 @@ const [presetName, setPresetName] = useState("");
             }
           }, [values.ageCategories.open, values.ageCategories.official, setFieldValue]);
 
-          // Venue pre-fill
           useEffect(() => {
             if (!initialTournament?.venue || countries.length === 0) return;
 
@@ -462,7 +449,7 @@ const [presetName, setPresetName] = useState("");
             }
           }, [countries.length, initialTournament?.venue]);
 
-useEffect(() => {
+          useEffect(() => {
             const selectedAges = [
               ...(values.ageCategories?.open || []),
               ...(values.ageCategories?.official || []),
@@ -476,8 +463,8 @@ useEffect(() => {
             let suggestedType = "WT";
 
             if (selectedAges.length > 0) {
-              const hasOnlySGFI = selectedAges.every(age => sgfiAges.includes(age));
-              const hasOnlyWT = selectedAges.every(age => wtAges.includes(age));
+              const hasOnlySGFI = selectedAges.every((age) => sgfiAges.includes(age));
+              const hasOnlyWT = selectedAges.every((age) => wtAges.includes(age));
 
               if (hasOnlySGFI) suggestedType = "SGFI";
               else if (hasOnlyWT) suggestedType = "WT";
@@ -514,20 +501,19 @@ useEffect(() => {
 
               {serverError && <div className={styles.error}>{serverError}</div>}
 
-           {Object.keys(errors).length > 0 && (
+              {Object.keys(errors).length > 0 && (
                 <div className={styles.generalError}>
                   <strong>Please fix the following errors:</strong>
-                  <ul style={{ margin: '8px 0 0 20px', color: '#cf0006' }}>
+                  <ul style={{ margin: "8px 0 0 20px", color: "#cf0006" }}>
                     {Object.keys(errors).map((key) => {
                       const errorMsg = errors[key];
-                      // Fixed: Convert object to string
-                      const displayMsg = typeof errorMsg === 'object'
-                        ? JSON.stringify(errorMsg, null, 2)  // Pretty print
+                      const displayMsg = typeof errorMsg === "object"
+                        ? JSON.stringify(errorMsg, null, 2)
                         : errorMsg;
 
                       return (
                         <li key={key}>
-                          {key.replace(/([A-Z])/g, ' $1').replace(/^./, str => str.toUpperCase())}: {displayMsg}
+                          {key.replace(/([A-Z])/g, " $1").replace(/^./, str => str.toUpperCase())}: {displayMsg}
                         </li>
                       );
                     })}
@@ -573,7 +559,6 @@ useEffect(() => {
                 handleAmountChange={handleAmountChange}
               />
 
-{/* Weight Categories - Now fully handled by Weights component */}
               <div className={styles.section}>
                 <h2>Weight Categories</h2>
                 <Weights values={values} setFieldValue={setFieldValue} />
