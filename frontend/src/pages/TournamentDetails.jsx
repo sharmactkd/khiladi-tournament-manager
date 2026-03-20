@@ -648,38 +648,49 @@ const TournamentDetails = () => {
         </div>
       </ErrorBoundary>
 
-      <ErrorBoundary section="Food & Lodging">
-        <div className={styles.section}>
-          <h2>Food & Lodging</h2>
-          <div className={styles.foodsection}>
-            <p>
-              <strong>Provided:</strong>{" "}
-              {tournament.foodAndLodging?.option ? "Yes" : "No"}
-            </p>
-            {tournament.foodAndLodging?.option && (
-              <>
-                <p>
-                  <strong>Fooding & Lodging:</strong>{" "}
-                  {tournament.foodAndLodging.option || "N/A"}
-                </p>
-                <p>
-                  <strong>Cost:</strong>{" "}
-                  {tournament.foodAndLodging.type === "Paid" &&
-                  tournament.foodAndLodging.amount !== undefined
-                    ? `Paid (${tournament.entryFees?.currencySymbol || "₹"}${
-                        tournament.foodAndLodging.amount || 0
-                      } ${
-                        tournament.foodAndLodging.paymentMethod
-                          ? ` ${tournament.foodAndLodging.paymentMethod}`
-                          : ""
-                      })`
-                    : tournament.foodAndLodging.type || "Free"}
-                </p>
-              </>
-            )}
-          </div>
-        </div>
-      </ErrorBoundary>
+      
+
+    <ErrorBoundary section="Food & Lodging">
+  <div className={styles.section}>
+    <h2>Food & Lodging</h2>
+    <div className={styles.foodsection}>
+      <p>
+        <strong>Provided:</strong>{" "}
+        {tournament.foodAndLodging?.option &&
+        tournament.foodAndLodging.option !== "No"
+          ? "Yes"
+          : "No"}
+      </p>
+
+      {tournament.foodAndLodging?.option &&
+      tournament.foodAndLodging.option !== "No" ? (
+        <>
+          <p>
+            <strong>Fooding & Lodging:</strong>{" "}
+            {tournament.foodAndLodging.option || "N/A"}
+          </p>
+          <p>
+            <strong>Cost:</strong>{" "}
+            {tournament.foodAndLodging.type === "Paid" &&
+            tournament.foodAndLodging.amount !== undefined
+              ? `Paid (${tournament.entryFees?.currencySymbol || "₹"}${
+                  tournament.foodAndLodging.amount || 0
+                }${
+                  tournament.foodAndLodging.paymentMethod
+                    ? ` ${tournament.foodAndLodging.paymentMethod}`
+                    : ""
+                })`
+              : "Free"}
+          </p>
+        </>
+      ) : (
+        <p>
+          <strong>Fooding & Lodging:</strong> Not Provided
+        </p>
+      )}
+    </div>
+  </div>
+</ErrorBoundary>
 
       <ErrorBoundary section="Medal Points">
         <div className={styles.section}>
