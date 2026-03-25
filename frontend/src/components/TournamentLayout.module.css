@@ -9,7 +9,7 @@
 
 .content {
   flex: 1;
-  overflow: hidden; /* Yeh key hai – extra vertical scroll band karega */
+  overflow: auto; /* Yeh key hai – extra vertical scroll band karega */
   position: relative;
 }
 
