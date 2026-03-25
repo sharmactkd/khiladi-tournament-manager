@@ -26,7 +26,10 @@ let refreshPromise = null;
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("authToken");
-  if (token) config.headers.Authorization = `Bearer ${token}`;
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
   return config;
 });
 
@@ -35,7 +38,11 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config || {};
 
-    if (error.response?.status === 401 && !originalRequest._retry) {
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !String(originalRequest.url || "").includes("/auth/refresh")
+    ) {
       originalRequest._retry = true;
 
       try {
@@ -60,12 +67,6 @@ api.interceptors.response.use(
         return api(originalRequest);
       } catch (refreshError) {
         console.error("Token refresh failed:", refreshError);
-
-        if (refreshError.response?.status === 429) {
-          alert("Too many requests. Please wait a minute before trying again.");
-          await new Promise((resolve) => setTimeout(resolve, 60000));
-          return api(originalRequest);
-        }
 
         localStorage.removeItem("authToken");
         localStorage.removeItem("user");

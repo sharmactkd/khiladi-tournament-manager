@@ -33,7 +33,7 @@ export const generateToken = (user) => {
     },
     JWT_SECRET,
     {
-      expiresIn: "15m",
+      expiresIn: "7d",
       ...commonOptions,
     }
   );
@@ -51,7 +51,7 @@ export const generateRefreshToken = (user) => {
     },
     JWT_REFRESH_SECRET,
     {
-      expiresIn: "7d",
+      expiresIn: "180d",
       ...commonOptions,
     }
   );

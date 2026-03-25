@@ -7,12 +7,33 @@ const normalizeRole = (role) => {
   return ["organizer", "coach", "player"].includes(role) ? role : "player";
 };
 
+const isProd = process.env.NODE_ENV === "production";
+const REFRESH_COOKIE_MAX_AGE = 180 * 24 * 60 * 60 * 1000; // 180 days
+const ACCESS_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+const refreshCookieOptions = {
+  httpOnly: true,
+  secure: isProd,
+  sameSite: isProd ? "none" : "lax",
+  path: "/",
+  maxAge: REFRESH_COOKIE_MAX_AGE,
+};
+
+const accessCookieOptions = {
+  httpOnly: false,
+  secure: isProd,
+  sameSite: isProd ? "none" : "lax",
+  path: "/",
+  maxAge: ACCESS_COOKIE_MAX_AGE,
+};
+
 /**
  * Get current logged-in user details (Protected route)
  */
 export const getMe = async (req, res) => {
   try {
     const user = req.user;
+
     if (!user) {
       logger.warn("getMe called without user", { path: req.path, ip: req.ip });
       return res.status(404).json({ message: "User not found" });
@@ -32,9 +53,7 @@ export const getMe = async (req, res) => {
     });
   } catch (error) {
     logger.error("getMe failed", { error: error.message, stack: error.stack });
-    res
-      .status(500)
-      .json({ message: "Server error while fetching user details" });
+    res.status(500).json({ message: "Server error while fetching user details" });
   }
 };
 
@@ -47,9 +66,9 @@ export const registerUser = async (req, res) => {
 
     if (!name || !email || !password || !role) {
       logger.warn("Register attempt with missing fields", { ip: req.ip });
-      return res
-        .status(400)
-        .json({ message: "Name, email, password and role are required" });
+      return res.status(400).json({
+        message: "Name, email, password and role are required",
+      });
     }
 
     if (!["organizer", "coach", "player"].includes(role)) {
@@ -64,13 +83,11 @@ export const registerUser = async (req, res) => {
         email: normalizedEmail,
         ip: req.ip,
       });
-      return res
-        .status(400)
-        .json({ message: "User already exists with this email" });
+      return res.status(400).json({
+        message: "User already exists with this email",
+      });
     }
 
-    // IMPORTANT:
-    // Do not hash here because userSchema pre-save already hashes password.
     const user = await User.create({
       name: String(name).trim(),
       email: normalizedEmail,
@@ -87,13 +104,7 @@ export const registerUser = async (req, res) => {
     user.refreshTokens.push(refreshToken);
     await user.save({ validateBeforeSave: false });
 
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie("refreshToken", refreshToken, refreshCookieOptions);
 
     logger.info("User registered successfully", {
       userId: user._id,
@@ -174,13 +185,7 @@ export const loginUser = async (req, res) => {
     user.refreshTokens.push(refreshToken);
     await user.save({ validateBeforeSave: false });
 
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie("refreshToken", refreshToken, refreshCookieOptions);
 
     logger.info("User logged in successfully", {
       userId: user._id,
@@ -217,15 +222,15 @@ export const logoutUser = async (req, res) => {
 
     res.clearCookie("refreshToken", {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
       path: "/",
     });
 
     res.clearCookie("accessToken", {
       httpOnly: false,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
+      secure: isProd,
+      sameSite: isProd ? "none" : "lax",
       path: "/",
     });
 
@@ -258,21 +263,8 @@ export const socialAuthSuccess = (req, res) => {
       logger.error("Refresh token save failed", { error: err.message })
     );
 
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-      maxAge: 30 * 24 * 60 * 60 * 1000,
-    });
-
-    res.cookie("accessToken", accessToken, {
-      httpOnly: false,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "strict",
-      path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    res.cookie("refreshToken", refreshToken, refreshCookieOptions);
+    res.cookie("accessToken", accessToken, accessCookieOptions);
 
     logger.info("Social auth successful", {
       userId: req.user._id,

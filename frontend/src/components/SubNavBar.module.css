@@ -31,8 +31,9 @@
 }
 
 .active {
-  background-color: var(--primary-color);
-  color: white !important;
+  
+  color: #cf0006 !important;
+  font-weight: bold;
   border-radius: 4px;
   padding: 0.3rem 0.6rem;
   text-decoration: none;

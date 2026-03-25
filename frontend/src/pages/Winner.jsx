@@ -1,4 +1,3 @@
-// src/pages/Winner.jsx
 import React, { useEffect, useState, useMemo, useCallback } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
@@ -8,8 +7,7 @@ import html2canvas from "html2canvas";
 import { Medal as MedalIcon } from "lucide-react";
 import styles from "./Winner.module.css";
 
-// ✅ IMPORTANT: use same key utils as TieSheet
-import { sanitizeId, normalizeString } from "../components/TieSheet/bracketUtils";
+import { sanitizeId } from "../components/TieSheet/bracketUtils";
 
 /* ──────────────────────────────────────────────────────────────
    Utils
@@ -23,15 +21,51 @@ const getFullImageUrl = (filename) => {
   return `${uploadsUrl}/uploads/${cleanFilename}?t=${Date.now()}`;
 };
 
-// ✅ Outcomes lookup that supports both RAW and SANITIZED bracket keys
 const getOutcomesForKey = (allOutcomes, bracketKey) => {
   if (!allOutcomes || typeof allOutcomes !== "object") return {};
   if (!bracketKey) return {};
-  return (
-    allOutcomes[bracketKey] ||
-    allOutcomes[sanitizeId(bracketKey)] ||
-    {}
-  );
+  return allOutcomes[bracketKey] || allOutcomes[sanitizeId(bracketKey)] || {};
+};
+
+const getFinalGame = (bracket) => {
+  if (bracket?.gamesByRound?.length > 0) {
+    return bracket.gamesByRound[bracket.gamesByRound.length - 1]?.[0] || null;
+  }
+  if (bracket?.game) return bracket.game;
+  return null;
+};
+
+const getSemiFinalGames = (bracket) => {
+  if (bracket?.gamesByRound?.length >= 2) {
+    return bracket.gamesByRound[bracket.gamesByRound.length - 2] || [];
+  }
+  return [];
+};
+
+/**
+ * Supports multiple saved outcome shapes:
+ * 1) { "3": "home" }
+ * 2) { 3: "away" }
+ * 3) { "game_3": "home" }
+ * 4) { "3": { winner: "home" } }
+ * 5) { "game_3": { winner: "away" } }
+ */
+const getWinnerSide = (outcomesObj, gameId) => {
+  if (!outcomesObj || typeof outcomesObj !== "object" || gameId === undefined || gameId === null) {
+    return null;
+  }
+
+  const candidates = [
+    outcomesObj[gameId],
+    outcomesObj[String(gameId)],
+    outcomesObj[`game_${gameId}`],
+    outcomesObj[gameId]?.winner,
+    outcomesObj[String(gameId)]?.winner,
+    outcomesObj[`game_${gameId}`]?.winner,
+  ];
+
+  const found = candidates.find((value) => value === "home" || value === "away");
+  return found || null;
 };
 
 /* ──────────────────────────────────────────────────────────────
@@ -112,7 +146,8 @@ const Winner = () => {
         setIsLoading(true);
         setError(null);
 
-        const baseUrl = (import.meta.env.VITE_API_URL || "http://localhost:5000/api").replace(/\/+$/, "");
+        const rawBase = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+        const baseUrl = rawBase.replace(/\/+$/, "");
         const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
 
         const tournamentRes = await axios.get(`${baseUrl}/tournament/${id}`, config);
@@ -124,19 +159,38 @@ const Winner = () => {
           logos: td.logos || [],
         });
 
-        const tieSheetRes = await axios.get(`${baseUrl}/tournament/${id}/tiesheet`, config);
-        const saved = tieSheetRes?.data?.tiesheet;
+        const [tieSheetRes, outcomesRes] = await Promise.allSettled([
+          axios.get(`${baseUrl}/tournament/${id}/tiesheet`, config),
+          axios.get(`${baseUrl}/tournament/${id}/tiesheet-outcomes`, config),
+        ]);
 
-        if (saved?.brackets?.length) {
-          setBrackets(saved.brackets);
-          setBracketsOutcomes(saved.outcomes || {});
+        let savedTieSheet = null;
+        let liveOutcomes = {};
+
+        if (tieSheetRes.status === "fulfilled") {
+          savedTieSheet = tieSheetRes.value?.data?.tiesheet || null;
+        }
+
+        if (outcomesRes.status === "fulfilled") {
+          liveOutcomes = outcomesRes.value?.data?.outcomes || {};
+        }
+
+        if (savedTieSheet?.brackets?.length) {
+          setBrackets(savedTieSheet.brackets);
+
+          const finalOutcomes =
+            liveOutcomes && Object.keys(liveOutcomes).length > 0
+              ? liveOutcomes
+              : savedTieSheet.outcomes || {};
+
+          setBracketsOutcomes(finalOutcomes);
         } else {
           throw new Error("No tie-sheet generated yet.");
         }
 
         setIsLoading(false);
       } catch (err) {
-        console.error(err);
+        console.error("Winner page load failed:", err);
         setError(err?.message || "Failed to load data");
         setIsLoading(false);
       }
@@ -146,10 +200,9 @@ const Winner = () => {
   }, [id, token]);
 
   /**
-   * ✅ Key idea:
-   * Medal table should be per WEIGHT CATEGORY (baseKey) only.
-   * For pooled categories: use PoolFinal bracket as representative.
-   * For normal categories: use base bracket.
+   * Show only one bracket per weight category:
+   * - If pooled category exists, prefer PoolFinal
+   * - Else use normal base bracket
    */
   const displayBrackets = useMemo(() => {
     const list = Array.isArray(brackets) ? brackets : [];
@@ -165,7 +218,6 @@ const Winner = () => {
       if (!existing) {
         byBase.set(baseKey, b);
       } else {
-        // prefer PoolFinal if present
         const existingBaseKey = existing.key.replace(/_Pool.*$/, "");
         const existingIsPoolFinal = existing.key === `${existingBaseKey}_PoolFinal`;
         if (!existingIsPoolFinal && isPoolFinal) {
@@ -176,41 +228,6 @@ const Winner = () => {
 
     return Array.from(byBase.values());
   }, [brackets]);
-
-  /* ────── Helper: resolve team/name (robust outcomes lookup) ────── */
-  const getTeamName = useCallback((side, sideName, bracketKey, outcomes) => {
-    if (!side) return { id: "", name: "", team: "" };
-
-    if (side.team) {
-      return {
-        id: side.team.id || "",
-        name: side.team.name || "TBD",
-        team: side.team.team || "",
-      };
-    }
-
-    if (side.sourceGame) {
-      const sg = side.sourceGame;
-
-      // outcomes for THIS bracketKey (raw or sanitized)
-      let srcOutcomes = getOutcomesForKey(outcomes, bracketKey);
-
-      // If PoolFinal and this side belongs to a pool, read that pool bracket outcomes instead
-      if (bracketKey.endsWith("_PoolFinal") && side.pool) {
-        const cat = bracketKey.replace("_PoolFinal", "");
-        const poolKey = `${cat}_Pool${side.pool}`;
-        srcOutcomes = getOutcomesForKey(outcomes, poolKey);
-      }
-
-      const prevWinner = srcOutcomes?.[sg.id];
-      if (prevWinner) {
-        return getTeamName(sg.sides[prevWinner], prevWinner, bracketKey, outcomes);
-      }
-      return { id: `tbd_${sg.id}_${sideName}`, name: "", team: "" };
-    }
-
-    return { id: "", name: "", team: "" };
-  }, []);
 
   const getName = useCallback(
     (side, bracketKey, pool = null) => {
@@ -228,8 +245,10 @@ const Winner = () => {
           src = getOutcomesForKey(bracketsOutcomes, poolKey);
         }
 
-        const w = src?.[sg.id];
-        if (w) return getName(sg.sides[w], bracketKey, pool || side.pool);
+        const winnerSide = getWinnerSide(src, sg.id);
+        if (winnerSide) {
+          return getName(sg.sides?.[winnerSide], bracketKey, pool || side.pool);
+        }
       }
 
       return "";
@@ -237,7 +256,39 @@ const Winner = () => {
     [bracketsOutcomes]
   );
 
-  /* ────── Medal extraction ────── */
+  const getTeamName = useCallback((side, sideName, bracketKey, outcomes) => {
+    if (!side) return { id: "", name: "", team: "" };
+
+    if (side.team) {
+      return {
+        id: side.team.id || "",
+        name: side.team.name || "TBD",
+        team: side.team.team || "",
+      };
+    }
+
+    if (side.sourceGame) {
+      const sg = side.sourceGame;
+
+      let srcOutcomes = getOutcomesForKey(outcomes, bracketKey);
+
+      if (bracketKey.endsWith("_PoolFinal") && side.pool) {
+        const cat = bracketKey.replace("_PoolFinal", "");
+        const poolKey = `${cat}_Pool${side.pool}`;
+        srcOutcomes = getOutcomesForKey(outcomes, poolKey);
+      }
+
+      const prevWinner = getWinnerSide(srcOutcomes, sg.id);
+      if (prevWinner) {
+        return getTeamName(sg.sides?.[prevWinner], prevWinner, bracketKey, outcomes);
+      }
+
+      return { id: `tbd_${sg.id}_${sideName}`, name: "", team: "" };
+    }
+
+    return { id: "", name: "", team: "" };
+  }, []);
+
   const getMedalWinners = useCallback(
     (bracket) => {
       const baseKey = bracket.key.replace(/_Pool.*$/, "");
@@ -245,20 +296,20 @@ const Winner = () => {
       const playerCount = bracket.categoryPlayerCount || bracket.playerCount;
 
       const blank = { name: "", team: "" };
-      let gold = blank,
-        silver = blank,
-        bronze1 = blank,
-        bronze2 = blank;
+      let gold = blank;
+      let silver = blank;
+      let bronze1 = blank;
+      let bronze2 = blank;
 
-      // ✅ Pooled category: compute from PoolFinal
-      if (poolFinal?.game) {
-        const finalGame = poolFinal.game;
+      // ✅ Pooled category
+      if (poolFinal) {
+        const finalGame = getFinalGame(poolFinal);
         const finalOut = getOutcomesForKey(bracketsOutcomes, poolFinal.key);
-        const winSide = finalOut?.[finalGame.id];
+        const winSide = finalGame ? getWinnerSide(finalOut, finalGame.id) : null;
 
-        if (winSide) {
-          const goldSide = finalGame.sides[winSide];
-          const silverSide = finalGame.sides[winSide === "home" ? "away" : "home"];
+        if (finalGame && (winSide === "home" || winSide === "away")) {
+          const goldSide = finalGame.sides?.[winSide];
+          const silverSide = finalGame.sides?.[winSide === "home" ? "away" : "home"];
 
           const goldInfo = getTeamName(goldSide, winSide, poolFinal.key, bracketsOutcomes);
           const silverInfo = getTeamName(
@@ -268,87 +319,139 @@ const Winner = () => {
             bracketsOutcomes
           );
 
-          gold = { name: getName(goldSide, poolFinal.key, goldSide?.pool) || goldInfo.name, team: goldInfo.team };
+          gold = {
+            name: getName(goldSide, poolFinal.key, goldSide?.pool) || goldInfo.name,
+            team: goldInfo.team,
+          };
+
           silver = {
             name: getName(silverSide, poolFinal.key, silverSide?.pool) || silverInfo.name,
             team: silverInfo.team,
           };
         }
 
-        // Bronzes: pool semi-final losers (A/B) if 4+ in category
         if (playerCount >= 4) {
           ["A", "B"].forEach((p) => {
-            const poolB = brackets.find((b) => b?.key === `${baseKey}_Pool${p}`);
-            if (!poolB?.gamesByRound?.length) return;
+            const poolBracket = brackets.find((b) => b?.key === `${baseKey}_Pool${p}`);
+            if (!poolBracket) return;
 
-            const semiRound = poolB.gamesByRound[poolB.gamesByRound.length - 2];
-            const semi = semiRound?.[0];
+            const semis = getSemiFinalGames(poolBracket);
+            const semi = semis?.[0];
             if (!semi) return;
 
-            const semiOut = getOutcomesForKey(bracketsOutcomes, poolB.key);
-            const win = semiOut?.[semi.id];
-            if (!win) return;
+            const semiOutcomes = getOutcomesForKey(bracketsOutcomes, poolBracket.key);
+            const semiWinner = getWinnerSide(semiOutcomes, semi.id);
 
-            const loseSide = win === "home" ? "away" : "home";
-            const loserInfo = getTeamName(semi.sides[loseSide], loseSide, poolB.key, bracketsOutcomes);
-            const loser = { name: getName(semi.sides[loseSide], poolB.key) || loserInfo.name, team: loserInfo.team };
+            if (semiWinner === "home" || semiWinner === "away") {
+              const loseSide = semiWinner === "home" ? "away" : "home";
+              const loserInfo = getTeamName(
+                semi.sides?.[loseSide],
+                loseSide,
+                poolBracket.key,
+                bracketsOutcomes
+              );
 
-            if (p === "A") bronze1 = loser;
-            else bronze2 = loser;
+              const loser = {
+                name: getName(semi.sides?.[loseSide], poolBracket.key) || loserInfo.name,
+                team: loserInfo.team,
+              };
+
+              if (p === "A") bronze1 = loser;
+              else bronze2 = loser;
+            }
           });
         }
 
         return { gold, silver, bronze1, bronze2 };
       }
 
-      // ✅ Single-elim category
-      if (bracket?.game) {
-        const out = getOutcomesForKey(bracketsOutcomes, baseKey);
-        const finalGame = bracket.game;
-        const winSide = out?.[finalGame.id];
+      // ✅ Single elimination
+      const finalGame = getFinalGame(bracket);
+      const out = getOutcomesForKey(bracketsOutcomes, baseKey);
+      const winSide = finalGame ? getWinnerSide(out, finalGame.id) : null;
 
-        if (winSide) {
-          const goldSide = finalGame.sides[winSide];
-          const silverSide = finalGame.sides[winSide === "home" ? "away" : "home"];
+      if (playerCount === 1) {
+        const singleSide =
+          finalGame?.sides?.home?.team
+            ? finalGame.sides.home
+            : finalGame?.sides?.away?.team
+            ? finalGame.sides.away
+            : null;
 
-          const goldInfo = getTeamName(goldSide, winSide, baseKey, bracketsOutcomes);
-          const silverInfo = getTeamName(
-            silverSide,
-            winSide === "home" ? "away" : "home",
-            baseKey,
-            bracketsOutcomes
-          );
-
-          gold = { name: getName(goldSide, baseKey) || goldInfo.name, team: goldInfo.team };
-          silver = { name: getName(silverSide, baseKey) || silverInfo.name, team: silverInfo.team };
+        if (singleSide) {
+          const info = getTeamName(singleSide, "home", baseKey, bracketsOutcomes);
+          gold = {
+            name: getName(singleSide, baseKey) || info.name,
+            team: info.team,
+          };
         }
 
-        // 3-player bronze
-        if (playerCount === 3 && bracket.gamesByRound?.[0]?.[0]) {
-          const first = bracket.gamesByRound[0][0];
-          const win = out?.[first.id];
-          if (win) {
-            const loseSide = win === "home" ? "away" : "home";
-            const info = getTeamName(first.sides[loseSide], loseSide, baseKey, bracketsOutcomes);
-            bronze1 = { name: getName(first.sides[loseSide], baseKey) || info.name, team: info.team };
+        return { gold, silver, bronze1, bronze2 };
+      }
+
+      if (finalGame && (winSide === "home" || winSide === "away")) {
+        const goldSide = finalGame.sides?.[winSide];
+        const silverSide = finalGame.sides?.[winSide === "home" ? "away" : "home"];
+
+        const goldInfo = getTeamName(goldSide, winSide, baseKey, bracketsOutcomes);
+        const silverInfo = getTeamName(
+          silverSide,
+          winSide === "home" ? "away" : "home",
+          baseKey,
+          bracketsOutcomes
+        );
+
+        gold = {
+          name: getName(goldSide, baseKey) || goldInfo.name,
+          team: goldInfo.team,
+        };
+
+        silver = {
+          name: getName(silverSide, baseKey) || silverInfo.name,
+          team: silverInfo.team,
+        };
+      }
+
+      if (playerCount === 3) {
+        const firstRound = bracket.gamesByRound?.[0]?.[0];
+        const firstWinner = firstRound ? getWinnerSide(out, firstRound.id) : null;
+
+        if (firstRound && (firstWinner === "home" || firstWinner === "away")) {
+          const loseSide = firstWinner === "home" ? "away" : "home";
+          const info = getTeamName(firstRound.sides?.[loseSide], loseSide, baseKey, bracketsOutcomes);
+          bronze1 = {
+            name: getName(firstRound.sides?.[loseSide], baseKey) || info.name,
+            team: info.team,
+          };
+        }
+      } else if (playerCount >= 4) {
+        const semis = getSemiFinalGames(bracket);
+
+        if (semis?.length >= 1) {
+          const semi1 = semis[0];
+          const semi1Winner = getWinnerSide(out, semi1.id);
+
+          if (semi1 && (semi1Winner === "home" || semi1Winner === "away")) {
+            const loseSide = semi1Winner === "home" ? "away" : "home";
+            const info = getTeamName(semi1.sides?.[loseSide], loseSide, baseKey, bracketsOutcomes);
+            bronze1 = {
+              name: getName(semi1.sides?.[loseSide], baseKey) || info.name,
+              team: info.team,
+            };
           }
-        }
-        // normal bronzes
-        else if (playerCount >= 4 && bracket.gamesByRound?.length >= 2) {
-          const semis = bracket.gamesByRound[bracket.gamesByRound.length - 2];
-          if (semis?.length >= 2) {
-            [0, 1].forEach((i) => {
-              const semi = semis[i];
-              const win = out?.[semi.id];
-              if (!win) return;
 
-              const loseSide = win === "home" ? "away" : "home";
-              const info = getTeamName(semi.sides[loseSide], loseSide, baseKey, bracketsOutcomes);
-              const loser = { name: getName(semi.sides[loseSide], baseKey) || info.name, team: info.team };
+          if (semis.length >= 2) {
+            const semi2 = semis[1];
+            const semi2Winner = getWinnerSide(out, semi2.id);
 
-              if (i === 0) bronze1 = loser;
-              else bronze2 = loser;
-            });
+            if (semi2 && (semi2Winner === "home" || semi2Winner === "away")) {
+              const loseSide = semi2Winner === "home" ? "away" : "home";
+              const info = getTeamName(semi2.sides?.[loseSide], loseSide, baseKey, bracketsOutcomes);
+              bronze2 = {
+                name: getName(semi2.sides?.[loseSide], baseKey) || info.name,
+                team: info.team,
+              };
+            }
           }
         }
       }
@@ -358,7 +461,6 @@ const Winner = () => {
     [brackets, bracketsOutcomes, getName, getTeamName]
   );
 
-  /* ────── Group by age + gender (using displayBrackets only) ────── */
   const grouped = useMemo(() => {
     const g = {};
     displayBrackets.forEach((b) => {
@@ -367,7 +469,6 @@ const Winner = () => {
       g[k].push(b);
     });
 
-    // Sort weights stable (optional, no behavior risk)
     Object.keys(g).forEach((k) => {
       g[k].sort((a, b) => String(a.weightCategory || "").localeCompare(String(b.weightCategory || "")));
     });
@@ -384,7 +485,6 @@ const Winner = () => {
     );
   }, [grouped, getMedalWinners]);
 
-  /* ────── PDF Functions ────── */
   const generatePDFDoc = async () => {
     const pages = document.querySelectorAll(`.${styles.winnerPage}`);
     if (!pages.length) return null;
@@ -443,7 +543,6 @@ const Winner = () => {
     }
   };
 
-  /* ────── Render ────── */
   if (isLoading) {
     return (
       <div className={styles.loading}>
@@ -527,7 +626,9 @@ const Winner = () => {
 
                       if ((bronze1.name || bronze2.name) && playerCount >= 3) {
                         if (bronze1.name) rows.push({ medal: "Bronze", name: bronze1.name, team: bronze1.team });
-                        if (bronze2.name && playerCount >= 4) rows.push({ medal: "Bronze", name: bronze2.name, team: bronze2.team });
+                        if (bronze2.name && playerCount >= 4) {
+                          rows.push({ medal: "Bronze", name: bronze2.name, team: bronze2.team });
+                        }
                       }
 
                       if (!rows.length) {
@@ -561,7 +662,11 @@ const Winner = () => {
                           </td>
 
                           <td className={styles.teamCell}>
-                            {r.team ? <span className={styles.teamName}>{r.team}</span> : <span className={styles.noTeam}>-</span>}
+                            {r.team ? (
+                              <span className={styles.teamName}>{r.team}</span>
+                            ) : (
+                              <span className={styles.noTeam}>-</span>
+                            )}
                           </td>
 
                           <td className={styles.markCell}></td>
@@ -583,7 +688,10 @@ const Winner = () => {
           <p className={styles.noWinnersText}>
             No tournament results have been recorded yet. Please complete the matches in the <strong>Tie Sheet</strong> section first.
           </p>
-          <button className={styles.goToTieSheetButton} onClick={() => (window.location.href = `/tournaments/${id}/tiesheet`)}>
+          <button
+            className={styles.goToTieSheetButton}
+            onClick={() => (window.location.href = `/tournaments/${id}/tiesheet`)}
+          >
             Go to Tie Sheet
           </button>
         </div>
