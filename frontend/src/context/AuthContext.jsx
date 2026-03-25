@@ -12,15 +12,21 @@ import api from "../api";
 const AuthContext = createContext();
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  const [user, setUser] = useState(() => {
+    try {
+      const stored = localStorage.getItem("user");
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+
   const [token, setToken] = useState(localStorage.getItem("authToken"));
   const [loading, setLoading] = useState(true);
-
-  // Prevent multiple simultaneous refresh calls (conflict stopper)
   const refreshInFlightRef = useRef(null);
 
-  const login = (responseData) => {
-    const { accessToken, _id, ...rest } = responseData;
+  const login = (responseData, redirectTo = "/") => {
+    const { accessToken, _id, ...rest } = responseData || {};
     if (!_id || !accessToken) throw new Error("Invalid login response");
 
     const userData = { id: _id, ...rest };
@@ -31,21 +37,20 @@ export const AuthProvider = ({ children }) => {
     setUser(userData);
     setToken(accessToken);
 
-    window.location.href = "/";
+    window.location.href = redirectTo || "/";
   };
 
-  const logout = useCallback(() => {
+  const logout = useCallback((redirectTo = "/login") => {
     localStorage.removeItem("authToken");
     localStorage.removeItem("user");
 
     setUser(null);
     setToken(null);
 
-    window.location.href = "/login";
+    window.location.href = redirectTo;
   }, []);
 
   const refreshToken = useCallback(async () => {
-    // If already refreshing, reuse same promise
     if (refreshInFlightRef.current) return refreshInFlightRef.current;
 
     refreshInFlightRef.current = (async () => {
@@ -57,7 +62,6 @@ export const AuthProvider = ({ children }) => {
         localStorage.setItem("authToken", accessToken);
         setToken(accessToken);
 
-        // Fetch updated user
         const userRes = await api.get("/auth/me");
         const userData = { id: userRes.data?._id, ...userRes.data };
         localStorage.setItem("user", JSON.stringify(userData));
@@ -76,7 +80,6 @@ export const AuthProvider = ({ children }) => {
     return refreshInFlightRef.current;
   }, [logout]);
 
-  // On app load: restore session if token exists
   useEffect(() => {
     const restoreAuth = async () => {
       const storedToken = localStorage.getItem("authToken");
@@ -110,13 +113,6 @@ export const AuthProvider = ({ children }) => {
     restoreAuth();
   }, []);
 
-  /**
-   * ✅ Conflict fix:
-   * Keep periodic refresh BUT make it "non-destructive":
-   * - Only refresh when close to expiry
-   * - Never clear storage here
-   * - Use refreshToken() which is mutex-protected
-   */
   useEffect(() => {
     if (!token) return;
 
@@ -138,17 +134,14 @@ export const AuthProvider = ({ children }) => {
 
         if (!expiryTime) return;
 
-        // Refresh only if expired or within 60s of expiry
         if (Date.now() >= expiryTime - 60000) {
           await refreshToken();
         }
       } catch (error) {
-        // Do not logout from here; interceptor/refreshToken handles it
         console.error("Token check failed:", error);
       }
     };
 
-    // Run once immediately (safe) + then every 5 minutes
     checkAndRefreshToken();
     const interval = setInterval(checkAndRefreshToken, 5 * 60 * 1000);
     return () => clearInterval(interval);

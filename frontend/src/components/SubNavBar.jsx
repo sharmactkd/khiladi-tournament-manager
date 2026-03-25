@@ -1,7 +1,6 @@
-// src/components/SubNavBar.jsx
-
-import React from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { NavLink, useParams, useLocation, useNavigate } from "react-router-dom";
+import { getPendingTeamSubmissionCount } from "../api";
 import styles from "./SubNavBar.module.css";
 
 const SubNavBar = ({ tournament, user }) => {
@@ -9,7 +8,8 @@ const SubNavBar = ({ tournament, user }) => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Safe normalize function
+  const [pendingCount, setPendingCount] = useState(0);
+
   const normalizeDate = (date) => {
     if (!date) return null;
     const d = new Date(date);
@@ -20,10 +20,46 @@ const SubNavBar = ({ tournament, user }) => {
   const start = normalizeDate(tournament?.dateFrom);
   const end = normalizeDate(tournament?.dateTo);
 
-  // CHANGE HERE: Tournament active if it has NOT ended yet
   const isActive = start && end && today <= end;
 
-  // Hide SubNavBar only if not logged in OR tournament already ended
+  const isOrganizer = user?.role === "organizer";
+
+  const loadPendingCount = useCallback(async () => {
+    try {
+      if (!id || !isOrganizer) {
+        setPendingCount(0);
+        return;
+      }
+
+      const response = await getPendingTeamSubmissionCount(id);
+      setPendingCount(Number(response?.pendingCount || 0));
+    } catch (error) {
+      console.error("Failed to load pending team submission count:", error);
+      setPendingCount(0);
+    }
+  }, [id, isOrganizer]);
+
+  useEffect(() => {
+    if (!user || !isActive || !isOrganizer) return;
+
+    loadPendingCount();
+
+    const intervalId = setInterval(() => {
+      loadPendingCount();
+    }, 20000);
+
+    const handleCountRefresh = () => {
+      loadPendingCount();
+    };
+
+    window.addEventListener(`teamSubmissionCountUpdated_${id}`, handleCountRefresh);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener(`teamSubmissionCountUpdated_${id}`, handleCountRefresh);
+    };
+  }, [user, isActive, isOrganizer, id, loadPendingCount]);
+
   if (!user || !isActive) {
     return null;
   }
@@ -47,6 +83,15 @@ const SubNavBar = ({ tournament, user }) => {
     { label: "Team Championship", path: `/tournaments/${id}/team-championship` },
     { label: "Official", path: `/tournaments/${id}/official` },
     { label: "Team", path: `/tournaments/${id}/team` },
+    ...(isOrganizer
+      ? [
+          {
+            label: "Team Submissions",
+            path: `/tournaments/${id}/team-submissions`,
+            badge: pendingCount,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -62,7 +107,14 @@ const SubNavBar = ({ tournament, user }) => {
                 }
                 end
               >
-                {item.label}
+                <span className={styles.linkContent}>
+                  <span>{item.label}</span>
+                  {item.badge > 0 ? (
+                    <span className={styles.notificationBadge}>
+                      {item.badge}
+                    </span>
+                  ) : null}
+                </span>
               </NavLink>
             ) : (
               <button

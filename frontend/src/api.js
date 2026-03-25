@@ -1,19 +1,7 @@
 import axios from "axios";
 
-/**
- * IMPORTANT:
- * - Backend mounts tournament CRUD at: /api/tournament/...
- * - Entries routes at: /api/tournaments/:id/entries
- *
- * This file keeps the same behavior, but fixes "auto logout" by:
- * ✅ Avoiding localStorage.clear() (too destructive)
- * ✅ Avoiding multiple simultaneous refresh calls
- * ✅ Never nuking app state for transient failures (429)
- */
-
 const normalizeBase = (v) => String(v || "").trim().replace(/\/+$/, "");
 
-// Prefer VITE_API_URL (existing), fallback to VITE_API_BASE_URL, then local dev default
 const API_ROOT =
   normalizeBase(import.meta.env.VITE_API_URL) ||
   normalizeBase(import.meta.env.VITE_API_BASE_URL) ||
@@ -23,31 +11,25 @@ const API_URL = API_ROOT.endsWith("/api") ? API_ROOT : `${API_ROOT}/api`;
 
 const isImageAnalyzeRequest = (configOrUrl) => {
   const value =
-    typeof configOrUrl === "string"
-      ? configOrUrl
-      : configOrUrl?.url || "";
+    typeof configOrUrl === "string" ? configOrUrl : configOrUrl?.url || "";
 
   return String(value).includes("/import/image/analyze");
 };
 
-// Create axios instance
 const api = axios.create({
   baseURL: API_URL,
   withCredentials: true,
   timeout: 90000,
 });
 
-// Refresh mutex
 let refreshPromise = null;
 
-// Auto attach Bearer token to every request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem("authToken");
   if (token) config.headers.Authorization = `Bearer ${token}`;
   return config;
 });
 
-// Handle response errors (401 → refresh token, 429 → rate limit)
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
@@ -104,7 +86,6 @@ api.interceptors.response.use(
   }
 );
 
-// Helper for API calls with clean error handling
 const apiCall = async (method, url, data = null, config = {}) => {
   try {
     const normalizedMethod = method.toLowerCase();
@@ -135,11 +116,9 @@ const apiCall = async (method, url, data = null, config = {}) => {
   }
 };
 
-// User APIs
 export const registerUser = (userData) => apiCall("post", "/auth/register", userData);
 export const loginUser = (credentials) => apiCall("post", "/auth/login", credentials);
 
-// Tournament APIs
 export const createTournament = (data) =>
   apiCall("post", "/tournament", data, {
     headers: { "Content-Type": "multipart/form-data" },
@@ -154,17 +133,31 @@ export const getOngoingTournaments = () => apiCall("get", "/tournament/ongoing")
 export const getPreviousTournaments = () => apiCall("get", "/tournament/previous");
 export const getTournamentById = (id) => apiCall("get", `/tournament/${id}`);
 
-// Weight presets
-export const saveWeightPreset = (name, data) => apiCall("post", "/weight-presets", { name, data });
+export const saveWeightPreset = (name, data) =>
+  apiCall("post", "/weight-presets", { name, data });
 export const getWeightPresets = () => apiCall("get", "/weight-presets");
 export const deleteWeightPreset = (id) => apiCall("delete", `/weight-presets/${id}`);
 
-// Entries APIs
-export const getEntries = (tournamentId) => apiCall("get", `/tournaments/${tournamentId}/entries`);
+export const getEntries = (tournamentId) =>
+  apiCall("get", `/tournaments/${tournamentId}/entries`);
 export const saveEntries = (tournamentId, payload) =>
   apiCall("post", `/tournaments/${tournamentId}/entries`, payload);
 
-// Image import APIs
+export const submitTeamSubmission = (tournamentId, payload) =>
+  apiCall("post", `/team-submissions/${tournamentId}/submit`, payload);
+
+export const getTournamentTeamSubmissions = (tournamentId) =>
+  apiCall("get", `/team-submissions/${tournamentId}`);
+
+export const getPendingTeamSubmissionCount = (tournamentId) =>
+  apiCall("get", `/team-submissions/${tournamentId}/pending-count`);
+
+export const approveTeamSubmission = (submissionId) =>
+  apiCall("patch", `/team-submissions/${submissionId}/approve`, {});
+
+export const rejectTeamSubmission = (submissionId, payload = {}) =>
+  apiCall("patch", `/team-submissions/${submissionId}/reject`, payload);
+
 export const analyzeImageImport = (formData) =>
   apiCall("post", "/import/image/analyze", formData, {
     headers: { "Content-Type": "multipart/form-data" },
@@ -173,7 +166,6 @@ export const analyzeImageImport = (formData) =>
 export const confirmImageImport = (payload) =>
   apiCall("post", "/import/image/confirm", payload);
 
-// ✅ Visitor counter (public)
 export const getVisitorCount = () => apiCall("get", "/visitor");
 
 export default api;

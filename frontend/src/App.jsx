@@ -18,11 +18,13 @@ import Winner from "./pages/Winner";
 import TeamChampionship from "./pages/TeamChampionship";
 import Official from "./pages/Official";
 import Team from "./pages/Team";
+import TeamEntryForm from "./pages/TeamEntryForm";
+import TeamSubmissions from "./pages/TeamSubmissions";
 import TournamentLayout from "./components/TournamentLayout";
 import "./App.css";
 
 function App() {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
 
   useEffect(() => {
     console.log("Auth status updated:", isAuthenticated);
@@ -35,31 +37,51 @@ function App() {
       <main className="mainContent">
         <Routes>
           <Route path="/" element={<TournamentsPages />} />
+
           <Route
             path="/login"
             element={!isAuthenticated ? <Login /> : <Navigate to="/" replace />}
           />
+
           <Route
             path="/register"
             element={!isAuthenticated ? <Register /> : <Navigate to="/" replace />}
           />
+
           <Route
             path="/social-login"
             element={!isAuthenticated ? <SocialLogin /> : <Navigate to="/" replace />}
           />
+
           <Route
             path="/tournament/create"
             element={
               isAuthenticated ? <TournamentForm /> : <Navigate to="/login" replace />
             }
           />
+
           <Route
             path="/tournament-form"
             element={
               isAuthenticated ? <TournamentForm /> : <Navigate to="/login" replace />
             }
           />
+
           <Route path="/tournaments" element={<TournamentsPages />} />
+
+          <Route
+            path="/team-entry/:id"
+            element={
+              isAuthenticated ? (
+                <TeamEntryForm />
+              ) : (
+                <Navigate
+                  to={`/login?redirect=${encodeURIComponent(window.location.pathname)}`}
+                  replace
+                />
+              )
+            }
+          />
 
           <Route path="/tournaments/:id" element={<TournamentLayout />}>
             <Route index element={<TournamentDetails />} />
@@ -70,6 +92,16 @@ function App() {
             <Route path="team-championship" element={<TeamChampionship />} />
             <Route path="official" element={<Official />} />
             <Route path="team" element={<Team />} />
+            <Route
+              path="team-submissions"
+              element={
+                isAuthenticated && user?.role === "organizer" ? (
+                  <TeamSubmissions />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              }
+            />
           </Route>
 
           <Route path="/about" element={<About />} />

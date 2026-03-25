@@ -1,9 +1,6 @@
-/* src/pages/Team.module.css */
-/* Exact same styling as Official.module.css */
-
 .container {
   padding: 2rem;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   background-color: #f8f9fa;
   min-height: 100vh;
 }
@@ -15,18 +12,17 @@
   padding: 4rem 0;
 }
 
-/* Header - IDENTICAL to Official */
 .header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 20px;
-   background: #f5f5f5;
+  background: #f5f5f5;
   color: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
   gap: 20px;
   min-height: 120px;
   border-radius: 8px;
-  margin-bottom: .8rem;
+  margin-bottom: 0.8rem;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   position: relative;
 }
@@ -80,15 +76,14 @@
   -webkit-overflow-scrolling: touch;
 }
 
-/* Make inputs compact */
-.table input, .table select {
+.table input,
+.table select {
   padding: 4px 6px;
   font-size: 12px;
   border: 1px solid #ccc;
   border-radius: 4px;
 }
 
-/* Table */
 .tableWrapper {
   background: white;
   border-radius: 12px;
@@ -103,25 +98,25 @@
   width: auto !important;
   table-layout: auto !important;
   border-collapse: collapse;
-  min-width: 1000px; /* Prevent too narrow on small screens */
+  min-width: 1000px;
 }
 
 .table th,
 .table td {
   padding: 14px 12px;
- white-space: nowrap !important;
+  white-space: nowrap !important;
   border-bottom: 1px solid #e0e6ed;
 }
 
 .table th {
   background: linear-gradient(20deg, #cf0006 0%, #990005 100%);
   color: white;
-  font-weight: bold!important;
-  font-family: Arial, Helvetica, sans-serif!important;
+  font-weight: bold !important;
+  font-family: Arial, Helvetica, sans-serif !important;
   text-transform: uppercase;
   letter-spacing: 0.5px;
   text-align: center;
-  font-size: 12px!important;
+  font-size: 12px !important;
 }
 
 .table tbody tr:nth-child(even) {
@@ -156,6 +151,344 @@
   background: #a50040;
 }
 
+.buttonSection {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 1.2rem;
+  width: 100%;
+  max-width: 1400px;
+  margin-left: auto;
+  margin-right: auto;
+  flex-wrap: wrap;
+}
+
+.buttonGroupLeft,
+.buttonGroupCenter,
+.buttonGroupRight {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.buttonGroupLeft {
+  justify-content: flex-start;
+  flex: 1;
+}
+
+.buttonGroupCenter {
+  justify-content: center;
+  flex: 1;
+}
+
+.buttonGroupRight {
+  justify-content: flex-end;
+  flex: 1;
+}
+
+.actionButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  min-width: 125px;
+  background: #cf0006;
+  color: #fff;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.12);
+}
+
+.actionButton:hover {
+  background: #a50040;
+  transform: translateY(-1px);
+}
+
+.actionButton:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.buttonIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.copyMessage {
+  margin: 0 0 14px;
+  text-align: center;
+  color: #198754;
+  font-weight: 600;
+}
+
+/* Page wrapper for clean PDF capture */
+.pageContent .table {
+  font-size: 10pt;
+  line-height: 1.3;
+}
+
+.pageContent .table th,
+.pageContent .table td {
+  padding: 6px 8px;
+  font-size: 9pt;
+}
+
+.pageContent .tournamentName {
+  font-size: 1.6rem;
+}
+
+.pageContent .title {
+  font-size: 1.5rem;
+}
+
+.pageContent .table td {
+  word-wrap: break-word;
+  max-width: 150px;
+}
+
+.pageContent .header {
+  padding: 15px;
+  min-height: 100px;
+}
+
+.pageContent .logoLeft,
+.pageContent .logoRight {
+  max-height: 80px;
+}
+
+.playersListHeading {
+  text-align: center;
+  font-size: 1.8rem;
+  font-weight: 700;
+  color: #2c3e50;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-block-start: 0;
+  margin-block-end: 0;
+}
+
+.playersSummary {
+  margin-block-start: 0.8rem;
+  margin-block-end: 0.8rem;
+  text-align: center;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 1.5rem;
+  font-weight: bold;
+  color: #cf0006;
+}
+
+.playersSummary strong {
+  color: #cf0006;
+  font-size: 1.4rem;
+}
+
+.sortableHeader {
+  cursor: pointer;
+  user-select: none;
+  position: relative;
+  padding-right: 20px !important;
+}
+
+.sortableHeader:hover {
+  background-color: #b30005 !important;
+}
+
+.sortIndicator {
+  position: absolute;
+  right: 8px;
+  font-size: 12px;
+}
+
+.statusPaid {
+  background-color: #d4edda !important;
+}
+
+.statusPartial {
+  background-color: #fff3cd !important;
+}
+
+.statusDue {
+  background-color: #f8d7da !important;
+}
+
+.statusPaidCell {
+  background-color: #d4edda !important;
+  text-align: center;
+}
+
+.statusPartialCell {
+  background-color: #fff3cd !important;
+  text-align: center;
+}
+
+.statusDueCell {
+  background-color: #f8d7da !important;
+  text-align: center;
+}
+
+.paymentStatusSelect {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-radius: 4px;
+  font-weight: bold;
+  background: transparent;
+  text-align: center;
+}
+
+.colSN {
+  width: 60px;
+  min-width: 60px;
+  text-align: center;
+}
+
+.colTeamName {
+  width: 220px;
+  min-width: 220px;
+  text-align: left !important;
+}
+
+.colTotalPlayers {
+  width: 60px;
+  min-width: 60px;
+  text-align: center;
+}
+
+.colGender {
+  width: 50px;
+  min-width: 50px;
+  text-align: center;
+}
+
+.td .colGender {
+  text-align: right !important;
+}
+
+.colSubEvent {
+  width: 100px;
+  min-width: 100px;
+  text-align: center;
+}
+
+.colTotalFee {
+  width: 110px;
+  min-width: 110px;
+  text-align: center;
+}
+
+.colFoodLodging {
+  width: 70px !important;
+  min-width: 70px !important;
+  text-align: center;
+}
+
+table th.colFoodLodging,
+table td.colFoodLodging {
+  width: 80px !important;
+  min-width: 80px !important;
+  max-width: 80px !important;
+  text-align: center !important;
+  font-size: 10px !important;
+  padding: 6px 4px !important;
+  line-height: 1.2 !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  white-space: normal !important;
+}
+
+table td.colFoodLodging .paymentInput {
+  width: 100% !important;
+  font-size: 10px !important;
+  padding: 4px 2px !important;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+table th.colCashOnline,
+table td.colCashOnline {
+  width: 90px !important;
+  min-width: 90px !important;
+  max-width: 90px !important;
+  text-align: center !important;
+  font-size: 12px !important;
+  padding: 6px 4px !important;
+  line-height: 1.2 !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  white-space: normal !important;
+}
+
+table th.colPaymentStatus,
+table td.colPaymentStatus {
+  width: 90px !important;
+  min-width: 90px !important;
+  max-width: 90px !important;
+  text-align: center !important;
+  font-size: 12px !important;
+  padding: 6px 4px !important;
+  line-height: 1.2 !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+  white-space: normal !important;
+}
+
+.colPaymentStatus {
+  width: 50px !important;
+  min-width: 50px !important;
+  text-align: center;
+}
+
+.colDueAmount {
+  width: 110px;
+  min-width: 110px;
+  text-align: center;
+  color: #cf0006;
+}
+
+.colPaymentMode {
+  width: 80px;
+  min-width: 80px;
+  text-align: center;
+}
+
+.colCashOnline {
+  width: 80px;
+  min-width: 80px;
+  text-align: center;
+}
+
+.colTxnId {
+  width: 120px;
+  min-width: 120px;
+  text-align: center;
+}
+
+.colCoachManager {
+  width: 160px;
+  min-width: 160px;
+  text-align: center;
+}
+
+.colContact {
+  width: 140px;
+  min-width: 140px;
+  text-align: center;
+}
+
+.table .paymentInput {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 @media (max-width: 768px) {
   .header {
     flex-direction: column;
@@ -182,340 +515,21 @@
     padding: 10px 8px;
     font-size: 14px;
   }
-}
 
-/* Add to src/pages/Team.module.css */
+  .buttonSection {
+    flex-direction: column;
+    align-items: stretch;
+  }
 
-/* Print left – Save PDF right – perfect alignment */
-.buttonSection {
-  display: flex;
-  justify-content: space-between;       /* ← yahi magic hai */
-  align-items: center;
-  margin-bottom: 1.5rem;
-  width: 100%;
-  max-width: 1200px;
-  margin-left: auto;
-  margin-right: auto;
-}
+  .buttonGroupLeft,
+  .buttonGroupCenter,
+  .buttonGroupRight {
+    width: 100%;
+    justify-content: center;
+  }
 
-.pdfButtonWrapper {
-  display: flex;
-  gap: 20px;                            /* Buttons ke beech space */
-  width: 100%;
-  justify-content: space-between;       /* Print left, Save right */
-}
-
-/* Optional: Buttons ko thoda bada aur clear karo */
-.printButton,
-.pdfButton {
-  padding: 12px 28px;
-  font-size: 16px;
-  font-weight: 600;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  min-width: 140px;                     /* Same width for both buttons */
-  transition: all 0.2s;
-}
-
-.printButton {
-  background: #cf0006;
-  color: white;
-}
-
-.printButton:hover {
-  background: #a50040;
-}
-
-.pdfButton {
-  background: #cf0006;
-  color: white;
-}
-
-.pdfButton:hover {
-  background: #a50040;
-}
-
-.printButton:disabled,
-.pdfButton:disabled {
-  background: #6c757d;
-  cursor: not-allowed;
-}
-
-/* Page wrapper for clean PDF capture */
-/* Add to src/pages/Team.module.css */
-
-/* Make tables more compact and readable in PDF */
-.pageContent .table {
-  font-size: 10pt;
-  line-height: 1.3;
-}
-
-.pageContent .table th,
-.pageContent .table td {
-  padding: 6px 8px;
-  font-size: 9pt;
-}
-
-.pageContent .tournamentName {
-  font-size: 1.6rem;
-}
-
-.pageContent .title {
-  font-size: 1.5rem;
-}
-
-/* Ensure long team names wrap */
-.pageContent .table td {
-  word-wrap: break-word;
-  max-width: 150px;
-}
-
-/* Reduce header padding for more space */
-.pageContent .header {
-  padding: 15px;
-  min-height: 100px;
-}
-
-.pageContent .logoLeft,
-.pageContent .logoRight {
-  max-height: 80px;
-}
-
-/* Add these styles to src/pages/Team.module.css */
-
-/* Players List Heading */
-.playersListHeading {
-  text-align: center;
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: #2c3e50; /* Dark gray for contrast */
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  
-      margin-block-start: 0;
-    margin-block-end: 0;
-}
-
-/* Players Summary Paragraph */
-.playersSummary {
-     margin-block-start: 0.8rem;
-    margin-block-end: 0.8rem;
-  text-align: center;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 1.5rem;
-  font-weight: bold;
-  color: #cf0006;
-}
-
-.playersSummary strong {
-  color: #cf0006; /* Red accent for numbers */
-  font-size: 1.4rem;
-}
-
-.sortableHeader {
-  cursor: pointer;
-  user-select: none;
-  position: relative;
-  padding-right: 20px !important;
-}
-
-.sortableHeader:hover {
-  background-color: #b30005 !important;
-}
-
-.sortIndicator {
-  position: absolute;
-  right: 8px;
-  font-size: 12px;
-}
-
-/* Payment Status Row Colors */
-.statusPaid {
-  background-color: #d4edda !important; /* Light Green */
-}
-
-.statusPartial {
-  background-color: #fff3cd !important; /* Light Yellow/Orange for Partial */
-}
-
-.statusDue {
-  background-color: #f8d7da !important; /* Light Red */
-}
-
-/* Only specific cells colored - not whole row */
-.statusPaidCell {
-  background-color: #d4edda !important; /* Light Green */
-  text-align: center;
-}
-
-.statusPartialCell {
-  background-color: #fff3cd !important; /* Light Yellow for Partial */
-  text-align: center;
-}
-
-.statusDueCell {
-  background-color: #f8d7da !important; /* Light Red for Due */
-  text-align: center;
-}
-
-
-/* Ensure select takes full cell */
-.paymentStatusSelect {
-  width: 100%;
-  padding: 8px;
-  border: none;
-  border-radius: 4px;
-  font-weight: bold;
-  background: transparent; /* Let parent background show */
-  text-align: center;
-}
-
-/* Individual Column Widths - Adjust as needed */
-.colSN {              /* S.N. */
-  width: 60px;
-  min-width: 60px;
-  text-align: center;
-}
-
-.colTeamName {        /* Team Name */
-  width: 220px;
-  min-width: 220px;
-  text-align: left!important;
-}
-
-.colTotalPlayers {    /* Total Players */
-  width: 60px;
-  min-width: 60px;
-  text-align: center;
-}
-
-.colGender {          /* Male / Female */
-  width: 50px;
-  min-width: 50px;
-  text-align: center;
-}
-
-.td .colGender {
-     text-align: right!important;
- }
-
-.colSubEvent {        /* Kyorugi, Fresher, etc. */
-  width: 100px;
-  min-width: 100px;
-  text-align: center;
-}
-
-.colTotalFee {        /* Total Fee */
-  width: 110px;
-  min-width: 110px;
-  text-align: center;
-  
-}
-
-.colFoodLodging {     /* Food & Lodging Members */
-  width: 70px!important;
-  min-width: 70px!important;
-  text-align: center;
-}
-
-/* Food & Lodging column - compact with proper text wrap */
-table th.colFoodLodging,
-table td.colFoodLodging {
-  width: 80px !important;
-  min-width: 80px !important;
-  max-width: 80px !important;
-  text-align: center !important;
-  font-size: 10px !important;        /* Header ke liye bhi chhota */
-  padding: 6px 4px !important;
-  line-height: 1.2 !important;       /* Lines ke beech space kam */
-  word-wrap: break-word !important;  /* Long words break */
-  overflow-wrap: break-word !important;
-  white-space: normal !important;    /* ← Yeh important hai - allow wrap */
-}
-
-/* Input in this column */
-table td.colFoodLodging .paymentInput {
-  width: 100% !important;
-  font-size: 10px !important;
-  padding: 4px 2px !important;
-  text-align: center;
-  box-sizing: border-box;
-}
-
-table th.colCashOnline,
-table td.colCashOnline {
-  width: 90px !important;
-  min-width: 90px !important;
-  max-width: 90px !important;
-  text-align: center !important;
-  font-size: 12px !important;        /* Header ke liye bhi chhota */
-  padding: 6px 4px !important;
-  line-height: 1.2 !important;       /* Lines ke beech space kam */
-  word-wrap: break-word !important;  /* Long words break */
-  overflow-wrap: break-word !important;
-  white-space: normal !important;    /* ← Yeh important hai - allow wrap */
-}
-
-table th.colPaymentStatus,
-table td.colPaymentStatus {
-  width: 90px !important;
-  min-width: 90px !important;
-  max-width: 90px !important;
-  text-align: center !important;
-  font-size: 12px !important;        /* Header ke liye bhi chhota */
-  padding: 6px 4px !important;
-  line-height: 1.2 !important;       /* Lines ke beech space kam */
-  word-wrap: break-word !important;  /* Long words break */
-  overflow-wrap: break-word !important;
-  white-space: normal !important;    /* ← Yeh important hai - allow wrap */
-}
-
-.colPaymentStatus {   /* Payment Status */
-  width: 50px!important;
-  min-width: 50px!important;
-  text-align: center;
-}
-
-.colDueAmount {       /* Due Amount */
-  width: 110px;
-  min-width: 110px;
-  text-align: center;
-  color: #cf0006;
-}
-
-.colPaymentMode {     /* Payment Mode */
-  width: 80px;
-  min-width: 80px;
-  text-align: center;
-}
-
-.colCashOnline {      /* Cash Payment / Online Payment */
-  width: 8px;
-  min-width: 80px;
-  text-align: center;
-}
-
-.colTxnId {           /* Transaction ID */
-  width: 120px;
-  min-width: 120px;
-  text-align: center;
-}
-
-.colCoachManager {    /* Coach / Manager */
-  width: 160px;
-  min-width: 160px;
-  text-align: center;
-}
-
-.colContact {         /* Contact */
-  width: 140px;
-  min-width: 140px;
-  text-align: center;
-}
-
-/* Input fields inside table - full width */
-.table .paymentInput {
-  width: 100%;
-  box-sizing: border-box;
+  .actionButton {
+    width: 100%;
+    max-width: 260px;
+  }
 }

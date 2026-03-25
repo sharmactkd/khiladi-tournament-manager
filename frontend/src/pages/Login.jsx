@@ -1,6 +1,5 @@
-// frontend/src/pages/Login.jsx
 import React, { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useFormik } from "formik";
 import * as Yup from "yup";
 import { FiLock, FiMail } from "react-icons/fi";
@@ -12,16 +11,15 @@ import styles from "./Login.module.css";
 
 const Login = () => {
   const { login } = useAuth();
+  const [searchParams] = useSearchParams();
   const [passwordVisible, setPasswordVisible] = useState(false);
   const [serverError, setServerError] = useState("");
 
-  const BACKEND_URL =
-    import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+  const redirectTo = searchParams.get("redirect") || "/";
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 
   const validationSchema = Yup.object({
-    email: Yup.string()
-      .email("Invalid email address")
-      .required("Email is required"),
+    email: Yup.string().required("Email is required"),
     password: Yup.string()
       .min(8, "Password must be at least 8 characters")
       .required("Password is required"),
@@ -36,7 +34,7 @@ const Login = () => {
         const response = await loginUser(values);
 
         if (response?.accessToken) {
-          login(response);
+          login(response, redirectTo);
         } else {
           setServerError("Login failed: Invalid response from server");
         }
@@ -74,21 +72,17 @@ const Login = () => {
           </div>
 
           <form onSubmit={formik.handleSubmit} className={styles.loginForm}>
-            {serverError && (
-              <div className={styles.errorMessage}>{serverError}</div>
-            )}
+            {serverError && <div className={styles.errorMessage}>{serverError}</div>}
 
             <div className={styles.inputGroup}>
               <FiMail className={styles.icon} />
               <input
-                type="email"
-                placeholder="Email"
-                autoComplete="email"
+                type="text"
+                placeholder="Email or Mobile Number"
+                autoComplete="username"
                 {...formik.getFieldProps("email")}
                 className={
-                  formik.touched.email && formik.errors.email
-                    ? styles.inputError
-                    : ""
+                  formik.touched.email && formik.errors.email ? styles.inputError : ""
                 }
               />
               {formik.touched.email && formik.errors.email && (
@@ -136,7 +130,10 @@ const Login = () => {
 
       <div className={styles.rightSection}>
         <h1 className={styles.signupText}>New Here?</h1>
-        <Link to="/register" className={styles.signupBtn}>
+        <Link
+          to={`/register${redirectTo ? `?redirect=${encodeURIComponent(redirectTo)}` : ""}`}
+          className={styles.signupBtn}
+        >
           Create Account
         </Link>
         <h3 className={styles.featureText}>

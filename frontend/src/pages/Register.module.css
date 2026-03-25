@@ -11,71 +11,82 @@
   justify-content: center;
   align-items: center;
   min-height: 100vh;
-  background:
-    linear-gradient(to right, white 50%, transparent 50%),
-    linear-gradient(#CF0006, rgb(100, 6, 6));
-  padding: 1rem;
   width: 100%;
+  padding: 1rem;
+  background:
+    linear-gradient(to right, #ffffff 50%, transparent 50%),
+    linear-gradient(#cf0006, rgb(100, 6, 6));
 }
 
 /* Register Card */
 .authCard {
-  background: white;
-  padding: 2rem;
-  border-radius: 12px;
-  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
-  text-align: center;
   width: 100%;
-  max-width: 400px;
+  max-width: 430px;
+  background: #ffffff;
+  padding: 2rem;
+  border-radius: 18px;
+  box-shadow:
+    0 12px 30px rgba(0, 0, 0, 0.1),
+    0 2px 10px rgba(207, 0, 6, 0.06);
+  text-align: center;
+  border: 1px solid rgba(207, 0, 6, 0.06);
 }
 
 /* Title & Subtitle */
 .title {
-  font-size: 1.8rem;
-  font-weight: bold;
-  color: #CF0006;
-  margin-bottom: 0.5rem;
+  margin: 0 0 0.45rem;
+  font-size: 1.95rem;
+  font-weight: 700;
+  line-height: 1.25;
+  color: #cf0006;
 }
 
 .subtitle {
+  margin: 0 0 1.4rem;
   font-size: 1rem;
   color: #666;
-  margin-bottom: 1.5rem;
 }
 
 /* Social Login */
 .socialLogin {
   display: flex;
   justify-content: center;
-  gap: 1rem;
   margin-bottom: 1rem;
 }
 
 .socialButton {
-  width: 50px;
-  height: 50px;
+  width: 54px;
+  height: 54px;
   border-radius: 50%;
-  border: 1px solid #ddd;
-  background: white;
-  display: flex;
+  border: 1px solid #e4e4e4;
+  background: #ffffff;
+  display: inline-flex;
   justify-content: center;
   align-items: center;
   cursor: pointer;
-  transition: background 0.3s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease,
+    border-color 0.2s ease;
   flex-shrink: 0;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.04);
 }
 
 .socialButton:hover {
-  background: #f5f5f5;
+  background: #fff8f8;
+  border-color: rgba(207, 0, 6, 0.2);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(207, 0, 6, 0.08);
 }
 
 .socialIcon {
-  font-size: 1.5rem;
+  font-size: 1.55rem;
 }
 
 /* Divider */
 .divider {
-  margin: 1rem 0;
+  margin: 1.05rem 0 1.15rem;
   text-align: center;
   position: relative;
   display: flex;
@@ -88,12 +99,12 @@
   content: "";
   flex: 1;
   height: 1px;
-  background: #999;
-  margin: 0 10px;
+  background: #d4d4d4;
+  margin: 0 12px;
 }
 
 .dividerText {
-  color: #999;
+  color: #8a8a8a;
   font-size: 0.9rem;
 }
 
@@ -114,72 +125,240 @@
 
 .inputIcon {
   position: absolute;
-  left: 1rem;
-  top: 50%;
+  left: 0.95rem;
+  top: 1.5rem;
   transform: translateY(-50%);
   color: #666;
+  font-size: 1.05rem;
+  pointer-events: none;
+  z-index: 2;
 }
 
 .input {
   width: 100%;
-  padding: 0.8rem 2.5rem;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #f9f9f9;
-  box-sizing: border-box;
+  min-height: 52px;
+  padding: 0.85rem 3rem 0.85rem 2.75rem;
+  border: 1px solid #d8d8d8;
+  border-radius: 12px;
+  background: #ffffff;
+  font-size: 1rem;
+  color: #222;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
 }
 
-.inputGroup input {
+.inputGroup input:not([type="radio"]) {
   width: 100%;
-  padding: 0.8rem 1rem 0.8rem 2.5rem !important;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  background: white;
+  min-height: 52px;
+  padding: 0.85rem 3rem 0.85rem 2.75rem !important;
+  border: 1px solid #d8d8d8;
+  border-radius: 12px;
+  background: #ffffff;
   font-size: 1rem;
+  color: #222;
   box-sizing: border-box;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
+}
+
+.input::placeholder,
+.inputGroup input:not([type="radio"])::placeholder {
+  color: #8a8a8a;
 }
 
 .input:focus,
-.inputGroup input:focus {
+.inputGroup input:not([type="radio"]):focus {
   outline: none;
-  border-color: #CF0006;
+  border-color: #cf0006;
+  box-shadow: 0 0 0 4px rgba(207, 0, 6, 0.08);
+  background: #fffefe;
 }
 
 .error {
-  border-color: red !important;
+  border-color: #d62828 !important;
+  box-shadow: 0 0 0 4px rgba(214, 40, 40, 0.08);
 }
 
+/* Password eye button */
+.eyeBtn {
+  position: absolute;
+  top: 50%;
+  right: 0.75rem;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: #666;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  z-index: 3;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
+}
+
+.eyeBtn:hover {
+  color: #cf0006;
+  background: rgba(207, 0, 6, 0.06);
+}
+
+.eyeBtn:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(207, 0, 6, 0.12);
+}
+
+/* Validation / server messages */
 .validationError {
-  color: red;
+  margin-top: 0.42rem;
+  padding-left: 0.15rem;
+  color: #d62828;
   font-size: 0.8rem;
-  margin-top: 0.3rem;
   text-align: left;
+  line-height: 1.4;
+}
+
+.errorMessage {
+  width: 100%;
+  max-width: 350px;
+  padding: 0.8rem 0.95rem;
+  border-radius: 12px;
+  border: 1px solid rgba(214, 40, 40, 0.18);
+  background: #fff4f4;
+  color: #c1121f;
+  font-size: 0.9rem;
+  text-align: left;
+  line-height: 1.45;
+}
+
+/* Role Selection Section */
+.roleGroup {
+  max-width: 350px;
+}
+
+.roleWrapper {
+  width: 100%;
+  text-align: left;
+}
+
+.roleHeading {
+  margin-bottom: 0.75rem;
+  font-weight: 700;
+  color: #333;
+  font-size: 0.96rem;
+}
+
+.roleOptions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  width: 100%;
+}
+
+.roleOption {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 56px;
+  padding: 0.9rem 0.75rem;
+  border: 1.5px solid #ddd;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #fcfcfc 100%);
+  cursor: pointer;
+  transition:
+    border-color 0.25s ease,
+    box-shadow 0.25s ease,
+    transform 0.25s ease,
+    background 0.25s ease;
+  user-select: none;
+  overflow: hidden;
+}
+
+.roleOption:hover {
+  border-color: rgba(207, 0, 6, 0.5);
+  background: linear-gradient(180deg, #fffafa 0%, #fff3f3 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(207, 0, 6, 0.08);
+}
+
+.roleOptionActive {
+  border-color: #cf0006;
+  background: linear-gradient(180deg, #fff5f5 0%, #ffe9e9 100%);
+  box-shadow:
+    0 10px 22px rgba(207, 0, 6, 0.12),
+    inset 0 0 0 1px rgba(207, 0, 6, 0.05);
+}
+
+.roleLabel {
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #333;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.roleRadioHidden {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+  width: 0;
+  height: 0;
+}
+
+
+
+.roleError {
+  margin-top: 0.5rem;
 }
 
 /* Register Button */
 .primaryButton {
-  background: #CF0006;
-  color: white;
-  padding: 0.8rem;
-  border-radius: 8px;
-  font-weight: bold;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: background 0.3s;
   width: 100%;
   max-width: 350px;
+  min-height: 52px;
+  background: linear-gradient(180deg, #e10005 0%, #c40005 100%);
+  color: white;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 1rem;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease;
   border: none;
+  box-shadow: 0 10px 20px rgba(207, 0, 6, 0.18);
 }
 
-.primaryButton:hover {
-  background: #a30005;
+.primaryButton:hover:not(:disabled) {
+  background: linear-gradient(180deg, #cf0006 0%, #a30005 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 14px 24px rgba(207, 0, 6, 0.22);
+}
+
+.primaryButton:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  box-shadow: none;
 }
 
 /* Footer */
 .authFooter {
-  margin-top: 1rem;
-  font-size: 0.9rem;
+  margin-top: 1.2rem;
+  font-size: 0.92rem;
   color: #666;
+  line-height: 1.5;
 }
 
 .footerText {
@@ -187,8 +366,8 @@
 }
 
 .link {
-  color: #CF0006;
-  font-weight: bold;
+  color: #cf0006;
+  font-weight: 700;
   text-decoration: none;
 }
 
@@ -203,17 +382,17 @@
   .authContainer {
     padding: 1.25rem;
     background:
-      linear-gradient(to right, white 55%, transparent 55%),
-      linear-gradient(#CF0006, rgb(100, 6, 6));
+      linear-gradient(to right, #ffffff 55%, transparent 55%),
+      linear-gradient(#cf0006, rgb(100, 6, 6));
   }
 
   .authCard {
-    max-width: 420px;
-    padding: 1.75rem;
+    max-width: 440px;
+    padding: 1.85rem;
   }
 
   .title {
-    font-size: 1.6rem;
+    font-size: 1.75rem;
   }
 }
 
@@ -223,39 +402,55 @@
 @media (max-width: 768px) {
   .authContainer {
     padding: 1rem;
-    align-items: center;
-    background: linear-gradient(#CF0006, rgb(100, 6, 6));
+    background: linear-gradient(#cf0006, rgb(100, 6, 6));
   }
 
   .authCard {
     max-width: 100%;
     width: 100%;
-    padding: 1.5rem 1.25rem;
-    border-radius: 14px;
+    padding: 1.5rem 1.2rem;
+    border-radius: 16px;
   }
 
   .title {
-    font-size: 1.5rem;
+    font-size: 1.55rem;
     line-height: 1.3;
   }
 
   .subtitle {
     font-size: 0.95rem;
-    margin-bottom: 1.25rem;
+    margin-bottom: 1.2rem;
   }
 
   .inputGroup,
-  .primaryButton {
+  .primaryButton,
+  .errorMessage,
+  .roleGroup {
     max-width: 100%;
   }
 
   .socialButton {
-    width: 46px;
-    height: 46px;
+    width: 48px;
+    height: 48px;
   }
 
   .socialIcon {
     font-size: 1.35rem;
+  }
+
+  .roleOptions {
+    grid-template-columns: 1fr;
+    gap: 0.65rem;
+  }
+
+  .roleOption {
+    justify-content: flex-start;
+    padding: 0.85rem 1rem;
+    min-height: 52px;
+  }
+
+  .roleLabel {
+    font-size: 0.94rem;
   }
 }
 
@@ -269,7 +464,7 @@
 
   .authCard {
     padding: 1.2rem 1rem;
-    border-radius: 12px;
+    border-radius: 14px;
   }
 
   .title {
@@ -282,7 +477,7 @@
   }
 
   .divider {
-    margin: 0.85rem 0;
+    margin: 0.85rem 0 1rem;
   }
 
   .divider::before,
@@ -290,23 +485,45 @@
     margin: 0 8px;
   }
 
-  .inputGroup input {
+  .inputGroup input:not([type="radio"]) {
+    min-height: 50px;
     font-size: 0.95rem;
-    padding: 0.75rem 0.9rem 0.75rem 2.4rem !important;
+    padding: 0.78rem 2.8rem 0.78rem 2.45rem !important;
   }
 
   .inputIcon {
     left: 0.85rem;
-    font-size: 0.95rem;
+    font-size: 0.98rem;
+  }
+
+  .eyeBtn {
+    right: 0.6rem;
+    width: 34px;
+    height: 34px;
+  }
+
+  .roleHeading {
+    font-size: 0.9rem;
+    margin-bottom: 0.65rem;
+  }
+
+  .roleOption {
+    border-radius: 12px;
+    padding: 0.8rem 0.9rem;
+    min-height: 48px;
+  }
+
+  .roleLabel {
+    font-size: 0.9rem;
   }
 
   .primaryButton {
+    min-height: 50px;
     font-size: 0.95rem;
-    padding: 0.75rem;
+    padding: 0.8rem;
   }
 
   .authFooter {
     font-size: 0.85rem;
-    line-height: 1.5;
   }
 }

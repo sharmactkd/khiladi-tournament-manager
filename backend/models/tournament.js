@@ -147,6 +147,21 @@ const tournamentSchema = new mongoose.Schema(
     poster: String,
     logos: [String],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  
+    entries: {
+  type: [mongoose.Schema.Types.Mixed],
+  default: [],
+},
+
+userState: {
+  type: mongoose.Schema.Types.Mixed,
+  default: () => ({
+    sorting: [],
+    filters: {},
+    columnWidths: [],
+    searchTerm: "",
+  }),
+},
     outcomes: { type: Map, of: Map, of: String, default: {} },
     tiesheet: { type: mongoose.Schema.Types.Mixed, default: {} },
     officials: {

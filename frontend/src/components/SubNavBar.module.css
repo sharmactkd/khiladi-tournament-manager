@@ -9,7 +9,7 @@
   height: 40px;
   display: flex;
   align-items: center;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
   box-sizing: border-box;
   white-space: nowrap;
@@ -78,4 +78,26 @@
   .subNav li {
     margin: 0.3rem 0;
   }
+}
+
+.linkContent {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notificationBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #cf0006;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 2px 8px rgba(207, 0, 6, 0.25);
 }

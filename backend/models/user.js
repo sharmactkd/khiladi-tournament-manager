@@ -2,6 +2,9 @@ import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import logger from "../utils/logger.js";
 
+const ACTIVE_ROLES = ["organizer", "coach", "player"];
+const LEGACY_ROLES = ["user", "admin"];
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -10,63 +13,78 @@ const userSchema = new mongoose.Schema(
       trim: true,
       maxlength: [50, "Name cannot exceed 50 characters"],
     },
+
     email: {
-  type: String,
-  lowercase: true,
-  unique: true,
-  sparse: true,
-  validate: {
-    validator: v => v === null || v === '' || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
-    message: "Please enter a valid email"
-  }
-},
+      type: String,
+      lowercase: true,
+      unique: true,
+      sparse: true,
+      validate: {
+        validator: (v) =>
+          v === null || v === "" || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v),
+        message: "Please enter a valid email",
+      },
+    },
+
     phone: {
       type: String,
-      unique: true, // This creates an index automatically
+      unique: true,
       sparse: true,
-     validate: {
-  validator: function(v) {
-    if (!v) return true;
-    // Allow +911234567890 or 911234567890 or 1234567890 (10-15 digits)
-    return /^(\+?\d{10,15})$/.test(v.replace(/\s/g, ''));
-  },
-  message: "Invalid phone number (10-15 digits, optional + prefix)"
-}
+      validate: {
+        validator: function (v) {
+          if (!v) return true;
+          return /^(\+?\d{10,15})$/.test(v.replace(/\s/g, ""));
+        },
+        message: "Invalid phone number (10-15 digits, optional + prefix)",
+      },
     },
+
     password: {
       type: String,
       minlength: [8, "Password must be at least 8 characters"],
       select: false,
     },
+
+    // NOTE:
+    // To avoid breaking existing users already saved with role "user" / "admin",
+    // we keep legacy values allowed internally.
+    // New registrations/UI only use: organizer, coach, player.
     role: {
       type: String,
-      enum: ["user", "admin"],
-      default: "user",
+      enum: [...ACTIVE_ROLES, ...LEGACY_ROLES],
+      default: "player",
     },
+
     loginProvider: {
       type: String,
       enum: ["email", "google", "phone"],
       default: "email",
     },
-    googleId: { 
-      type: String, 
-      unique: true, // This creates an index automatically
-      sparse: true 
-    },
-    facebookId: { 
-      type: String, 
-      unique: true, // This creates an index automatically
-      sparse: true 
+
+    googleId: {
+      type: String,
+      unique: true,
+      sparse: true,
     },
 
-    // Add this field in user schema
-weightPresets: [
-  {
-    name: { type: String, required: true, trim: true },
-    data: { type: mongoose.Schema.Types.Mixed, required: true }, // { "Sub-Junior": [...rows], ... }
-    createdAt: { type: Date, default: Date.now },
-  }
-],
+    facebookId: {
+      type: String,
+      unique: true,
+      sparse: true,
+    },
+
+    profilePicture: {
+      type: String,
+      default: null,
+    },
+
+    weightPresets: [
+      {
+        name: { type: String, required: true, trim: true },
+        data: { type: mongoose.Schema.Types.Mixed, required: true },
+        createdAt: { type: Date, default: Date.now },
+      },
+    ],
 
     isVerified: { type: Boolean, default: false },
     phoneVerified: { type: Boolean, default: false },
@@ -79,12 +97,10 @@ weightPresets: [
   }
 );
 
-// Keep only non-duplicate indexes
-userSchema.index({ loginProvider: 1 });  // Analytics queries ke liye helpful
-userSchema.index({ role: 1 });           // Admin queries ke liye
-userSchema.index({ isVerified: 1 });     // Verification status ke liye
+userSchema.index({ loginProvider: 1 });
+userSchema.index({ role: 1 });
+userSchema.index({ isVerified: 1 });
 
-// Only hash password if modified
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) return next();
 
@@ -98,10 +114,14 @@ userSchema.pre("save", async function (next) {
   }
 });
 
-// Compare password method
 userSchema.methods.comparePassword = async function (candidatePassword) {
-  if (!this.password) return false; // Social login users ke liye
-  return await bcrypt.compare(candidatePassword, this.password);
+  if (!this.password) return false;
+  return bcrypt.compare(candidatePassword, this.password);
+};
+
+userSchema.methods.getNormalizedRole = function () {
+  if (ACTIVE_ROLES.includes(this.role)) return this.role;
+  return "player";
 };
 
 const User = mongoose.model("User", userSchema);

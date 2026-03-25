@@ -1,6 +1,5 @@
-// frontend/src/pages/Register.jsx
 import React, { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useFormik } from "formik";
 import * as Yup from "yup";
 import { FiLock, FiMail, FiUser, FiEye, FiEyeOff } from "react-icons/fi";
@@ -9,12 +8,19 @@ import { registerUser } from "../api";
 import { useAuth } from "../context/AuthContext";
 import styles from "./Register.module.css";
 
+const roleOptions = [
+  { value: "organizer", label: "Organizer" },
+  { value: "coach", label: "Coach" },
+  { value: "player", label: "Player" },
+];
+
 const Register = () => {
   const { login } = useAuth();
-  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [serverError, setServerError] = useState("");
   const [passwordVisible, setPasswordVisible] = useState(false);
 
+  const redirectTo = searchParams.get("redirect") || "/tournaments";
   const BACKEND_URL =
     import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 
@@ -29,6 +35,9 @@ const Register = () => {
     password: Yup.string()
       .min(8, "Password must be at least 8 characters")
       .required("Password is required"),
+    role: Yup.string()
+      .oneOf(["organizer", "coach", "player"], "Please select a valid role")
+      .required("Role is required"),
   });
 
   const formik = useFormik({
@@ -36,18 +45,18 @@ const Register = () => {
       name: "",
       email: "",
       password: "",
+      role: "coach",
     },
     validationSchema,
     onSubmit: async (values) => {
       try {
         setServerError("");
         const data = await registerUser(values);
-        login(data);
-        navigate("/tournaments");
+        login(data, redirectTo);
       } catch (err) {
-        if (err.response?.status === 429) {
+        if (err.status === 429 || err.raw?.response?.status === 429) {
           setServerError(
-            "Too many registration attempts detected. Please wait 5-10 minutes and try again. Thank you for your patience! 😊"
+            "Too many registration attempts detected. Please wait 5-10 minutes and try again."
           );
         } else {
           setServerError(err.message || "Registration failed. Please try again.");
@@ -71,6 +80,8 @@ const Register = () => {
             type="button"
             className={styles.socialButton}
             onClick={handleGoogleLogin}
+            aria-label="Continue with Google"
+            title="Continue with Google"
           >
             <FcGoogle className={styles.socialIcon} />
           </button>
@@ -81,7 +92,9 @@ const Register = () => {
         </div>
 
         <form onSubmit={formik.handleSubmit} className={styles.authForm}>
-          {serverError && <div className={styles.errorMessage}>{serverError}</div>}
+          {serverError && (
+            <div className={styles.errorMessage}>{serverError}</div>
+          )}
 
           <div className={styles.inputGroup}>
             <FiUser className={styles.inputIcon} />
@@ -131,15 +144,55 @@ const Register = () => {
             <button
               type="button"
               className={styles.eyeBtn}
-              onClick={() => setPasswordVisible(!passwordVisible)}
+              onClick={() => setPasswordVisible((prev) => !prev)}
+              aria-label={passwordVisible ? "Hide password" : "Show password"}
+              title={passwordVisible ? "Hide password" : "Show password"}
             >
               {passwordVisible ? <FiEyeOff /> : <FiEye />}
             </button>
             {formik.touched.password && formik.errors.password && (
-              <div className={styles.validationError}>{formik.errors.password}</div>
+              <div className={styles.validationError}>
+                {formik.errors.password}
+              </div>
             )}
           </div>
 
+        <div className={`${styles.inputGroup} ${styles.roleGroup}`}>
+  <div className={styles.roleWrapper}>
+    <div className={styles.roleHeading}>Select Role</div>
+
+    <div className={styles.roleOptions}>
+      {roleOptions.map((roleOption) => {
+        const isSelected = formik.values.role === roleOption.value;
+
+        return (
+          <label
+            key={roleOption.value}
+            className={`${styles.roleOption} ${
+              isSelected ? styles.roleOptionActive : ""
+            }`}
+          >
+            <input
+              type="radio"
+              name="role"
+              value={roleOption.value}
+              checked={isSelected}
+              onChange={formik.handleChange}
+              className={styles.roleRadioHidden}
+            />
+            <span className={styles.roleLabel}>{roleOption.label}</span>
+          </label>
+        );
+      })}
+    </div>
+
+    {formik.touched.role && formik.errors.role && (
+      <div className={`${styles.validationError} ${styles.roleError}`}>
+        {formik.errors.role}
+      </div>
+    )}
+  </div>
+</div>
           <button
             type="submit"
             disabled={formik.isSubmitting}
@@ -151,7 +204,12 @@ const Register = () => {
 
         <div className={styles.authFooter}>
           <span className={styles.footerText}>Already have an account?</span>
-          <Link to="/login" className={styles.link}>
+          <Link
+            to={`/login${
+              redirectTo ? `?redirect=${encodeURIComponent(redirectTo)}` : ""
+            }`}
+            className={styles.link}
+          >
             Login here
           </Link>
         </div>

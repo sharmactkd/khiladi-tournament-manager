@@ -1,12 +1,23 @@
-// src/pages/Team.jsx
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import jsPDF from "jspdf";
-import { useAuth } from "../context/AuthContext";
 import html2canvas from "html2canvas";
+import { FaPrint, FaFilePdf, FaPlusCircle, FaShareAlt, FaInbox } from "react-icons/fa";
+import { useAuth } from "../context/AuthContext";
 import AddTeamEntriesModal from "../components/Team/AddTeamEntriesModal";
+import { getEntries, saveEntries } from "../api";
 import styles from "./Team.module.css";
+
+const CONDITIONAL_COLUMNS = {
+  kyorugi: "Kyorugi",
+  fresher: "Fresher",
+  tagTeam: "Tag Team",
+  poomsae: "Poomsae",
+  individual: "Individual",
+  pair: "Pair",
+  teamPoomsae: "Team Poomsae",
+};
 
 const getFullImageUrl = (filename) => {
   if (!filename) return "";
@@ -15,12 +26,6 @@ const getFullImageUrl = (filename) => {
   const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const uploadsUrl = baseUrl.replace(/\/api$/, "");
   return `${uploadsUrl}/uploads/${cleanFilename}?t=${Date.now()}`;
-};
-
-const getApiBaseForEntries = () => {
-  const envApi = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-  if (envApi.endsWith("/api")) return envApi;
-  return `${envApi.replace(/\/+$/, "")}/api`;
 };
 
 const createEmptyEntryState = () => ({
@@ -36,11 +41,20 @@ const defaultVisibleColumns = {
   class: false,
 };
 
+const extractEntryRows = (payload) => {
+  if (Array.isArray(payload?.entries)) return payload.entries;
+  if (Array.isArray(payload)) return payload;
+  return [];
+};
+
+const filterNonEmptyTeamRows = (rows = []) =>
+  rows.filter((row) => String(row?.team || "").trim() !== "");
+
 const Team = () => {
   const { id: rawId } = useParams();
   const id = rawId?.trim();
   const navigate = useNavigate();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
 
   const [entryData, setEntryData] = useState([]);
   const [teamStats, setTeamStats] = useState([]);
@@ -49,20 +63,12 @@ const Team = () => {
   const [tournament, setTournament] = useState(null);
   const [showAddTeamEntriesModal, setShowAddTeamEntriesModal] = useState(false);
   const [entryVisibleColumns, setEntryVisibleColumns] = useState(defaultVisibleColumns);
-
-  const conditionalColumns = {
-    kyorugi: "Kyorugi",
-    fresher: "Fresher",
-    tagTeam: "Tag Team",
-    poomsae: "Poomsae",
-    individual: "Individual",
-    pair: "Pair",
-    teamPoomsae: "Team Poomsae",
-  };
+  const [copyMessage, setCopyMessage] = useState("");
 
   const [visibleSubEventColumns, setVisibleSubEventColumns] = useState({
-    ...conditionalColumns,
+    ...CONDITIONAL_COLUMNS,
   });
+
   const [teamsSortConfig, setTeamsSortConfig] = useState({
     key: null,
     direction: "desc",
@@ -72,6 +78,8 @@ const Team = () => {
 
   const teamsPageRef = useRef(null);
   const playersPageRef = useRef(null);
+
+  const isOrganizer = user?.role === "organizer";
 
   useEffect(() => {
     const loadEntryVisibleColumns = () => {
@@ -93,40 +101,37 @@ const Team = () => {
       }
     };
 
-    loadEntryVisibleColumns();
+    if (id) {
+      loadEntryVisibleColumns();
+    }
   }, [id, showAddTeamEntriesModal]);
 
   useEffect(() => {
     const loadPayments = async () => {
-      if (!token) {
-        console.warn("No token found - user not logged in. Skipping server payment load.");
-        return;
-      }
+      if (!token || !id) return;
 
       try {
         const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-
         const res = await axios.get(`${baseUrl}/tournament/${id}/team-payments`, {
           headers: { Authorization: `Bearer ${token}` },
         });
-
         setPaymentData(res.data.teamPayments || {});
-        console.log("Payment data loaded from server");
       } catch (err) {
         console.warn("No payment data on server or error:", err.message);
       }
     };
 
-    if (teamStats.length > 0) loadPayments();
+    if (teamStats.length > 0) {
+      loadPayments();
+    }
   }, [teamStats.length, id, token]);
 
   useEffect(() => {
-    if (Object.keys(paymentData).length === 0 || !token) return;
+    if (Object.keys(paymentData).length === 0 || !token || !id) return;
 
     const timeoutId = setTimeout(async () => {
       try {
         const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-
         await axios.put(
           `${baseUrl}/tournament/${id}/team-payments`,
           { teamPayments: paymentData },
@@ -134,8 +139,6 @@ const Team = () => {
             headers: { Authorization: `Bearer ${token}` },
           }
         );
-
-        console.log("Payment data auto-saved to server");
       } catch (err) {
         console.error("Auto-save failed:", err.message);
       }
@@ -152,45 +155,16 @@ const Team = () => {
         setTournament(res.data);
       } catch (err) {
         console.warn("Could not load tournament details:", err);
-        setTournament({ name: "Tournament Teams", federation: "N/A", logos: [] });
-      }
-    };
-    fetchTournament();
-  }, [id]);
-
-  useEffect(() => {
-    const loadEntryData = () => {
-      try {
-        const savedData = localStorage.getItem(`entryData_${id}`);
-        if (savedData) {
-          const parsed = JSON.parse(savedData);
-          const data = Array.isArray(parsed?.entries)
-            ? parsed.entries.filter((row) => row.team && row.team.trim() !== "")
-            : Array.isArray(parsed)
-            ? parsed.filter((row) => row.team && row.team.trim() !== "")
-            : [];
-          setEntryData(data);
-          processTeamStats(data);
-        } else {
-          setEntryData([]);
-          setTeamStats([]);
-          setVisibleSubEventColumns({});
-        }
-      } catch (error) {
-        console.error("Error loading entry data:", error);
-      } finally {
-        setLoading(false);
+        setTournament({ tournamentName: "Tournament Teams", federation: "N/A", logos: [] });
       }
     };
 
-    loadEntryData();
-
-    const handleDataUpdate = () => loadEntryData();
-    window.addEventListener(`entryDataUpdated_${id}`, handleDataUpdate);
-    return () => window.removeEventListener(`entryDataUpdated_${id}`, handleDataUpdate);
+    if (id) {
+      fetchTournament();
+    }
   }, [id]);
 
-  const processTeamStats = (data) => {
+  const processTeamStats = useCallback((data) => {
     const teamMap = new Map();
     const globalCounts = {
       kyorugi: 0,
@@ -203,7 +177,9 @@ const Team = () => {
     };
 
     data.forEach((row) => {
-      const teamName = row.team.trim();
+      const teamName = String(row?.team || "").trim();
+      if (!teamName) return;
+
       if (!teamMap.has(teamName)) {
         teamMap.set(teamName, {
           name: teamName,
@@ -227,6 +203,7 @@ const Team = () => {
 
       const team = teamMap.get(teamName);
       team.totalPlayers += 1;
+
       if (row.gender === "Male") team.malePlayers += 1;
       if (row.gender === "Female") team.femalePlayers += 1;
 
@@ -244,6 +221,7 @@ const Team = () => {
       } else if (row.event === "Poomsae") {
         team.poomsae += 1;
         globalCounts.poomsae += 1;
+
         if (row.subEvent === "Individual") {
           team.individual += 1;
           globalCounts.individual += 1;
@@ -264,13 +242,91 @@ const Team = () => {
       team.players.push({ ...row });
     });
 
-    const newVisible = { ...conditionalColumns };
-    Object.keys(conditionalColumns).forEach((key) => globalCounts[key] === 0 && delete newVisible[key]);
-    setVisibleSubEventColumns(newVisible);
+    const nextVisible = { ...CONDITIONAL_COLUMNS };
+    Object.keys(CONDITIONAL_COLUMNS).forEach((key) => {
+      if (globalCounts[key] === 0) delete nextVisible[key];
+    });
 
-    const sortedTeams = Array.from(teamMap.values()).sort((a, b) => a.name.localeCompare(b.name));
+    setVisibleSubEventColumns(nextVisible);
+
+    const sortedTeams = Array.from(teamMap.values()).sort((a, b) =>
+      a.name.localeCompare(b.name)
+    );
     setTeamStats(sortedTeams);
-  };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadEntryData = async () => {
+      try {
+        setLoading(true);
+
+        let resolvedRows = [];
+
+        if (token && id) {
+          try {
+            const serverPayload = await getEntries(id);
+            resolvedRows = filterNonEmptyTeamRows(extractEntryRows(serverPayload));
+
+            if (resolvedRows.length > 0) {
+              localStorage.setItem(`entryData_${id}`, JSON.stringify(resolvedRows));
+            }
+          } catch (serverError) {
+            console.warn("Could not fetch entries from server, falling back to local cache.");
+          }
+        }
+
+        if (resolvedRows.length === 0 && id) {
+          const localRaw = localStorage.getItem(`entryData_${id}`);
+          if (localRaw) {
+            const parsed = JSON.parse(localRaw);
+            resolvedRows = filterNonEmptyTeamRows(extractEntryRows(parsed));
+          }
+        }
+
+        if (!mounted) return;
+
+        setEntryData(resolvedRows);
+        processTeamStats(resolvedRows);
+      } catch (error) {
+        console.error("Error loading entry data:", error);
+        if (!mounted) return;
+        setEntryData([]);
+        setTeamStats([]);
+        setVisibleSubEventColumns({});
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    };
+
+    if (id) {
+      loadEntryData();
+    }
+
+    const handleDataUpdate = () => {
+      if (id) {
+        loadEntryData();
+      }
+    };
+
+    if (id) {
+      window.addEventListener(`entryDataUpdated_${id}`, handleDataUpdate);
+    }
+
+    return () => {
+      mounted = false;
+      if (id) {
+        window.removeEventListener(`entryDataUpdated_${id}`, handleDataUpdate);
+      }
+    };
+  }, [id, token, processTeamStats]);
+
+  useEffect(() => {
+    if (!copyMessage) return;
+    const timer = setTimeout(() => setCopyMessage(""), 2200);
+    return () => clearTimeout(timer);
+  }, [copyMessage]);
 
   const handleTeamClick = (team) => setSelectedTeam(team);
   const handleBackToTeams = () => setSelectedTeam(null);
@@ -278,14 +334,17 @@ const Team = () => {
   const totalTeams = teamStats.length;
 
   const sortedTeamStats = useMemo(() => {
-    let list = [...teamStats];
+    const list = [...teamStats];
+
     if (teamsSortConfig.key) {
       list.sort((a, b) => {
         const aVal = a[teamsSortConfig.key];
         const bVal = b[teamsSortConfig.key];
+
         if (typeof aVal === "number") {
           return teamsSortConfig.direction === "asc" ? aVal - bVal : bVal - aVal;
         }
+
         return teamsSortConfig.direction === "asc"
           ? String(aVal).localeCompare(String(bVal))
           : String(bVal).localeCompare(String(aVal));
@@ -293,13 +352,16 @@ const Team = () => {
     } else {
       list.sort((a, b) => a.name.localeCompare(b.name));
     }
+
     return list;
   }, [teamStats, teamsSortConfig]);
 
   const handleTeamsSort = (key) => {
     setTeamsSortConfig((curr) => {
       if (curr.key === key) {
-        return curr.direction === "desc" ? { key: null, direction: "desc" } : { key, direction: "desc" };
+        return curr.direction === "desc"
+          ? { key: null, direction: "desc" }
+          : { key, direction: "desc" };
       }
       return { key, direction: "desc" };
     });
@@ -307,16 +369,20 @@ const Team = () => {
 
   const calculateEventFee = (teamName) => {
     if (!tournament?.entryFees || tournament.entryFees.amounts === undefined) return 0;
+
     const players = entryData.filter((p) => p.team === teamName);
     let total = 0;
+
     players.forEach((p) => {
       const eventKey = p.event?.toLowerCase();
       const subKey = p.subEvent;
       const feeObj = tournament.entryFees.amounts[eventKey]?.[subKey];
+
       if (feeObj && feeObj.type !== "Free") {
         total += feeObj.amount || 0;
       }
     });
+
     return total;
   };
 
@@ -349,6 +415,17 @@ const Team = () => {
   const logoLeft = tournament?.logos?.[0] ? getFullImageUrl(tournament.logos[0]) : null;
   const logoRight = tournament?.logos?.[1] ? getFullImageUrl(tournament.logos[1]) : logoLeft;
 
+  const handleCopyShareLink = async () => {
+    try {
+      const link = `${window.location.origin}/team-entry/${id}`;
+      await navigator.clipboard.writeText(link);
+      setCopyMessage("Share link copied");
+    } catch (error) {
+      console.error("Failed to copy share link:", error);
+      setCopyMessage("Failed to copy link");
+    }
+  };
+
   const handleTeamEntriesSubmit = async (preparedRows) => {
     const cleanRows = Array.isArray(preparedRows)
       ? preparedRows.filter((row) =>
@@ -367,58 +444,28 @@ const Team = () => {
       throw new Error("No valid player rows to submit.");
     }
 
-    const apiBase = getApiBaseForEntries();
     let existingEntries = [];
     let existingState = createEmptyEntryState();
 
-    if (token) {
-      try {
-        const serverRes = await fetch(`${apiBase}/tournaments/${id}/entries`, {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        });
-
-        if (serverRes.ok) {
-          const serverPayload = await serverRes.json();
-          existingEntries = Array.isArray(serverPayload.entries) ? serverPayload.entries : [];
-          existingState =
-            serverPayload.userState && typeof serverPayload.userState === "object"
-              ? serverPayload.userState
-              : createEmptyEntryState();
-        } else {
-          const localRaw = localStorage.getItem(`entryData_${id}`);
-          if (localRaw) {
-            const parsed = JSON.parse(localRaw);
-            existingEntries = Array.isArray(parsed?.entries)
-              ? parsed.entries
-              : Array.isArray(parsed)
-              ? parsed
-              : [];
-          }
-        }
-      } catch (error) {
-        console.warn("Could not load latest server entries before merge:", error);
+    try {
+      if (token) {
+        const serverPayload = await getEntries(id);
+        existingEntries = extractEntryRows(serverPayload);
+        existingState =
+          serverPayload?.userState && typeof serverPayload.userState === "object"
+            ? serverPayload.userState
+            : createEmptyEntryState();
+      } else {
         const localRaw = localStorage.getItem(`entryData_${id}`);
         if (localRaw) {
-          const parsed = JSON.parse(localRaw);
-          existingEntries = Array.isArray(parsed?.entries)
-            ? parsed.entries
-            : Array.isArray(parsed)
-            ? parsed
-            : [];
+          existingEntries = extractEntryRows(JSON.parse(localRaw));
         }
       }
-    } else {
+    } catch (error) {
+      console.warn("Could not load latest entries before merge:", error);
       const localRaw = localStorage.getItem(`entryData_${id}`);
       if (localRaw) {
-        const parsed = JSON.parse(localRaw);
-        existingEntries = Array.isArray(parsed?.entries)
-          ? parsed.entries
-          : Array.isArray(parsed)
-          ? parsed
-          : [];
+        existingEntries = extractEntryRows(JSON.parse(localRaw));
       }
     }
 
@@ -430,7 +477,7 @@ const Team = () => {
     localStorage.setItem(`entryData_${id}`, JSON.stringify(mergedEntries));
 
     if (token) {
-      const payload = {
+      await saveEntries(id, {
         entries: mergedEntries,
         state: {
           sorting: existingState.sorting || [],
@@ -438,21 +485,7 @@ const Team = () => {
           columnWidths: existingState.columnWidths || [],
           searchTerm: existingState.searchTerm || "",
         },
-      };
-
-      const saveRes = await fetch(`${apiBase}/tournaments/${id}/entries`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
       });
-
-      if (!saveRes.ok) {
-        const message = await saveRes.text().catch(() => "Failed to save team entries.");
-        throw new Error(message || "Failed to save team entries.");
-      }
     }
 
     window.dispatchEvent(new Event(`entryDataUpdated_${id}`));
@@ -478,6 +511,7 @@ const Team = () => {
       background: "#ffffff",
       boxSizing: "border-box",
     });
+
     container.appendChild(clone);
     document.body.appendChild(container);
 
@@ -518,11 +552,9 @@ const Team = () => {
 
       const totalPages = Math.ceil(scaledHeight / availableHeight);
 
-      for (let i = 0; i < totalPages; i++) {
+      for (let i = 0; i < totalPages; i += 1) {
         if (i > 0) pdf.addPage();
-
         const yOffset = -i * availableHeight;
-
         pdf.addImage(imgData, "JPEG", margin, margin + yOffset, scaledWidth, scaledHeight);
       }
 
@@ -539,12 +571,16 @@ const Team = () => {
   const savePDF = async () => {
     const ref = selectedTeam ? playersPageRef : teamsPageRef;
     const doc = await generatePDFDoc(ref);
+
     if (doc) {
       const suffix = selectedTeam
         ? `_${selectedTeam.name.replace(/[^a-z0-9]/gi, "_")}`
         : "_Overview";
+
       doc.save(
-        `Teams_${tournament?.name.replace(/[^a-z0-9]/gi, "_") || "Tournament"}${suffix}_${id}.pdf`
+        `Teams_${
+          tournament?.tournamentName?.replace(/[^a-z0-9]/gi, "_") || "Tournament"
+        }${suffix}_${id}.pdf`
       );
     }
   };
@@ -552,6 +588,7 @@ const Team = () => {
   const printPDF = async () => {
     const ref = selectedTeam ? playersPageRef : teamsPageRef;
     const doc = await generatePDFDoc(ref);
+
     if (doc) {
       const blob = doc.output("blob");
       const url = URL.createObjectURL(blob);
@@ -566,16 +603,45 @@ const Team = () => {
     return (
       <div className={styles.container}>
         <div className={styles.buttonSection}>
-          <div className={styles.pdfButtonWrapper}>
+          <div className={styles.buttonGroupLeft}></div>
+
+          <div className={styles.buttonGroupCenter}>
             <button
               type="button"
               onClick={() => setShowAddTeamEntriesModal(true)}
-              className={styles.pdfButton}
+              className={styles.actionButton}
             >
-              Add Team Entries
+              <FaPlusCircle className={styles.buttonIcon} />
+              <span>Add Team Entries</span>
             </button>
           </div>
+
+          <div className={styles.buttonGroupRight}>
+            {isOrganizer && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleCopyShareLink}
+                  className={styles.actionButton}
+                >
+                  <FaShareAlt className={styles.buttonIcon} />
+                  <span>Share Entry Form</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => navigate(`/tournaments/${id}/team-submissions`)}
+                  className={styles.actionButton}
+                >
+                  <FaInbox className={styles.buttonIcon} />
+                  <span>View Submissions</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
+
+        {copyMessage ? <p className={styles.copyMessage}>{copyMessage}</p> : null}
 
         <h2>No Teams Found</h2>
         <button onClick={() => navigate(`/tournaments/${id}/entry`)} className={styles.backButton}>
@@ -596,27 +662,61 @@ const Team = () => {
   return (
     <div className={styles.container}>
       <div className={styles.buttonSection}>
-        <div className={styles.pdfButtonWrapper}>
-          <button onClick={printPDF} className={styles.printButton}>
-            Print
+        <div className={styles.buttonGroupLeft}>
+          <button onClick={printPDF} className={styles.actionButton}>
+            <FaPrint className={styles.buttonIcon} />
+            <span>Print</span>
           </button>
-          <button onClick={savePDF} className={styles.pdfButton}>
-            Save PDF
+
+          <button onClick={savePDF} className={styles.actionButton}>
+            <FaFilePdf className={styles.buttonIcon} />
+            <span>Save PDF</span>
           </button>
+        </div>
+
+        <div className={styles.buttonGroupCenter}>
           <button
             type="button"
             onClick={() => setShowAddTeamEntriesModal(true)}
-            className={styles.pdfButton}
+            className={styles.actionButton}
           >
-            Add Team Entries
+            <FaPlusCircle className={styles.buttonIcon} />
+            <span>Add Team Entries</span>
           </button>
         </div>
+
+        <div className={styles.buttonGroupRight}>
+          {isOrganizer && (
+            <>
+              <button
+                type="button"
+                onClick={handleCopyShareLink}
+                className={styles.actionButton}
+              >
+                <FaShareAlt className={styles.buttonIcon} />
+                <span>Share Entry Form</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => navigate(`/tournaments/${id}/team-submissions`)}
+                className={styles.actionButton}
+              >
+                <FaInbox className={styles.buttonIcon} />
+                <span>View Submissions</span>
+              </button>
+            </>
+          )}
+        </div>
       </div>
+
+      {copyMessage ? <p className={styles.copyMessage}>{copyMessage}</p> : null}
 
       {!selectedTeam ? (
         <div ref={teamsPageRef} className={styles.pageContent}>
           <div className={styles.header}>
-            {logoLeft && <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} />}
+            {logoLeft ? <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} /> : null}
+
             <div className={styles.headerContent}>
               <h1 className={styles.tournamentName}>
                 {tournament?.tournamentName
@@ -626,7 +726,10 @@ const Team = () => {
               <p className={styles.federation}>{tournament?.federation || "N/A"}</p>
               <h2 className={styles.title}>TOTAL TEAMS - {totalTeams}</h2>
             </div>
-            {logoRight && <img src={logoRight} alt="Logo Right" className={styles.logoRight} />}
+
+            {logoRight ? (
+              <img src={logoRight} alt="Logo Right" className={styles.logoRight} />
+            ) : null}
           </div>
 
           <div className={styles.tableWrapper} style={{ overflowX: "auto" }}>
@@ -642,47 +745,51 @@ const Team = () => {
                     Total
                     <br />
                     Players
-                    {teamsSortConfig.key === "totalPlayers" && (
+                    {teamsSortConfig.key === "totalPlayers" ? (
                       <span className={styles.sortIndicator}>
                         {teamsSortConfig.direction === "desc" ? " ▼" : " ▲"}
                       </span>
-                    )}
+                    ) : null}
                   </th>
                   <th className={styles.colGender}>Male</th>
                   <th className={styles.colGender}>Female</th>
-                  {visibleSubEventColumns.kyorugi && (
+
+                  {visibleSubEventColumns.kyorugi ? (
                     <th className={styles.colSubEvent}>Kyorugi</th>
-                  )}
-                  {visibleSubEventColumns.fresher && (
+                  ) : null}
+                  {visibleSubEventColumns.fresher ? (
                     <th className={styles.colSubEvent}>Fresher</th>
-                  )}
-                  {visibleSubEventColumns.tagTeam && (
+                  ) : null}
+                  {visibleSubEventColumns.tagTeam ? (
                     <th className={styles.colSubEvent}>Tag Team</th>
-                  )}
-                  {visibleSubEventColumns.poomsae && (
+                  ) : null}
+                  {visibleSubEventColumns.poomsae ? (
                     <th className={styles.colSubEvent}>Poomsae</th>
-                  )}
-                  {visibleSubEventColumns.individual && (
+                  ) : null}
+                  {visibleSubEventColumns.individual ? (
                     <th className={styles.colSubEvent}>Individual</th>
-                  )}
-                  {visibleSubEventColumns.pair && <th className={styles.colSubEvent}>Pair</th>}
-                  {visibleSubEventColumns.teamPoomsae && (
+                  ) : null}
+                  {visibleSubEventColumns.pair ? (
+                    <th className={styles.colSubEvent}>Pair</th>
+                  ) : null}
+                  {visibleSubEventColumns.teamPoomsae ? (
                     <th className={styles.colSubEvent}>Team Poomsae</th>
-                  )}
-                  {hasFoodLodging && (
+                  ) : null}
+
+                  {hasFoodLodging ? (
                     <th className={styles.colFoodLodging}>
                       Food & Lodging
                       <br />
                       (Members)
                     </th>
-                  )}
-                  {hasFees && <th className={styles.colTotalFee}>Total Fee</th>}
-                  {hasFees && <th className={styles.colDueAmount}>Due Amount</th>}
-                  {hasFees && <th className={styles.colPaymentMode}>Payment Mode</th>}
-                  {hasFees && <th className={styles.colCashOnline}>Cash Payment</th>}
-                  {hasFees && <th className={styles.colCashOnline}>Online Payment</th>}
-                  {hasFees && <th className={styles.colTxnId}>Transaction ID</th>}
-                  {hasFees && <th className={styles.colPaymentStatus}>Payment Status</th>}
+                  ) : null}
+                  {hasFees ? <th className={styles.colTotalFee}>Total Fee</th> : null}
+                  {hasFees ? <th className={styles.colDueAmount}>Due Amount</th> : null}
+                  {hasFees ? <th className={styles.colPaymentMode}>Payment Mode</th> : null}
+                  {hasFees ? <th className={styles.colCashOnline}>Cash Payment</th> : null}
+                  {hasFees ? <th className={styles.colCashOnline}>Online Payment</th> : null}
+                  {hasFees ? <th className={styles.colTxnId}>Transaction ID</th> : null}
+                  {hasFees ? <th className={styles.colPaymentStatus}>Payment Status</th> : null}
 
                   <th className={styles.colCoachManager}>Coach</th>
                   <th className={styles.colContact}>Contact</th>
@@ -690,6 +797,7 @@ const Team = () => {
                   <th className={styles.colContact}>Contact</th>
                 </tr>
               </thead>
+
               <tbody>
                 {sortedTeamStats.map((team, index) => {
                   const pay = paymentData[team.name] || {};
@@ -711,7 +819,7 @@ const Team = () => {
 
                   return (
                     <tr
-                      key={index}
+                      key={team.name}
                       onClick={() => handleTeamClick(team)}
                       className={styles.clickableRow}
                     >
@@ -720,28 +828,30 @@ const Team = () => {
                       <td className={styles.colTotalPlayers}>{team.totalPlayers}</td>
                       <td className={styles.colGender}>{team.malePlayers}</td>
                       <td className={styles.colGender}>{team.femalePlayers}</td>
-                      {visibleSubEventColumns.kyorugi && (
+
+                      {visibleSubEventColumns.kyorugi ? (
                         <td className={styles.colSubEvent}>{team.kyorugi}</td>
-                      )}
-                      {visibleSubEventColumns.fresher && (
+                      ) : null}
+                      {visibleSubEventColumns.fresher ? (
                         <td className={styles.colSubEvent}>{team.fresher}</td>
-                      )}
-                      {visibleSubEventColumns.tagTeam && (
+                      ) : null}
+                      {visibleSubEventColumns.tagTeam ? (
                         <td className={styles.colSubEvent}>{team.tagTeam}</td>
-                      )}
-                      {visibleSubEventColumns.poomsae && (
+                      ) : null}
+                      {visibleSubEventColumns.poomsae ? (
                         <td className={styles.colSubEvent}>{team.poomsae}</td>
-                      )}
-                      {visibleSubEventColumns.individual && (
+                      ) : null}
+                      {visibleSubEventColumns.individual ? (
                         <td className={styles.colSubEvent}>{team.individual}</td>
-                      )}
-                      {visibleSubEventColumns.pair && (
+                      ) : null}
+                      {visibleSubEventColumns.pair ? (
                         <td className={styles.colSubEvent}>{team.pair}</td>
-                      )}
-                      {visibleSubEventColumns.teamPoomsae && (
+                      ) : null}
+                      {visibleSubEventColumns.teamPoomsae ? (
                         <td className={styles.colSubEvent}>{team.teamPoomsae}</td>
-                      )}
-                      {hasFoodLodging && (
+                      ) : null}
+
+                      {hasFoodLodging ? (
                         <td className={styles.colFoodLodging}>
                           <input
                             type="number"
@@ -754,13 +864,15 @@ const Team = () => {
                             className={styles.paymentInput}
                           />
                         </td>
-                      )}
-                      {hasFees && (
+                      ) : null}
+
+                      {hasFees ? (
                         <td className={styles.colTotalFee}>
                           <strong>₹{totalDue}</strong>
                         </td>
-                      )}
-                      {hasFees && (
+                      ) : null}
+
+                      {hasFees ? (
                         <td
                           className={`${styles.colDueAmount} ${
                             !isPaid ? styles.dueAmountCell : ""
@@ -768,8 +880,9 @@ const Team = () => {
                         >
                           <strong>{isPaid ? "-" : `₹${totalDue - paidAmount}`}</strong>
                         </td>
-                      )}
-                      {hasFees && (
+                      ) : null}
+
+                      {hasFees ? (
                         <td className={styles.colPaymentMode}>
                           <select
                             value={mode}
@@ -782,8 +895,9 @@ const Team = () => {
                             <option>Cash + Online</option>
                           </select>
                         </td>
-                      )}
-                      {hasFees && (
+                      ) : null}
+
+                      {hasFees ? (
                         <td className={styles.colCashOnline}>
                           {showCash ? (
                             <input
@@ -798,16 +912,15 @@ const Team = () => {
                             "-"
                           )}
                         </td>
-                      )}
-                      {hasFees && (
+                      ) : null}
+
+                      {hasFees ? (
                         <td className={styles.colCashOnline}>
                           {showOnline ? (
                             <input
                               type="number"
                               value={pay.online || ""}
-                              onChange={(e) =>
-                                updatePayment(team.name, "online", e.target.value)
-                              }
+                              onChange={(e) => updatePayment(team.name, "online", e.target.value)}
                               onClick={(e) => e.stopPropagation()}
                               placeholder="Online"
                               className={styles.paymentInput}
@@ -816,8 +929,9 @@ const Team = () => {
                             "-"
                           )}
                         </td>
-                      )}
-                      {hasFees && (
+                      ) : null}
+
+                      {hasFees ? (
                         <td className={styles.colTxnId}>
                           {showOnline ? (
                             <input
@@ -832,12 +946,14 @@ const Team = () => {
                             "-"
                           )}
                         </td>
-                      )}
-                      {hasFees && (
+                      ) : null}
+
+                      {hasFees ? (
                         <td className={`${styles.colPaymentStatus} ${statusCellClass}`}>
                           <strong>{isPaid ? "Paid" : isPartial ? "Partial Paid" : "Due"}</strong>
                         </td>
-                      )}
+                      ) : null}
+
                       <td className={styles.colCoachManager}>{team.coach || "-"}</td>
                       <td className={styles.colContact}>{team.coachContact || "-"}</td>
                       <td className={styles.colCoachManager}>{team.manager || "-"}</td>
@@ -857,7 +973,8 @@ const Team = () => {
 
           <div ref={playersPageRef} className={styles.pageContent}>
             <div className={styles.header}>
-              {logoLeft && <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} />}
+              {logoLeft ? <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} /> : null}
+
               <div className={styles.headerContent}>
                 <h1 className={styles.tournamentName}>
                   {tournament?.tournamentName
@@ -867,13 +984,16 @@ const Team = () => {
                 <p className={styles.federation}>{tournament?.federation || "N/A"}</p>
                 <h2 className={styles.title}>TEAM - {selectedTeam.name.toUpperCase()}</h2>
               </div>
-              {logoRight && <img src={logoRight} alt="Logo Right" className={styles.logoRight} />}
+
+              {logoRight ? (
+                <img src={logoRight} alt="Logo Right" className={styles.logoRight} />
+              ) : null}
             </div>
 
             <h3 className={styles.playersListHeading}>Players List</h3>
             <p className={styles.playersSummary}>
-              Total Players: {selectedTeam.totalPlayers} | Male: {selectedTeam.malePlayers} | Female:{" "}
-              {selectedTeam.femalePlayers}
+              Total Players: {selectedTeam.totalPlayers} | Male: {selectedTeam.malePlayers} |
+              Female: {selectedTeam.femalePlayers}
             </p>
 
             <div className={styles.tableWrapper}>
@@ -895,14 +1015,15 @@ const Team = () => {
                     <th>Coach Contact</th>
                     <th>Manager</th>
                     <th>Manager Contact</th>
-                    {selectedTeam.players[0]?.fathersName && <th>Father's Name</th>}
-                    {selectedTeam.players[0]?.school && <th>School</th>}
-                    {selectedTeam.players[0]?.class && <th>Class</th>}
+                    {selectedTeam.players[0]?.fathersName ? <th>Father's Name</th> : null}
+                    {selectedTeam.players[0]?.school ? <th>School</th> : null}
+                    {selectedTeam.players[0]?.class ? <th>Class</th> : null}
                   </tr>
                 </thead>
+
                 <tbody>
                   {selectedTeam.players.map((player, index) => (
-                    <tr key={index}>
+                    <tr key={`${player.name || "player"}-${index}`}>
                       <td>{player.sr}</td>
                       <td>{player.title || "-"}</td>
                       <td>{player.name || "-"}</td>
@@ -918,9 +1039,9 @@ const Team = () => {
                       <td>{player.coachContact || "-"}</td>
                       <td>{player.manager || "-"}</td>
                       <td>{player.managerContact || "-"}</td>
-                      {player.fathersName && <td>{player.fathersName}</td>}
-                      {player.school && <td>{player.school}</td>}
-                      {player.class && <td>{player.class}</td>}
+                      {player.fathersName ? <td>{player.fathersName}</td> : null}
+                      {player.school ? <td>{player.school}</td> : null}
+                      {player.class ? <td>{player.class}</td> : null}
                     </tr>
                   ))}
                 </tbody>

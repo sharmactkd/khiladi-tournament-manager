@@ -1,8 +1,11 @@
-// backend/controllers/authController.js
 import User from "../models/user.js";
 import bcrypt from "bcryptjs";
 import { generateToken, generateRefreshToken } from "../utils/generateToken.js";
 import logger from "../utils/logger.js";
+
+const normalizeRole = (role) => {
+  return ["organizer", "coach", "player"].includes(role) ? role : "player";
+};
 
 /**
  * Get current logged-in user details (Protected route)
@@ -24,7 +27,7 @@ export const getMe = async (req, res) => {
       phone: user.phone || null,
       profilePicture: user.profilePicture || null,
       loginProvider: user.loginProvider || "email",
-      role: user.role || "user",
+      role: normalizeRole(user.role),
       createdAt: user.createdAt,
     });
   } catch (error) {
@@ -36,65 +39,73 @@ export const getMe = async (req, res) => {
 };
 
 /**
- * Register new user (email + password)
+ * Register new user (email + password + role)
  */
 export const registerUser = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role } = req.body;
 
-    // Basic validation
-    if (!name || !email || !password) {
+    if (!name || !email || !password || !role) {
       logger.warn("Register attempt with missing fields", { ip: req.ip });
       return res
         .status(400)
-        .json({ message: "Name, email and password are required" });
+        .json({ message: "Name, email, password and role are required" });
     }
 
-    // Check if user already exists
-    const userExists = await User.findOne({ email }).lean();
+    if (!["organizer", "coach", "player"].includes(role)) {
+      return res.status(400).json({ message: "Invalid role selected" });
+    }
+
+    const normalizedEmail = String(email).trim().toLowerCase();
+
+    const userExists = await User.findOne({ email: normalizedEmail }).lean();
     if (userExists) {
-      logger.warn("Register attempt with existing email", { email, ip: req.ip });
+      logger.warn("Register attempt with existing email", {
+        email: normalizedEmail,
+        ip: req.ip,
+      });
       return res
         .status(400)
         .json({ message: "User already exists with this email" });
     }
 
-    // Hash password
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    // Create user
+    // IMPORTANT:
+    // Do not hash here because userSchema pre-save already hashes password.
     const user = await User.create({
-      name,
-      email,
-      password: hashedPassword,
+      name: String(name).trim(),
+      email: normalizedEmail,
+      password,
+      role,
       isVerified: false,
       loginProvider: "email",
       refreshTokens: [],
     });
 
-    // Generate long-lived tokens
-    const accessToken = generateToken(user); // expiresIn: '7d'
-    const refreshToken = generateRefreshToken(user); // expiresIn: '30d'
+    const accessToken = generateToken(user);
+    const refreshToken = generateRefreshToken(user);
 
-    // Store refresh token in DB
     user.refreshTokens.push(refreshToken);
     await user.save({ validateBeforeSave: false });
 
-    // Long-lived secure refresh token cookie (30 days)
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
       path: "/",
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
-    logger.info("User registered successfully", { userId: user._id, email });
+    logger.info("User registered successfully", {
+      userId: user._id,
+      email: normalizedEmail,
+      role,
+    });
 
     res.status(201).json({
       _id: user._id,
       name: user.name,
       email: user.email,
+      role: normalizeRole(user.role),
       accessToken,
     });
   } catch (error) {
@@ -116,14 +127,11 @@ const looksLikePhone = (value) =>
 
 /**
  * Login user (email OR phone + password)
- * Frontend keeps sending { email, password }.
- * In phone mode, "email" field contains the mobile number.
  */
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Keep same "required" behavior, but allow phone in the same field.
     if (!email || !password) {
       logger.warn("Login attempt with missing credentials", { ip: req.ip });
       return res.status(400).json({ message: "Email and password are required" });
@@ -148,51 +156,45 @@ export const loginUser = async (req, res) => {
 
     const user = await User.findOne(query).select("+password +refreshTokens");
     if (!user || !user.password) {
-      logger.warn("Login attempt with invalid identifier", {
-        query,
-        ip: req.ip,
-      });
+      logger.warn("Login attempt with invalid identifier", { query, ip: req.ip });
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
-      logger.warn("Login attempt with wrong password", {
-        query,
-        ip: req.ip,
-      });
+      logger.warn("Login attempt with wrong password", { query, ip: req.ip });
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
-    // Generate long-lived tokens
-    const accessToken = generateToken(user); // 7 days
-    const refreshToken = generateRefreshToken(user); // 30 days
+    user.lastLogin = new Date();
 
-    // Store refresh token in DB
+    const accessToken = generateToken(user);
+    const refreshToken = generateRefreshToken(user);
+
     user.refreshTokens.push(refreshToken);
     await user.save({ validateBeforeSave: false });
 
-    // Long-lived secure cookie (30 days)
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
       path: "/",
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
     logger.info("User logged in successfully", {
       userId: user._id,
       identifier: looksLikeEmail(identifierRaw) ? user.email : user.phone,
       method: looksLikeEmail(identifierRaw) ? "email" : "phone",
+      role: normalizeRole(user.role),
     });
 
-    // Keep response shape compatible with existing frontend
     res.json({
       _id: user._id,
       name: user.name,
       email: user.email || null,
       phone: user.phone || null,
+      role: normalizeRole(user.role),
       accessToken,
     });
   } catch (error) {
@@ -202,21 +204,17 @@ export const loginUser = async (req, res) => {
 };
 
 /**
- * Logout user - ONLY manual logout works now
+ * Logout user
  */
 export const logoutUser = async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken;
 
     if (refreshToken && req.user) {
-      // Remove this refresh token from user's array
-      req.user.refreshTokens = req.user.refreshTokens.filter(
-        (t) => t !== refreshToken
-      );
+      req.user.refreshTokens = req.user.refreshTokens.filter((t) => t !== refreshToken);
       await req.user.save({ validateBeforeSave: false });
     }
 
-    // Clear cookies
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
@@ -241,49 +239,45 @@ export const logoutUser = async (req, res) => {
 };
 
 /**
- * Social auth success (Google, etc.)
+ * Social auth success
  */
 export const socialAuthSuccess = (req, res) => {
   try {
     if (!req.user) {
       logger.warn("Social auth failed - no user", { path: req.path, ip: req.ip });
       return res.redirect(
-        `${
-          process.env.FRONTEND_URL || "http://localhost:5173"
-        }/login?error=auth_failed`
+        `${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=auth_failed`
       );
     }
 
-    const accessToken = generateToken(req.user); // 7 days
-    const refreshToken = generateRefreshToken(req.user); // 30 days
+    const accessToken = generateToken(req.user);
+    const refreshToken = generateRefreshToken(req.user);
 
-    // Store refresh token in DB
     req.user.refreshTokens.push(refreshToken);
     req.user.save({ validateBeforeSave: false }).catch((err) =>
       logger.error("Refresh token save failed", { error: err.message })
     );
 
-    // Long-lived refresh token cookie (30 days)
     res.cookie("refreshToken", refreshToken, {
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
       path: "/",
-      maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
+      maxAge: 30 * 24 * 60 * 60 * 1000,
     });
 
-    // Optional: short-lived access token cookie (frontend can read)
     res.cookie("accessToken", accessToken, {
       httpOnly: false,
       secure: process.env.NODE_ENV === "production",
       sameSite: "strict",
       path: "/",
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: 7 * 24 * 60 * 60 * 1000,
     });
 
     logger.info("Social auth successful", {
       userId: req.user._id,
       provider: req.user.loginProvider,
+      role: normalizeRole(req.user.role),
     });
 
     res.redirect(process.env.FRONTEND_URL || "http://localhost:5173");
@@ -293,9 +287,7 @@ export const socialAuthSuccess = (req, res) => {
       stack: error.stack,
     });
     res.redirect(
-      `${
-        process.env.FRONTEND_URL || "http://localhost:5173"
-      }/login?error=server_error`
+      `${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=server_error`
     );
   }
 };

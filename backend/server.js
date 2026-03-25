@@ -13,6 +13,7 @@ import entryRoutes from "./routes/entryRoutes.js";
 import weightPresetRoutes from "./routes/weightPresetRoutes.js";
 import visitorRoutes from "./routes/visitorRoutes.js";
 import importRoutes from "./routes/importRoutes.js";
+import teamSubmissionRoutes from "./routes/teamSubmissionRoutes.js";
 
 import logger, { logMiddleware } from "./utils/logger.js";
 import { generalRateLimiter, authRateLimiter } from "./middleware/rateLimiter.js";
@@ -25,7 +26,6 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const isDev = process.env.NODE_ENV !== "production";
 
-// Global Error Handlers
 process.on("uncaughtException", (err) => {
   logger.error("Uncaught Exception - Server crashing", { error: err.message, stack: err.stack });
   process.exit(1);
@@ -35,14 +35,12 @@ process.on("unhandledRejection", (reason) => {
   logger.error("Unhandled Rejection - Server may crash", { reason: String(reason) });
 });
 
-// Helmet
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: "cross-origin" },
   })
 );
 
-// CORS
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
@@ -51,13 +49,11 @@ const allowedOrigins = [
   "https://khiladi-khoj.com",
 ];
 
-// ✅ allow ALL vercel preview deployments for this project (and in general)
 const vercelPreviewRegex = /^https:\/\/.*\.vercel\.app$/;
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // allow server-to-server / curl / postman (no origin)
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin) || vercelPreviewRegex.test(origin)) {
@@ -67,28 +63,25 @@ app.use(
       return callback(new Error(`CORS blocked: ${origin}`));
     },
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
 
-// Body parsing (CRITICAL: must be before routes)
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
 
 console.log("STATIC UPLOADS PATH:", path.join(__dirname, "uploads"));
-// Static (uploads) — ensure CORP header on /uploads/* so browser doesn't block cross-origin images
+
 app.use("/uploads", (req, res, next) => {
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   next();
 });
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 
-// Request logging
 app.use(logMiddleware);
 
-// Rate limiters (keep existing behavior)
 if (process.env.NODE_ENV === "production") {
   app.use("/api/auth", authRateLimiter);
   app.use("/api/tournament", generalRateLimiter);
@@ -96,10 +89,10 @@ if (process.env.NODE_ENV === "production") {
   app.use("/api/weight-presets", generalRateLimiter);
   app.use("/api/visitor", generalRateLimiter);
   app.use("/api/import", generalRateLimiter);
+  app.use("/api/team-submissions", generalRateLimiter);
   app.use(generalRateLimiter);
 }
 
-// ================ DATABASE CONNECTION ================
 const mongoURI = process.env.MONGO_URI;
 
 if (!mongoURI) {
@@ -119,23 +112,14 @@ mongoose
     process.exit(1);
   });
 
-// ================ ROUTES ================
 app.use("/api/auth", authRoutes);
 app.use("/api/tournament", tournamentRoutes);
-
-// ✅ Entry routes mount (correct)
 app.use("/api/tournaments", entryRoutes);
-
-// Weight presets
 app.use("/api/weight-presets", weightPresetRoutes);
-
-// ✅ Visitor counter (public)
 app.use("/api/visitor", visitorRoutes);
-
-// ✅ Image import routes
 app.use("/api/import", importRoutes);
+app.use("/api/team-submissions", teamSubmissionRoutes);
 
-// Health check
 app.get("/health", (req, res) => {
   res.status(200).json({
     status: "OK",
@@ -145,13 +129,11 @@ app.get("/health", (req, res) => {
   });
 });
 
-// 404 handler
 app.use("*", (req, res) => {
   logger.warn("Route not found", { method: req.method, url: req.originalUrl });
   res.status(404).json({ message: "API route not found" });
 });
 
-// Global error handler
 // eslint-disable-next-line no-unused-vars
 app.use((err, req, res, next) => {
   logger.error("Unhandled error", {
@@ -167,7 +149,6 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ================ SERVER START ================
 const PORT = process.env.PORT || 5000;
 
 const server = app.listen(PORT, "0.0.0.0", () => {
@@ -175,7 +156,6 @@ const server = app.listen(PORT, "0.0.0.0", () => {
   if (isDev) console.log(`✅ Server running on http://localhost:${PORT}`);
 });
 
-// Graceful shutdown
 process.on("SIGTERM", shutDown);
 process.on("SIGINT", shutDown);
 

@@ -1,4 +1,3 @@
-// src/components/Team/TeamEntryTable.jsx
 import React, { useMemo, useState, useEffect } from "react";
 import {
   useReactTable,
@@ -53,12 +52,36 @@ const TeamEntryTable = ({
   const [editingCell, setEditingCell] = useState(null);
   const [columnWidths, setColumnWidths] = useState([]);
 
+  const teamColumnSizeOverrides = {
+    actions: { size: 60, minSize: 50 },
+    sr: { size: 55, minSize: 30 },
+    title: { size: 50, minSize: 60 },
+    name: { size: 180, minSize: 150 },
+    gender: { size: 80, minSize: 70 },
+    dob: { size: 110, minSize: 100 },
+    weight: { size: 110, minSize: 90 },
+    event: { size: 110, minSize: 100 },
+    subEvent: { size: 130, minSize: 110 },
+    ageCategory: { size: 130, minSize: 110 },
+    weightCategory: { size: 150, minSize: 130 },
+    fathersName: { size: 170, minSize: 140 },
+    school: { size: 150, minSize: 130 },
+    class: { size: 80, minSize: 70 },
+  };
+
   const tableColumnsDef = useMemo(() => {
     const optional = optionalColumnsDef.filter((col) => visibleColumns?.[col.id]);
 
     const playerBase = baseColumnsDef.filter(
       (col) =>
-        !["team", "coach", "coachContact", "manager", "managerContact"].includes(col.id)
+        ![
+          "team",
+          "coach",
+          "coachContact",
+          "manager",
+          "managerContact",
+          "medal",
+        ].includes(col.id)
     );
 
     return [...playerBase, ...optional];
@@ -164,24 +187,6 @@ const TeamEntryTable = ({
     recalculateColumnWidths();
   }, [rows, tableColumnsDef]);
 
-  const teamColumnSizeOverrides = {
-    actions: { size: 60, minSize: 50 },
-    sr: { size: 55, minSize: 30 },
-    title: { size: 50, minSize: 60 },
-    name: { size: 180, minSize: 150 },
-    gender: { size: 80, minSize: 70 },
-    dob: { size: 110, minSize: 100 },
-    weight: { size: 110, minSize: 90 },
-    event: { size: 110, minSize: 100 },
-    subEvent: { size: 130, minSize: 110 },
-    ageCategory: { size: 130, minSize: 110 },
-    weightCategory: { size: 150, minSize: 130 },
-    medal: { size: 90, minSize: 80 },
-    fathersName: { size: 170, minSize: 140 },
-    school: { size: 150, minSize: 130 },
-    class: { size: 80, minSize: 70 },
-  };
-
   const columns = useMemo(() => {
     return tableColumnsDef.map((col, index) => {
       const override = teamColumnSizeOverrides[col.id] || {};
@@ -215,13 +220,10 @@ const TeamEntryTable = ({
 
   return (
     <>
-      <div className={EntryStyles.autofillHints} style={{ margin: "10px 0" }}>
-        <div className={EntryStyles.hintGrid}>
+      <div className={modalStyles.hintsCard}>
+        <div className={modalStyles.hintGrid}>
           <div>
             <strong>Gender:</strong> M → Male, F → Female
-          </div>
-          <div>
-            <strong>Medal:</strong> G → Gold, S → Silver, B → Bronze, X → X-X-X-X
           </div>
           <div>
             <strong>Event:</strong> K → Kyorugi, P → Poomsae
@@ -236,6 +238,10 @@ const TeamEntryTable = ({
       </div>
 
       <div className={`${EntryStyles.tableContainer} ${modalStyles.teamTable}`}>
+        <div className={modalStyles.mobileTableHint}>
+          Swipe left/right to view full table
+        </div>
+
         <div
           className={EntryStyles.scrollableWrapper}
           style={{ overflowX: "auto", overflowY: "auto", maxHeight: "55vh" }}
@@ -294,7 +300,7 @@ const TeamEntryTable = ({
                 style={{
                   display: "flex",
                   minWidth: "fit-content",
-                  height: "48px",
+                  minHeight: "48px",
                 }}
               >
                 {row.getVisibleCells().map((cell) => (

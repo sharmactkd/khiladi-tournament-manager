@@ -1,4 +1,3 @@
-// src/components/Team/AddTeamEntriesModal.jsx
 import React, { useEffect, useState } from "react";
 import { validateContactNumber } from "../Entry/helpers";
 import TeamEntryTable from "./TeamEntryTable";
@@ -18,6 +17,10 @@ const AddTeamEntriesModal = ({
   onSubmit,
   tournamentData,
   visibleColumns = { fathersName: false, school: false, class: false },
+  title = "Add Team Entries",
+  submitButtonText = "Submit Entries",
+  initialTeamInfo = null,
+  readOnlyFields = {},
 }) => {
   const [teamInfo, setTeamInfo] = useState(createEmptyTeamInfo());
   const [rows, setRows] = useState([]);
@@ -32,12 +35,20 @@ const AddTeamEntriesModal = ({
       setSubmitting(false);
       setSubmitError("");
       setFieldErrors({});
+      return;
     }
-  }, [show]);
+
+    setTeamInfo({
+      ...createEmptyTeamInfo(),
+      ...(initialTeamInfo || {}),
+    });
+  }, [show, initialTeamInfo]);
 
   if (!show) return null;
 
   const setTeamFieldValue = (field, value) => {
+    if (readOnlyFields?.[field]) return;
+
     setTeamInfo((prev) => ({
       ...prev,
       [field]: value,
@@ -106,7 +117,10 @@ const AddTeamEntriesModal = ({
     try {
       setSubmitting(true);
       const finalRows = buildFinalRows();
-      await onSubmit(finalRows);
+      await onSubmit(finalRows, {
+        ...teamInfo,
+        team: normalizeTeamName(teamInfo.team),
+      });
     } catch (error) {
       setSubmitError(error?.message || "Failed to submit team entries.");
     } finally {
@@ -126,11 +140,11 @@ const AddTeamEntriesModal = ({
       onMouseDown={handleOverlayClick}
       role="dialog"
       aria-modal="true"
-      aria-label="Add Team Entries"
+      aria-label={title}
     >
       <div className={modalStyles.modal}>
         <div className={modalStyles.header}>
-          <h2 className={modalStyles.title}>Add Team Entries</h2>
+          <h2 className={modalStyles.title}>{title}</h2>
           <button
             type="button"
             onClick={onClose}
@@ -152,6 +166,7 @@ const AddTeamEntriesModal = ({
                 <input
                   type="text"
                   value={teamInfo.team}
+                  disabled={!!readOnlyFields.team}
                   onChange={(e) => setTeamFieldValue("team", normalizeTeamName(e.target.value))}
                   className={modalStyles.input}
                   placeholder="Enter team name"
@@ -166,6 +181,7 @@ const AddTeamEntriesModal = ({
                 <input
                   type="text"
                   value={teamInfo.coach}
+                  disabled={!!readOnlyFields.coach}
                   onChange={(e) => setTeamFieldValue("coach", e.target.value)}
                   className={modalStyles.input}
                   placeholder="Enter coach name"
@@ -177,6 +193,7 @@ const AddTeamEntriesModal = ({
                 <input
                   type="text"
                   value={teamInfo.coachContact}
+                  disabled={!!readOnlyFields.coachContact}
                   onChange={(e) => setTeamFieldValue("coachContact", e.target.value)}
                   className={modalStyles.input}
                   placeholder="Enter coach contact"
@@ -191,6 +208,7 @@ const AddTeamEntriesModal = ({
                 <input
                   type="text"
                   value={teamInfo.manager}
+                  disabled={!!readOnlyFields.manager}
                   onChange={(e) => setTeamFieldValue("manager", e.target.value)}
                   className={modalStyles.input}
                   placeholder="Enter manager name"
@@ -202,6 +220,7 @@ const AddTeamEntriesModal = ({
                 <input
                   type="text"
                   value={teamInfo.managerContact}
+                  disabled={!!readOnlyFields.managerContact}
                   onChange={(e) => setTeamFieldValue("managerContact", e.target.value)}
                   className={modalStyles.input}
                   placeholder="Enter manager contact"
@@ -245,7 +264,7 @@ const AddTeamEntriesModal = ({
             className={modalStyles.submitButton}
             disabled={submitting}
           >
-            {submitting ? "Submitting..." : "Submit Entries"}
+            {submitting ? "Submitting..." : submitButtonText}
           </button>
         </div>
       </div>
