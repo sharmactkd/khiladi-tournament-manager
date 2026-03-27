@@ -9,7 +9,7 @@ const entrySchema = new mongoose.Schema(
       ref: "Tournament",
       required: [true, "Tournament ID is required"],
       
-      
+      index: true,
       // index: true hata diya kyunki neeche unique index se cover ho jaayega
     },
     entries: {
