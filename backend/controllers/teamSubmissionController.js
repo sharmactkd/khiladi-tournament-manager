@@ -316,26 +316,20 @@ export const approveTeamSubmission = async (req, res) => {
       entries: mergedEntries,
       userState: updatedEntryDoc.userState,
     });
-  } catch (error) {
-    console.error("=== APPROVE TEAM SUBMISSION ERROR ===");
-    console.error("message:", error.message);
-    console.error("name:", error.name);
-    console.error("errors:", error.errors);
-    console.error("stack:", error.stack);
+ } catch (error) {
+  console.error("=== APPROVE ERROR ===");
+  console.error(error);
 
-    logger.error("approveTeamSubmission failed", {
-      error: error.message,
-      name: error.name,
-      errors: error.errors,
-      stack: error.stack,
-    });
+  logger.error("approveTeamSubmission failed", {
+    error: error.message,
+    stack: error.stack,
+  });
 
-    res.status(500).json({
-      message: "Failed to approve submission",
-      error: error.message,
-      name: error.name,
-    });
-  }
+  res.status(500).json({
+    message: "Failed to approve submission",
+    error: error.message,
+  });
+}
 };
 
 export const rejectTeamSubmission = async (req, res) => {
