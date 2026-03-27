@@ -18,17 +18,17 @@ router.post(
 );
 
 router.get(
-  "/:tournamentId",
-  authMiddleware,
-  authorizeRoles("organizer"),
-  getTournamentTeamSubmissions
-);
-
-router.get(
   "/:tournamentId/pending-count",
   authMiddleware,
   authorizeRoles("organizer"),
   getPendingTeamSubmissionCount
+);
+
+router.get(
+  "/:tournamentId",
+  authMiddleware,
+  authorizeRoles("organizer"),
+  getTournamentTeamSubmissions
 );
 
 router.patch(

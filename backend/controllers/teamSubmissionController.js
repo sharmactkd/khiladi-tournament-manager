@@ -15,9 +15,65 @@ const isMeaningfulRow = (row) => {
   if (!row || typeof row !== "object") return false;
 
   return Object.entries(row).some(([key, value]) => {
-    if (["sr", "actions"].includes(key)) return false;
+    if (["sr", "srNo", "actions"].includes(key)) return false;
     return value !== "" && value !== null && value !== undefined;
   });
+};
+
+const toTitleCase = (value = "") =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+
+const normalizeGender = (value = "") => {
+  const v = String(value || "").trim().toLowerCase();
+
+  if (["m", "male", "boy", "boys"].includes(v)) return "Male";
+  if (["f", "female", "girl", "girls"].includes(v)) return "Female";
+
+  return "";
+};
+
+const normalizeMedal = (value = "") => {
+  const v = String(value || "").trim().toLowerCase();
+
+  if (["g", "gold"].includes(v)) return "Gold";
+  if (["s", "silver"].includes(v)) return "Silver";
+  if (["b", "bronze"].includes(v)) return "Bronze";
+
+  return "";
+};
+
+const parseWeight = (value) => {
+  if (value === "" || value === null || value === undefined) return null;
+
+  const num = Number(String(value).replace(/[^\d.]/g, ""));
+  return Number.isFinite(num) ? num : null;
+};
+
+const parseDob = (value) => {
+  if (!value) return null;
+
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+
+  const str = String(value).trim();
+  if (!str) return null;
+
+  // dd-mm-yyyy or dd/mm/yyyy
+  const ddmmyyyy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (ddmmyyyy) {
+    const [, dd, mm, yyyy] = ddmmyyyy;
+    const iso = `${yyyy}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+    const parsed = new Date(iso);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  // yyyy-mm-dd
+  const parsed = new Date(str);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
 
 const normalizePlayers = (players = [], teamName = "") => {
@@ -34,9 +90,44 @@ const normalizePlayers = (players = [], teamName = "") => {
       managerContact: String(row.managerContact || "").trim(),
       name: String(row.name || "").trim(),
       fathersName: String(row.fathersName || "").trim(),
-      school: String(row.school || "").trim(),
+      school: String(row.school ?? row.schoolName ?? "").trim(),
       class: String(row.class || "").trim(),
+      title: String(row.title || "").trim(),
+      gender: String(row.gender || "").trim(),
+      dob: row.dob ?? null,
+      weight: row.weight ?? null,
+      event: String(row.event || "").trim(),
+      subEvent: String(row.subEvent || "").trim(),
+      ageCategory: String(row.ageCategory || "").trim(),
+      weightCategory: String(row.weightCategory || "").trim(),
+      medal: String(row.medal || "").trim(),
     }));
+};
+
+const normalizeEntryRowForEntryModel = (row, index) => {
+  const school = String(row.school ?? row.schoolName ?? "").trim();
+
+  return {
+    srNo: index + 1,
+    title: String(row.title || "").trim(),
+    name: String(row.name || "").trim(),
+    fathersName: String(row.fathersName || "").trim(),
+    schoolName: school,
+    class: String(row.class || "").trim(),
+    team: String(row.team || "").trim().toUpperCase(),
+    gender: normalizeGender(row.gender),
+    dob: parseDob(row.dob),
+    weight: parseWeight(row.weight),
+    event: toTitleCase(row.event || ""),
+    subEvent: String(row.subEvent || "").trim(),
+    ageCategory: String(row.ageCategory || "").trim(),
+    weightCategory: String(row.weightCategory || "").trim(),
+    medal: normalizeMedal(row.medal),
+    coach: String(row.coach || "").trim(),
+    coachContact: String(row.coachContact || "").trim(),
+    manager: String(row.manager || "").trim(),
+    managerContact: String(row.managerContact || "").trim(),
+  };
 };
 
 const getTournamentOwnerId = (tournament) => {
@@ -171,50 +262,37 @@ export const approveTeamSubmission = async (req, res) => {
 
     const entryDoc = await Entry.findOne({ tournamentId: submission.tournamentId });
 
-const existingEntries = Array.isArray(entryDoc?.entries) ? entryDoc.entries : [];
-const approvedPlayers = normalizePlayers(submission.players, submission.teamName);
+    const existingEntries = Array.isArray(entryDoc?.entries) ? entryDoc.entries : [];
+    const approvedPlayers = normalizePlayers(submission.players, submission.teamName);
 
-const mergedEntries = [...existingEntries, ...approvedPlayers]
-  .filter(isMeaningfulRow)
-  .map((row, index) => {
-    const { sr, srNo, actions, ...rest } = row;
+    const mergedEntries = [...existingEntries, ...approvedPlayers]
+      .filter(isMeaningfulRow)
+      .map((row, index) => normalizeEntryRowForEntryModel(row, index));
 
-    const school = row.school ?? row.schoolName ?? "";
+    const userState =
+      entryDoc?.userState && typeof entryDoc.userState === "object"
+        ? entryDoc.userState
+        : createEmptyEntryState();
 
-    return {
-      ...rest,
-      srNo: index + 1,
-      subEvent: row.subEvent || "",
-      ageCategory: row.ageCategory || "",
-      weightCategory: row.weightCategory || "",
-      school: school || "",
-      schoolName: school || "",
-    };
-  });
-
-const userState =
-  entryDoc?.userState && typeof entryDoc.userState === "object"
-    ? entryDoc.userState
-    : createEmptyEntryState();
-
-const updatedEntryDoc = await Entry.findOneAndUpdate(
-  { tournamentId: submission.tournamentId },
-  {
-    $set: {
-      entries: mergedEntries,
-      userState,
-      updatedBy: req.user._id,
-    },
-    $setOnInsert: {
-      tournamentId: submission.tournamentId,
-    },
-  },
-  {
-    upsert: true,
-    new: true,
-    setDefaultsOnInsert: true,
-  }
-);
+    const updatedEntryDoc = await Entry.findOneAndUpdate(
+      { tournamentId: submission.tournamentId },
+      {
+        $set: {
+          entries: mergedEntries,
+          userState,
+          updatedBy: req.user._id,
+        },
+        $setOnInsert: {
+          tournamentId: submission.tournamentId,
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+        runValidators: true,
+      }
+    );
 
     submission.status = "approved";
     submission.reviewedBy = req.user._id;
@@ -239,11 +317,24 @@ const updatedEntryDoc = await Entry.findOneAndUpdate(
       userState: updatedEntryDoc.userState,
     });
   } catch (error) {
+    console.error("=== APPROVE TEAM SUBMISSION ERROR ===");
+    console.error("message:", error.message);
+    console.error("name:", error.name);
+    console.error("errors:", error.errors);
+    console.error("stack:", error.stack);
+
     logger.error("approveTeamSubmission failed", {
       error: error.message,
+      name: error.name,
+      errors: error.errors,
       stack: error.stack,
     });
-    res.status(500).json({ message: "Failed to approve submission" });
+
+    res.status(500).json({
+      message: "Failed to approve submission",
+      error: error.message,
+      name: error.name,
+    });
   }
 };
 
