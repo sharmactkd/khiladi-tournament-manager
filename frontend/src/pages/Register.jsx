@@ -14,6 +14,9 @@ const roleOptions = [
   { value: "player", label: "Player" },
 ];
 
+const passwordRulesText =
+  "Password must contain at least 8 characters, one uppercase letter, one lowercase letter, one number, and one special character";
+
 const Register = () => {
   const { login } = useAuth();
   const [searchParams] = useSearchParams();
@@ -21,20 +24,25 @@ const Register = () => {
   const [passwordVisible, setPasswordVisible] = useState(false);
 
   const redirectTo = searchParams.get("redirect") || "/tournaments";
-  const BACKEND_URL =
-    import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
+  const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || "http://localhost:5000";
 
   const validationSchema = Yup.object({
     name: Yup.string()
       .min(3, "Name must be at least 3 characters")
       .max(50, "Name too long")
       .required("Name is required"),
+
     email: Yup.string()
       .email("Invalid email address")
       .required("Email is required"),
+
     password: Yup.string()
-      .min(8, "Password must be at least 8 characters")
+      .matches(
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/,
+        passwordRulesText
+      )
       .required("Password is required"),
+
     role: Yup.string()
       .oneOf(["organizer", "coach", "player"], "Please select a valid role")
       .required("Role is required"),
@@ -92,9 +100,7 @@ const Register = () => {
         </div>
 
         <form onSubmit={formik.handleSubmit} className={styles.authForm}>
-          {serverError && (
-            <div className={styles.errorMessage}>{serverError}</div>
-          )}
+          {serverError && <div className={styles.errorMessage}>{serverError}</div>}
 
           <div className={styles.inputGroup}>
             <FiUser className={styles.inputIcon} />
@@ -132,13 +138,11 @@ const Register = () => {
             <FiLock className={styles.inputIcon} />
             <input
               type={passwordVisible ? "text" : "password"}
-              placeholder="Password (min 8 chars)"
+              placeholder="Password (8+ chars, Aa, 1, @)"
               {...formik.getFieldProps("password")}
               autoComplete="new-password"
               className={`${styles.input} ${
-                formik.touched.password && formik.errors.password
-                  ? styles.error
-                  : ""
+                formik.touched.password && formik.errors.password ? styles.error : ""
               }`}
             />
             <button
@@ -151,48 +155,61 @@ const Register = () => {
               {passwordVisible ? <FiEyeOff /> : <FiEye />}
             </button>
             {formik.touched.password && formik.errors.password && (
-              <div className={styles.validationError}>
-                {formik.errors.password}
-              </div>
+              <div className={styles.validationError}>{formik.errors.password}</div>
             )}
           </div>
 
-        <div className={`${styles.inputGroup} ${styles.roleGroup}`}>
-  <div className={styles.roleWrapper}>
-    <div className={styles.roleHeading}>Select Role</div>
+          <div className={styles.inputGroup}>
+            <div
+              style={{
+                fontSize: "12px",
+                color: "#666",
+                marginTop: "-6px",
+                marginBottom: "4px",
+                lineHeight: 1.5,
+              }}
+            >
+              Password must include uppercase, lowercase, number, and special character.
+            </div>
+          </div>
 
-    <div className={styles.roleOptions}>
-      {roleOptions.map((roleOption) => {
-        const isSelected = formik.values.role === roleOption.value;
+          <div className={`${styles.inputGroup} ${styles.roleGroup}`}>
+            <div className={styles.roleWrapper}>
+              <div className={styles.roleHeading}>Select Role</div>
 
-        return (
-          <label
-            key={roleOption.value}
-            className={`${styles.roleOption} ${
-              isSelected ? styles.roleOptionActive : ""
-            }`}
-          >
-            <input
-              type="radio"
-              name="role"
-              value={roleOption.value}
-              checked={isSelected}
-              onChange={formik.handleChange}
-              className={styles.roleRadioHidden}
-            />
-            <span className={styles.roleLabel}>{roleOption.label}</span>
-          </label>
-        );
-      })}
-    </div>
+              <div className={styles.roleOptions}>
+                {roleOptions.map((roleOption) => {
+                  const isSelected = formik.values.role === roleOption.value;
 
-    {formik.touched.role && formik.errors.role && (
-      <div className={`${styles.validationError} ${styles.roleError}`}>
-        {formik.errors.role}
-      </div>
-    )}
-  </div>
-</div>
+                  return (
+                    <label
+                      key={roleOption.value}
+                      className={`${styles.roleOption} ${
+                        isSelected ? styles.roleOptionActive : ""
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="role"
+                        value={roleOption.value}
+                        checked={isSelected}
+                        onChange={formik.handleChange}
+                        className={styles.roleRadioHidden}
+                      />
+                      <span className={styles.roleLabel}>{roleOption.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              {formik.touched.role && formik.errors.role && (
+                <div className={`${styles.validationError} ${styles.roleError}`}>
+                  {formik.errors.role}
+                </div>
+              )}
+            </div>
+          </div>
+
           <button
             type="submit"
             disabled={formik.isSubmitting}

@@ -7,6 +7,12 @@ const normalizeRole = (role) => {
   return ["organizer", "coach", "player"].includes(role) ? role : "player";
 };
 
+const isStrongPassword = (password) => {
+  return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/.test(
+    String(password || "")
+  );
+};
+
 const isProd = process.env.NODE_ENV === "production";
 const REFRESH_COOKIE_MAX_AGE = 180 * 24 * 60 * 60 * 1000; // 180 days
 const ACCESS_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
@@ -68,6 +74,14 @@ export const registerUser = async (req, res) => {
       logger.warn("Register attempt with missing fields", { ip: req.ip });
       return res.status(400).json({
         message: "Name, email, password and role are required",
+      });
+    }
+
+    if (!isStrongPassword(password)) {
+      logger.warn("Register attempt with weak password", { email, ip: req.ip });
+      return res.status(400).json({
+        message:
+          "Password must be at least 8 characters long and include uppercase, lowercase, number, and special character",
       });
     }
 

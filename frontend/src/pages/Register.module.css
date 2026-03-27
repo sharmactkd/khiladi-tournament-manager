@@ -186,7 +186,7 @@
 /* Password eye button */
 .eyeBtn {
   position: absolute;
-  top: 50%;
+  top: 26px;
   right: 0.75rem;
   transform: translateY(-50%);
   width: 36px;
@@ -525,5 +525,14 @@
 
   .authFooter {
     font-size: 0.85rem;
+  }
+}
+
+@media (max-width: 480px) {
+  .eyeBtn {
+    top: 25px;
+    right: 0.6rem;
+    width: 34px;
+    height: 34px;
   }
 }
