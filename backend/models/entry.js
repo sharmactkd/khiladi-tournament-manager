@@ -60,7 +60,7 @@ const entrySchema = new mongoose.Schema(
           },
           weight: { 
             type: Number, 
-            min: 20,
+            min: 0,
             max: 200,
             default: null 
           },
