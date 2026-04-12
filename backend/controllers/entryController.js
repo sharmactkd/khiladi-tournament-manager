@@ -84,7 +84,6 @@ export const saveEntries = async (req, res) => {
       return res.status(400).json({ error: "Invalid tournament ID" });
     }
 
-    // Filter only completely empty rows
     const filteredEntries = (entries || []).filter((entry) => {
       if (!entry || typeof entry !== "object") return false;
       return Object.entries(entry).some(([key, val]) => {
@@ -93,32 +92,76 @@ export const saveEntries = async (req, res) => {
       });
     });
 
-    // Map rows to schema:
-    // - enforce srNo
-    // - keep computed fields stable
-    // - keep BOTH school + schoolName in sync (compat)
+    const normalizeGender = (value) => {
+      const v = String(value || "").trim().toLowerCase();
+      if (["male", "m", "boy", "boys"].includes(v)) return "Male";
+      if (["female", "f", "girl", "girls"].includes(v)) return "Female";
+      return "";
+    };
+
+    const normalizeWeight = (value) => {
+      if (value === undefined || value === null || value === "") return null;
+      const cleaned = String(value).replace(/[^0-9.]/g, "").trim();
+      if (!cleaned) return null;
+      const num = Number(cleaned);
+      return Number.isFinite(num) ? num : null;
+    };
+
+    const normalizeDob = (value) => {
+      if (!value) return null;
+
+      if (value instanceof Date && !isNaN(value.getTime())) return value;
+
+      const str = String(value).trim();
+
+      // dd-mm-yyyy or dd/mm/yyyy
+      const match = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+      if (match) {
+        const day = Number(match[1]);
+        const month = Number(match[2]) - 1;
+        const year = Number(match[3]);
+        const date = new Date(year, month, day);
+        if (!isNaN(date.getTime())) return date;
+        return null;
+      }
+
+      const parsed = new Date(str);
+      if (!isNaN(parsed.getTime())) return parsed;
+
+      return null;
+    };
+
     const mappedEntries = filteredEntries.map((e, i) => {
       const { sr, actions, ...rest } = e;
 
-      const entry = { ...rest, srNo: i + 1 };
-
-      entry.subEvent = e.subEvent !== undefined ? e.subEvent : "";
-      entry.ageCategory = e.ageCategory !== undefined ? e.ageCategory : "";
-      entry.weightCategory = e.weightCategory !== undefined ? e.weightCategory : "";
-
-      entry.subEvent = entry.subEvent || "";
-      entry.ageCategory = entry.ageCategory || "";
-      entry.weightCategory = entry.weightCategory || "";
-
-      // school compat
       const school = e.school ?? e.schoolName ?? "";
-      entry.school = school || "";
-      entry.schoolName = school || "";
 
-      return entry;
+      return {
+        ...rest,
+        srNo: i + 1,
+        title: String(e.title || "").trim(),
+        name: String(e.name || "").trim(),
+        fathersName: String(e.fathersName || "").trim(),
+        schoolName: String(school || "").trim(),
+        class: String(e.class || "").trim(),
+        team: String(e.team || "").trim(),
+        gender: normalizeGender(e.gender),
+        dob: normalizeDob(e.dob),
+        weight: normalizeWeight(e.weight),
+        event: String(e.event || "").trim(),
+        subEvent: String(e.subEvent || "").trim(),
+        ageCategory: String(e.ageCategory || "").trim(),
+        weightCategory: String(e.weightCategory || "").trim(),
+        medal: ["Gold", "Silver", "Bronze", ""].includes(String(e.medal || "").trim())
+          ? String(e.medal || "").trim()
+          : "",
+        coach: String(e.coach || "").trim(),
+        coachContact: String(e.coachContact || "").trim(),
+        manager: String(e.manager || "").trim(),
+        managerContact: String(e.managerContact || "").trim(),
+      };
     });
 
-    // Atomic update + ensure tournamentId exists on upsert
     const update = {
       $set: {
         entries: mappedEntries,
@@ -137,7 +180,7 @@ export const saveEntries = async (req, res) => {
         upsert: true,
         new: true,
         setDefaultsOnInsert: true,
-        runValidators: false,
+        runValidators: true,
       }
     ).lean();
 

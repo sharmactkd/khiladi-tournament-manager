@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getTournamentById } from '../api';
 import * as XLSX from 'xlsx';
+import { getEntries as getEntriesApi } from '../api';
 
 import EntryHeader from '../components/Entry/EntryHeader';
 import EntryTable from '../components/Entry/EntryTable';
@@ -162,38 +163,23 @@ const Entry = () => {
 
       // 1) SERVER FIRST (latest truth)
       if (token && id) {
-        try {
-          const url = `${apiBase}/api/tournaments/${id}/entries`;
-          if (isDev) console.log('[Entry.jsx][LOAD] GET', url);
+  try {
+    const payload = await getEntriesApi(id);
+    serverEntries = Array.isArray(payload.entries) ? payload.entries : [];
+    serverState = payload.userState && typeof payload.userState === 'object' ? payload.userState : null;
+    usedSource = 'server';
 
-          const res = await fetch(url, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-          });
-
-          if (res.ok) {
-            const payload = await res.json();
-            serverEntries = Array.isArray(payload.entries) ? payload.entries : [];
-            serverState = payload.userState && typeof payload.userState === 'object' ? payload.userState : null;
-            usedSource = 'server';
-
-            if (isDev) {
-              console.log('[Entry.jsx][LOAD] server success', {
-                count: serverEntries.length,
-                lastUpdated: payload.lastUpdated,
-              });
-            }
-          } else {
-            const text = await res.text().catch(() => '');
-            throw new Error(text || `Server error: ${res.status}`);
-          }
-        } catch (err) {
-          console.error('[Entry.jsx][LOAD] server fetch failed:', err);
-          setLoadError('Failed to load entries from server. Using local backup if available.');
-        }
-      }
+    if (isDev) {
+      console.log('[Entry.jsx][LOAD] server success', {
+        count: serverEntries.length,
+        lastUpdated: payload.lastUpdated,
+      });
+    }
+  } catch (err) {
+    console.error('[Entry.jsx][LOAD] server fetch failed:', err);
+    setLoadError('Failed to load entries from server. Using local backup if available.');
+  }
+}
 
       // 2) LOCAL FALLBACK ONLY IF server had no entries OR server failed
       let localEntries = [];
@@ -303,20 +289,29 @@ const Entry = () => {
   }, [redoHistory, data, debouncedRecalculate]);
 
   // ── Data Mutation Handlers ──────────────────────────────────────────────
-  const updateData = useCallback(
-    (rowIndex, columnId, value) => {
-      if (isDev) {
-        console.log('[Entry.jsx][updateData]', { rowIndex, columnId, value });
-      }
-      saveToHistory();
-      setData((prev) => {
-        const newData = [...prev];
-        newData[rowIndex] = { ...newData[rowIndex], [columnId]: value };
-        return newData;
-      });
-    },
-    [saveToHistory]
-  );
+ const updateData = useCallback(
+  (rowIndex, columnId, value) => {
+    let finalValue = value;
+
+    if (columnId === "gender") {
+      const v = String(value || "").trim().toLowerCase();
+      if (["m", "male"].includes(v)) finalValue = "Male";
+      else if (["f", "female"].includes(v)) finalValue = "Female";
+    }
+
+    if (columnId === "weight") {
+      finalValue = String(value || "").replace(/[^0-9.]/g, "");
+    }
+
+    saveToHistory();
+    setData((prev) => {
+      const newData = [...prev];
+      newData[rowIndex] = { ...newData[rowIndex], [columnId]: finalValue };
+      return newData;
+    });
+  },
+  [saveToHistory]
+);
 
   const addNewRow = useCallback(() => {
     saveToHistory();

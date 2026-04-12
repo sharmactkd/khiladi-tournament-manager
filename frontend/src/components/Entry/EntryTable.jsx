@@ -18,6 +18,7 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFilter, faPlus } from "@fortawesome/free-solid-svg-icons";
 import { debounce as lodashDebounce } from "lodash";
+import { saveEntries as saveEntriesApi } from "../../api";
 
 import EditableCell from "./EditableCell";
 import FilterDropdown from "./FilterDropdown";
@@ -253,43 +254,41 @@ const [jumpHighlightedSr, setJumpHighlightedSr] = useState("");
         }
 
         try {
-          const resp = await api.post(`/tournaments/${tid}/entries`, payload);
+         const resp = await saveEntriesApi(tid, payload);
+         
+         lastSavedHashRef.current = hash;
 
-          lastSavedHashRef.current = hash;
+if (isDev) {
+  console.log("[EntryTable][SAVE] SUCCESS", {
+    lastUpdated: resp?.lastUpdated,
+    count: resp?.count,
+  });
+}
 
-          if (isDev) {
-            console.log("[EntryTable][SAVE] SUCCESS", {
-              status: resp?.status,
-              lastUpdated: resp?.data?.lastUpdated,
-              count: resp?.data?.count,
-            });
-          }
+setSaveStatus("saved");
+setTimeout(() => setSaveStatus("idle"), 1500);
 
-          setSaveStatus("saved");
-          setTimeout(() => setSaveStatus("idle"), 1500);
+return { ok: true, skipped: false, count: resp?.count, lastUpdated: resp?.lastUpdated };
 
-          return { ok: true, skipped: false, count: resp?.data?.count, lastUpdated: resp?.data?.lastUpdated };
-        } catch (err) {
-          const status = err?.response?.status;
-          const serverMsg =
-            err?.response?.data?.message ||
-            err?.response?.data?.error ||
-            err?.response?.data?.details;
+} catch (err) {
+  const status = err?.response?.status;
+  const serverMsg =
+    err?.response?.data?.message ||
+    err?.response?.data?.error ||
+    err?.response?.data?.details;
 
-          if (isDev) {
-            console.error("[EntryTable][SAVE] FAILED", {
-              status,
-              message: serverMsg || err?.message,
-              data: err?.response?.data,
-              reason,
-            });
-          }
+  console.error("[EntryTable][SAVE] FAILED FULL", {
+    status,
+    serverMsg,
+    responseData: err?.response?.data,
+    rawMessage: err?.message,
+  });
 
-          setSaveStatus("error");
-          setTimeout(() => setSaveStatus("idle"), 3500);
+  setSaveStatus("error");
+  setTimeout(() => setSaveStatus("idle"), 3500);
 
-          return { ok: false, skipped: false, status, message: serverMsg || err?.message };
-        } finally {
+  return { ok: false, skipped: false, status, message: serverMsg || err?.message };
+} finally {
           isSavingRef.current = false;
         }
       },

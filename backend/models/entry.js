@@ -34,11 +34,16 @@ const entrySchema = new mongoose.Schema(
             trim: true, 
             default: "" 
           },
-          schoolName: { 
-            type: String, 
-            trim: true, 
-            default: "" 
-          },
+        school: {
+  type: String,
+  trim: true,
+  default: ""
+},
+schoolName: {
+  type: String,
+  trim: true,
+  default: ""
+},
           class: { 
             type: String, 
             trim: true, 

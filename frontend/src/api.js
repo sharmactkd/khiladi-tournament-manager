@@ -2,12 +2,29 @@ import axios from "axios";
 
 const normalizeBase = (v) => String(v || "").trim().replace(/\/+$/, "");
 
-const API_ROOT =
-  normalizeBase(import.meta.env.VITE_API_URL) ||
-  normalizeBase(import.meta.env.VITE_API_BASE_URL) ||
-  "http://localhost:5000";
+const resolveApiBaseUrl = () => {
+  const envUrl =
+    normalizeBase(import.meta.env.VITE_API_URL) ||
+    normalizeBase(import.meta.env.VITE_API_BASE_URL);
 
-const API_URL = API_ROOT.endsWith("/api") ? API_ROOT : `${API_ROOT}/api`;
+  if (envUrl) {
+    return envUrl.endsWith("/api") ? envUrl : `${envUrl}/api`;
+  }
+
+  if (typeof window !== "undefined") {
+    const origin = window.location.origin || "";
+    const host = window.location.hostname || "";
+    const isLocal = host === "localhost" || host === "127.0.0.1";
+
+    if (origin && !isLocal) {
+      return `${normalizeBase(origin)}/api`;
+    }
+  }
+
+  return "http://localhost:5000/api";
+};
+
+const API_URL = resolveApiBaseUrl();
 
 const isImageAnalyzeRequest = (configOrUrl) => {
   const value =
