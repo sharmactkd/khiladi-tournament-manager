@@ -1,27 +1,25 @@
-// src/components/Entry/ImportModal.jsx
 import React, { useState, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
-import { 
-  excelSerialToDate, 
-  validateDOB, 
-  getAgeCategory, 
-  getWeightCategory 
+import {
+  excelSerialToDate,
+  validateDOB,
+  getAgeCategory,
+  getWeightCategory,
 } from './helpers';
 import styles from '../../pages/Entry.module.css';
 import { faTimes } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 
-// Header synonyms
 const headerSynonyms = {
   name: ['player name', 'full name', 'athlete name', 'name'],
   team: ['team name', 'club', 'organization', 'team'],
   gender: ['sex', 'male/female', 'gender'],
   dob: ['date of birth', 'birth date', 'dob', 'born'],
-  weight: ['weight kg', 'body weight', 'weight'],
+  weight: ['weight kg', 'body weight', 'weight', 'wt'],
   event: ['event type', 'competition', 'event'],
-  subEvent: ['sub-event', 'category', 'sub event'],
+  subEvent: ['sub-event', 'sub event'],
   ageCategory: ['age group', 'age category', 'age'],
-  weightCategory: ['weight class', 'weight category', 'weight group'],
+  weightCategory: ['weight class', 'weight category', 'weight group', 'wt category'],
   medal: ['award', 'medal', 'result'],
   coach: ['coach name', 'trainer', 'coach'],
   coachContact: ['coach phone', 'coach contact', 'trainer contact'],
@@ -31,6 +29,12 @@ const headerSynonyms = {
   school: ['school name', 'institution', 'school'],
   class: ['grade', 'class', 'year'],
 };
+
+const cleanHeaderText = (value) =>
+  String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[-\s()]+/g, '');
 
 const ImportModal = ({
   show,
@@ -44,61 +48,61 @@ const ImportModal = ({
   selectedFile,
 }) => {
   const [excelFile, setExcelFile] = useState(null);
-  const [workbookData, setWorkbookData] = useState(null); // Cache workbook
+  const [workbookData, setWorkbookData] = useState(null);
   const [sheetNames, setSheetNames] = useState([]);
   const [selectedSheet, setSelectedSheet] = useState('');
   const [sheetHeaders, setSheetHeaders] = useState([]);
   const [headerMappings, setHeaderMappings] = useState({});
+  const [exactMatchedColumns, setExactMatchedColumns] = useState({});
   const [isLoading, setIsLoading] = useState(false);
-  const [progress, setProgress] = useState(0); // Progress %
+  const [progress, setProgress] = useState(0);
   const [errorMessage, setErrorMessage] = useState('');
-  const fileReaderRef = useRef(null); // For aborting
+  const fileReaderRef = useRef(null);
 
-  // Combined useEffect for show + selectedFile
-  useEffect(() => {
-    if (!show) {
-      // Modal close → full reset
-      setExcelFile(null);
-      setWorkbookData(null);
-      setSheetNames([]);
-      setSelectedSheet('');
-      setSheetHeaders([]);
-      setHeaderMappings({});
-      setErrorMessage('');
-      setIsLoading(false);
-      setProgress(0);
-      if (fileReaderRef.current) {
-        fileReaderRef.current.abort(); // Cancel any ongoing read
-      }
-      return;
-    }
-
-    // Modal open → reset + process selectedFile if present
+  const resetImportState = () => {
     setExcelFile(null);
     setWorkbookData(null);
     setSheetNames([]);
     setSelectedSheet('');
     setSheetHeaders([]);
     setHeaderMappings({});
+    setExactMatchedColumns({});
     setErrorMessage('');
     setIsLoading(false);
     setProgress(0);
+  };
+
+  useEffect(() => {
+    if (!show) {
+      resetImportState();
+
+      if (fileReaderRef.current) {
+        fileReaderRef.current.abort();
+      }
+
+      return;
+    }
+
+    resetImportState();
 
     if (selectedFile) {
       setExcelFile(selectedFile);
       processFile(selectedFile);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [show, selectedFile]);
 
   if (!show) return null;
 
-  // Process file once and cache workbook
   const processFile = (file) => {
     if (!file) return;
 
     setIsLoading(true);
     setErrorMessage('');
     setProgress(0);
+    setSheetHeaders([]);
+    setHeaderMappings({});
+    setExactMatchedColumns({});
 
     const reader = new FileReader();
     fileReaderRef.current = reader;
@@ -114,11 +118,13 @@ const ImportModal = ({
       try {
         const data = new Uint8Array(e.target.result);
         const workbook = XLSX.read(data, { type: 'array', cellDates: true });
-        setWorkbookData(workbook); // Cache
+
+        setWorkbookData(workbook);
         setSheetNames(workbook.SheetNames);
         setSelectedSheet('');
         setSheetHeaders([]);
         setHeaderMappings({});
+        setExactMatchedColumns({});
       } catch (err) {
         setErrorMessage(`File read failed: ${err.message}`);
       } finally {
@@ -138,16 +144,15 @@ const ImportModal = ({
     reader.readAsArrayBuffer(file);
   };
 
-  // Manual file change
   const handleFileChange = (e) => {
     const newFile = e.target.files?.[0];
+
     if (newFile) {
       setExcelFile(newFile);
       processFile(newFile);
     }
   };
 
-  // Go to sheet selection
   const handleNext = () => {
     if (!excelFile) {
       setErrorMessage('Please select a file first!');
@@ -167,7 +172,6 @@ const ImportModal = ({
     handleSheetSelect();
   };
 
-  // Extract headers from cached workbook
   const handleSheetSelect = () => {
     if (!workbookData || !selectedSheet) return;
 
@@ -176,13 +180,14 @@ const ImportModal = ({
 
     try {
       const worksheet = workbookData.Sheets[selectedSheet];
+
       if (!worksheet) throw new Error('Selected sheet not found.');
 
-      const jsonData = XLSX.utils.sheet_to_json(worksheet, { 
-        header: 1, 
-        raw: false, 
-        defval: '', 
-        blankrows: false 
+      const jsonData = XLSX.utils.sheet_to_json(worksheet, {
+        header: 1,
+        raw: false,
+        defval: '',
+        blankrows: false,
       });
 
       if (jsonData.length === 0) {
@@ -191,12 +196,13 @@ const ImportModal = ({
         return;
       }
 
-      // Improved header detection: find row with most non-empty cells
       let headerRowIndex = -1;
       let maxNonEmpty = 0;
+
       jsonData.forEach((row, i) => {
-        const nonEmpty = row.filter(cell => cell && String(cell).trim() !== '').length;
-        if (nonEmpty > maxNonEmpty && nonEmpty >= 3) { // At least 3 columns
+        const nonEmpty = row.filter((cell) => cell && String(cell).trim() !== '').length;
+
+        if (nonEmpty > maxNonEmpty && nonEmpty >= 3) {
           maxNonEmpty = nonEmpty;
           headerRowIndex = i;
         }
@@ -209,42 +215,55 @@ const ImportModal = ({
       }
 
       const headerRow = jsonData[headerRowIndex];
-      const headers = headerRow.map((h, i) => 
-        h ? String(h).trim() : `Column ${i + 1}`
-      );
+
+      const headers = headerRow.map((h, i) => (h ? String(h).trim() : `Column ${i + 1}`));
 
       setSheetHeaders(headers);
 
-      // Auto-mapping (same logic)
       const mappings = {};
-      const tableHeaders = columnsDef
-        ?.filter(col => col.id !== 'actions' && col.id !== 'sr')
-        .map(col => ({
-          id: col.id,
-          header: col.header.toLowerCase().trim().replace(/[-\s()]+/g, ''),
-          synonyms: headerSynonyms[col.id]?.map(s => s.toLowerCase().trim().replace(/[-\s()]+/g, '')) || [],
-        })) || [];
+      const exactMatches = {};
+
+      const tableHeaders =
+        columnsDef
+          ?.filter((col) => col.id !== 'actions' && col.id !== 'sr')
+          .map((col) => ({
+            id: col.id,
+            header: cleanHeaderText(col.header),
+            synonyms: headerSynonyms[col.id]?.map(cleanHeaderText) || [],
+          })) || [];
 
       headers.forEach((header, index) => {
         if (!header || header.startsWith('Column')) return;
-        const cleanHeader = header.toLowerCase().trim().replace(/[-\s()]+/g, '');
+
+        const cleanHeader = cleanHeaderText(header);
 
         let bestMatch = null;
         let highestScore = 0;
+        let isExactMatch = false;
 
-        tableHeaders.forEach(th => {
-          th.synonyms.forEach(syn => {
-            if (cleanHeader === syn) {
-              bestMatch = th.id;
-              highestScore = 100;
-            } else if (cleanHeader.includes(syn) || syn.includes(cleanHeader)) {
+        tableHeaders.forEach((th) => {
+          const exactCandidates = [th.header, ...th.synonyms];
+
+          if (exactCandidates.includes(cleanHeader)) {
+            bestMatch = th.id;
+            highestScore = 100;
+            isExactMatch = true;
+            return;
+          }
+
+          th.synonyms.forEach((syn) => {
+            if (!syn) return;
+
+            if (cleanHeader.includes(syn) || syn.includes(cleanHeader)) {
               const score = Math.max(
                 cleanHeader.includes(syn) ? (syn.length / cleanHeader.length) * 80 : 0,
                 syn.includes(cleanHeader) ? (cleanHeader.length / syn.length) * 80 : 0
               );
+
               if (score > highestScore) {
                 bestMatch = th.id;
                 highestScore = score;
+                isExactMatch = false;
               }
             }
           });
@@ -252,10 +271,12 @@ const ImportModal = ({
 
         if (bestMatch && !Object.values(mappings).includes(bestMatch)) {
           mappings[index] = bestMatch;
+          exactMatches[bestMatch] = isExactMatch;
         }
       });
 
       setHeaderMappings(mappings);
+      setExactMatchedColumns(exactMatches);
     } catch (err) {
       setErrorMessage(`Sheet processing failed: ${err.message}`);
     } finally {
@@ -263,7 +284,9 @@ const ImportModal = ({
     }
   };
 
-  // Full import using cached workbook
+  const isColumnExactMatched = (tableColId) =>
+    Object.values(headerMappings).includes(tableColId) && exactMatchedColumns[tableColId];
+
   const handleImport = () => {
     if (!workbookData || !selectedSheet) {
       setErrorMessage('No sheet selected or file not processed.');
@@ -284,12 +307,15 @@ const ImportModal = ({
 
       if (jsonData.length <= 1) throw new Error('No valid data found.');
 
-      // Skip initial empty rows
       let startIndex = 0;
-      while (startIndex < jsonData.length && 
-             jsonData[startIndex].every(cell => !cell || String(cell).trim() === '')) {
+
+      while (
+        startIndex < jsonData.length &&
+        jsonData[startIndex].every((cell) => !cell || String(cell).trim() === '')
+      ) {
         startIndex++;
       }
+
       startIndex++;
 
       const importedRows = [];
@@ -299,6 +325,7 @@ const ImportModal = ({
 
         row.forEach((cell, colIndex) => {
           const tableColId = headerMappings[colIndex];
+
           if (tableColId && tableColId !== 'actions' && tableColId !== 'sr') {
             let value = cell ? String(cell).trim() : '';
 
@@ -307,16 +334,23 @@ const ImportModal = ({
                 value = excelSerialToDate(parseFloat(value));
               } else if (Date.parse(value)) {
                 const date = new Date(value);
-                value = `${date.getDate().toString().padStart(2, '0')}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getFullYear()}`;
+                value = `${date.getDate().toString().padStart(2, '0')}-${(date.getMonth() + 1)
+                  .toString()
+                  .padStart(2, '0')}-${date.getFullYear()}`;
               }
+
               const validation = validateDOB(value);
               value = validation.isValid ? validation.formatted : '';
             }
 
             if (tableColId === 'gender') {
               const lower = value.toLowerCase();
-              value = lower === 'm' || lower === 'male' ? 'Male' : 
-                      lower === 'f' || lower === 'female' ? 'Female' : value;
+              value =
+                lower === 'm' || lower === 'male'
+                  ? 'Male'
+                  : lower === 'f' || lower === 'female'
+                    ? 'Female'
+                    : value;
             }
 
             rowData[tableColId] = value;
@@ -325,7 +359,7 @@ const ImportModal = ({
 
         if (Object.keys(rowData).length > 0) {
           const fullRow = {
-            ...Object.fromEntries(columnsDef?.map(col => [col.id, col.id === 'actions' ? '' : '']) || []),
+            ...Object.fromEntries(columnsDef?.map((col) => [col.id, col.id === 'actions' ? '' : '']) || []),
             ...rowData,
           };
 
@@ -360,13 +394,13 @@ const ImportModal = ({
       onImportSuccess?.(updateSerialNumbers?.(importedRows) || importedRows);
       recalculateColumnWidths?.();
 
-      // Reset & close
       setExcelFile(null);
       setWorkbookData(null);
       setSheetNames([]);
       setSelectedSheet('');
       setSheetHeaders([]);
       setHeaderMappings({});
+      setExactMatchedColumns({});
       onClose();
     } catch (err) {
       setErrorMessage(`Import failed: ${err.message}`);
@@ -379,24 +413,17 @@ const ImportModal = ({
     if (fileReaderRef.current) {
       fileReaderRef.current.abort();
     }
-    setIsLoading(false);
-    setProgress(0);
-    setExcelFile(null);
-    setWorkbookData(null);
-    setSheetNames([]);
-    setSelectedSheet('');
-    setSheetHeaders([]);
-    setHeaderMappings({});
-    setErrorMessage('');
+
+    resetImportState();
     onClose();
   };
 
   return (
     <div className={styles.modal} role="dialog" aria-modal="true">
       <div className={styles.modalContent}>
-        {/* Header */}
         <div className={styles.modalHeader}>
           <h3>Import Entries from Excel</h3>
+
           <button
             className={styles.modalCloseButton}
             onClick={handleCancel}
@@ -407,19 +434,14 @@ const ImportModal = ({
           </button>
         </div>
 
-        {/* Error */}
-        {errorMessage && (
-          <div className={styles.errorMessage}>
-            {errorMessage}
-          </div>
-        )}
+        {errorMessage && <div className={styles.errorMessage}>{errorMessage}</div>}
 
-        {/* Step 1: File Upload */}
         {!sheetNames.length ? (
           <div className={styles.uploadSection}>
             <label htmlFor="excelFileInput" className={styles.fileLabel}>
               Choose Excel File (.xlsx, .xls, .xlsb, .xlsm)
             </label>
+
             <input
               id="excelFileInput"
               type="file"
@@ -428,21 +450,29 @@ const ImportModal = ({
               disabled={isLoading}
               className={styles.fileInput}
             />
+
             <p className={styles.fileNote}>
               Max size: 10MB | Supports header mapping & auto calculations
             </p>
           </div>
         ) : (
           <>
-            {/* File Info */}
-            <div style={{ marginBottom: '16px', padding: '12px', background: '#f8f9fa', borderRadius: '6px', border: '1px solid #dee2e6' }}>
-              <strong>Selected File:</strong> {excelFile?.name || 'Unknown'} 
+            <div
+              style={{
+                marginBottom: '16px',
+                padding: '12px',
+                background: '#f8f9fa',
+                borderRadius: '6px',
+                border: '1px solid #dee2e6',
+              }}
+            >
+              <strong>Selected File:</strong> {excelFile?.name || 'Unknown'}
+
               <small style={{ color: '#666', marginLeft: '8px' }}>
                 ({excelFile ? Math.round(excelFile.size / 1024) + ' KB' : ''})
               </small>
             </div>
 
-            {/* Progress */}
             {isLoading && (
               <div style={{ margin: '16px 0', textAlign: 'center' }}>
                 <div className={styles.spinner} style={{ margin: '0 auto' }}></div>
@@ -450,10 +480,10 @@ const ImportModal = ({
               </div>
             )}
 
-            {/* Step 2: Sheet Selection */}
             {sheetNames.length > 0 && !sheetHeaders.length && !isLoading && (
               <div className={styles.sheetSection}>
                 <label htmlFor="sheetSelect">Select Sheet:</label>
+
                 <select
                   id="sheetSelect"
                   value={selectedSheet}
@@ -461,14 +491,16 @@ const ImportModal = ({
                   disabled={isLoading}
                 >
                   <option value="">-- Choose Sheet --</option>
-                  {sheetNames.map(name => (
-                    <option key={name} value={name}>{name}</option>
+
+                  {sheetNames.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
                   ))}
                 </select>
               </div>
             )}
 
-            {/* Next Button */}
             {sheetNames.length > 0 && !sheetHeaders.length && (
               <div style={{ marginTop: '20px', textAlign: 'center' }}>
                 <button
@@ -481,35 +513,70 @@ const ImportModal = ({
               </div>
             )}
 
-            {/* Step 3: Header Mapping */}
             {sheetHeaders.length > 0 && (
               <div className={styles.mappingSection}>
-                <div style={{ background: '#e3f2fd', padding: '10px', borderRadius: '4px', marginBottom: '16px' }}>
-                  <strong>Column Mapping:</strong> Match your Excel columns with table fields.
+                <div
+                  style={{
+                    background: '#e3f2fd',
+                    padding: '10px',
+                    borderRadius: '4px',
+                    marginBottom: '16px',
+                  }}
+                >
+                  <strong>Column Mapping:</strong> Red border means exact column match was not found. Please verify before importing.
                 </div>
+
                 <h4>Map Columns</h4>
+
                 <div className={styles.mappingGrid}>
                   {columnsDef
-                    ?.filter(col => col.id !== 'actions' && col.id !== 'sr')
+                    ?.filter((col) => col.id !== 'actions' && col.id !== 'sr')
                     .map((tableCol) => (
-                      <div key={tableCol.id} className={styles.mappingRow}>
+                      <div
+                        key={tableCol.id}
+                        className={styles.mappingRow}
+                        style={{
+                          border: isColumnExactMatched(tableCol.id)
+                            ? '1px solid transparent'
+                            : '2px solid #d32f2f',
+                          borderRadius: '6px',
+                          padding: '8px',
+                        }}
+                      >
                         <span className={styles.mappingSource}>{tableCol.header}</span>
                         →
+
                         <select
-                          value={Object.keys(headerMappings).find(key => headerMappings[key] === tableCol.id) || ''}
+                          value={Object.keys(headerMappings).find((key) => headerMappings[key] === tableCol.id) || ''}
                           onChange={(e) => {
                             const newMappings = { ...headerMappings };
-                            Object.keys(newMappings).forEach(k => {
+                            const newExactMatches = { ...exactMatchedColumns };
+
+                            Object.keys(newMappings).forEach((k) => {
                               if (newMappings[k] === tableCol.id) delete newMappings[k];
                             });
+
+                            delete newExactMatches[tableCol.id];
+
                             if (e.target.value) {
                               newMappings[e.target.value] = tableCol.id;
+
+                              const selectedExcelHeader = sheetHeaders[Number(e.target.value)] || '';
+                              const cleanExcelHeader = cleanHeaderText(selectedExcelHeader);
+                              const cleanTableHeader = cleanHeaderText(tableCol.header);
+                              const cleanSynonyms = headerSynonyms[tableCol.id]?.map(cleanHeaderText) || [];
+
+                              newExactMatches[tableCol.id] =
+                                cleanExcelHeader === cleanTableHeader || cleanSynonyms.includes(cleanExcelHeader);
                             }
+
                             setHeaderMappings(newMappings);
+                            setExactMatchedColumns(newExactMatches);
                           }}
                           disabled={isLoading}
                         >
                           <option value="">None</option>
+
                           {sheetHeaders.map((excelHeader, excelIndex) => (
                             <option key={excelIndex} value={excelIndex}>
                               {excelHeader || `Column ${excelIndex + 1}`}
@@ -528,7 +595,6 @@ const ImportModal = ({
               </div>
             )}
 
-            {/* Buttons */}
             {sheetHeaders.length > 0 && (
               <div className={styles.modalButtons}>
                 <button
@@ -538,6 +604,7 @@ const ImportModal = ({
                 >
                   Import Data
                 </button>
+
                 <button
                   className={`${styles.actionButton} ${styles.cancelButton}`}
                   onClick={handleCancel}
@@ -549,7 +616,6 @@ const ImportModal = ({
           </>
         )}
 
-        {/* Loading */}
         {isLoading && !progress && (
           <div className={styles.loadingOverlay}>
             <div className={styles.spinner}></div>

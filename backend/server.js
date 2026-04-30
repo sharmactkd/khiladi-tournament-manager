@@ -6,9 +6,11 @@ import cors from "cors";
 import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
+import passport from "./config/passport.js";
 
 import authRoutes from "./routes/authRoutes.js";
 import tournamentRoutes from "./routes/tournamentRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
 import entryRoutes from "./routes/entryRoutes.js";
 import weightPresetRoutes from "./routes/weightPresetRoutes.js";
 import visitorRoutes from "./routes/visitorRoutes.js";
@@ -72,6 +74,8 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
 
+app.use(passport.initialize());
+
 console.log("STATIC UPLOADS PATH:", path.join(__dirname, "uploads"));
 
 app.use("/uploads", (req, res, next) => {
@@ -114,6 +118,7 @@ mongoose
 
 app.use("/api/auth", authRoutes);
 app.use("/api/tournament", tournamentRoutes);
+app.use("/api/payment", paymentRoutes);
 app.use("/api/tournaments", entryRoutes);
 app.use("/api/weight-presets", weightPresetRoutes);
 app.use("/api/visitor", visitorRoutes);

@@ -22,6 +22,7 @@ import MedalSection from '../components/TieSheet/MedalSection';
 import SignatureSection from '../components/TieSheet/SignatureSection';
 import BracketActions from '../components/TieSheet/BracketActions';
 import BracketFooter from '../components/TieSheet/BracketFooter';
+import PremiumAccessGuard from "../components/payment/PremiumAccessGuard";
 import { createPDFDoc, createAndOpenPDFInNewTab, getMultipleBracketsFilename } from '../components/TieSheet/pdfUtils';
 import toast, { Toaster } from 'react-hot-toast';
 import { setInitialBrackets, setOutcomes, toggleLock } from '../store/bracketsSlice';
@@ -311,6 +312,25 @@ const TieSheet = () => {
     return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
   }, [token]);
 
+  const normalizeAgeCategoryForCompare = (value) => {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/under\s*-?\s*(\d+)/g, "under - $1");
+};
+
+const getUniqueAgeCategories = (rows = []) => {
+  return [
+    ...new Set(
+      rows
+        .map((row) => row?.ageCategory)
+        .filter(Boolean)
+        .map(normalizeAgeCategoryForCompare)
+    ),
+  ];
+};
+
   const normalizePlayers = useCallback((rows, tournamentData) => {
     const ageCategoryMapping = ageCategoryMappingRef.current;
     const playersData = Array.isArray(rows) ? rows : [];
@@ -349,19 +369,58 @@ const TieSheet = () => {
 
     if (isDev) console.log('BEFORE FILTER SAMPLE:', cleanedMapped?.[0]);
 
-    const cleaned = cleanedMapped.filter((p) => p?.name && p?.gender && p?.ageCategory && p?.weightCategory);
+   // ✅ TieSheet only for Kyorugi players
+// ✅ TieSheet only for Kyorugi players
+const kyorugiOnly = cleanedMapped.filter((p) =>
+  String(p?.event || "").trim().toLowerCase().includes("kyorugi")
+);
 
-    // ✅ Requested DEV log: first cleaned gender
-    if (isDev) console.log('🧬 [TieSheet] cleaned[0].gender:', cleaned?.[0]?.gender || null);
+if (!tournamentData) {
+  return kyorugiOnly.filter(
+    (p) => p?.name && p?.gender && p?.ageCategory && p?.weightCategory
+  );
+}
 
-    if (!tournamentData) return cleaned;
+if (isDev) console.log('🧬 [TieSheet] tournamentData.ageGender:', tournamentData?.ageGender || null);
 
-    // ✅ Requested DEV log: tournamentData.ageGender
-    if (isDev) console.log('🧬 [TieSheet] tournamentData.ageGender:', tournamentData?.ageGender || null);
+const allAgeCategories = [
+  ...(tournamentData.ageCategories?.open || []),
+  ...(tournamentData.ageCategories?.official || []),
+].map((c) => ageCategoryMapping[normalizeString(c)] || c);
 
-    const allAgeCategories = [...(tournamentData.ageCategories?.open || []), ...(tournamentData.ageCategories?.official || [])].map(
-      (c) => ageCategoryMapping[normalizeString(c)] || c
-    );
+const tournamentAgeSet = new Set(
+  allAgeCategories.map(normalizeAgeCategoryForCompare)
+);
+
+const validKyorugiRows = kyorugiOnly.filter((p) =>
+  tournamentAgeSet.has(normalizeAgeCategoryForCompare(p?.ageCategory))
+);
+
+const invalidKyorugiRows = kyorugiOnly.filter((p) => {
+  const age = normalizeAgeCategoryForCompare(p?.ageCategory);
+  return age && !tournamentAgeSet.has(age);
+});
+
+if (validKyorugiRows.length === 0 && invalidKyorugiRows.length > 0) {
+  const tournamentAgesText = allAgeCategories.join(", ");
+  const entryAgesText = [
+    ...new Set(kyorugiOnly.map((p) => p.ageCategory).filter(Boolean)),
+  ].join(", ");
+
+  throw {
+    title: "Age Category Mismatch",
+    message: `Tournament Setup: ${tournamentAgesText || "Not set"}
+Entry Table / Excel: ${entryAgesText || "Not set"}
+
+Please update either Tournament Setup or Entry Table so both match.`,
+  };
+}
+
+const cleaned = validKyorugiRows.filter(
+  (p) => p?.name && p?.gender && p?.ageCategory && p?.weightCategory
+);
+
+if (isDev) console.log('🧬 [TieSheet] cleaned[0].gender:', cleaned?.[0]?.gender || null);
 
     const allowedGenders = new Set();
     ['open', 'official'].forEach((type) => {
@@ -505,24 +564,29 @@ const TieSheet = () => {
     [id, getApiBaseUrl, getAuthConfig]
   );
 
-  const saveTieSheetOutcomesToServer = useCallback(
-    async (outcomes, signal) => {
-      const baseUrl = getApiBaseUrl();
-      const config = {
-        ...getAuthConfig(),
-        signal,
-        timeout: 20000,
-        headers: {
-          ...(getAuthConfig()?.headers || {}),
-          'Content-Type': 'application/json',
-        },
-      };
-      const payload = { outcomes: outcomes || {} };
-      const resp = await axios.put(`${baseUrl}/tournament/${id}/tiesheet-outcomes`, payload, config);
-      return resp?.data || null;
-    },
-    [id, getApiBaseUrl, getAuthConfig]
-  );
+const saveTieSheetOutcomesToServer = useCallback(
+  async (outcomes, signal, bracketsSnapshot = []) => {
+    const baseUrl = getApiBaseUrl();
+    const config = {
+      ...getAuthConfig(),
+      signal,
+      timeout: 20000,
+      headers: {
+        ...(getAuthConfig()?.headers || {}),
+        'Content-Type': 'application/json',
+      },
+    };
+
+    const payload = {
+      outcomes: outcomes || {},
+      brackets: Array.isArray(bracketsSnapshot) ? bracketsSnapshot : [],
+    };
+
+    const resp = await axios.put(`${baseUrl}/tournament/${id}/tiesheet-outcomes`, payload, config);
+    return resp?.data || null;
+  },
+  [id, getApiBaseUrl, getAuthConfig]
+);
 
   const shouldRestoreSavedBrackets = useCallback((serverTieSheet, currentEntriesMeta) => {
     try {
@@ -810,7 +874,11 @@ const TieSheet = () => {
 
       const controller = new AbortController();
       try {
-        const resp = await saveTieSheetOutcomesToServer(outcomesSnapshot || {}, controller.signal);
+      const resp = await saveTieSheetOutcomesToServer(
+  outcomesSnapshot || {},
+  controller.signal,
+  Array.isArray(brackets) ? brackets : []
+);
 
         lastServerSavedHashRef.current = hash;
 
@@ -837,7 +905,7 @@ const TieSheet = () => {
         serverSaveInFlightRef.current = false;
       }
     }, 450);
-  }, [id, saveTieSheetOutcomesToServer]);
+}, [id, saveTieSheetOutcomesToServer, brackets]);
 
   useEffect(() => {
     return () => {
@@ -929,7 +997,10 @@ const TieSheet = () => {
         const mappedPlayers = normalizePlayers(rows, tournamentData);
 
         if (!mappedPlayers || mappedPlayers.length === 0) {
-          throw new Error('No valid players found on server. Please add players in Entry page.');
+        throw {
+  title: "No Kyorugi Players Found",
+  message: "TieSheet can be generated only for Kyorugi players. Please add/import players with Event = Kyorugi in Entry page.",
+};
         }
 
         if (mountedRef.current && !controller.signal.aborted) setPlayers(mappedPlayers);
@@ -984,7 +1055,13 @@ const TieSheet = () => {
       } catch (err) {
         if (controller.signal.aborted) return;
         console.error('Main data fetch failed:', err);
-        if (mountedRef.current) setError(err.message || 'Failed to load tournament or player data');
+       if (mountedRef.current) {
+  setError(
+    err?.title
+      ? err
+      : { title: "Error", message: err?.message || "Failed to load tournament or player data" }
+  );
+}
       } finally {
         const isLatestRun = runId === mainFetchRunIdRef.current;
         if (!controller.signal.aborted && mountedRef.current && isLatestRun) {
@@ -1188,7 +1265,13 @@ const TieSheet = () => {
       }
     } catch (err) {
       console.error('Refresh error:', err);
-      if (mountedRef.current) setError('Refresh failed: ' + (err.message || 'Unknown error'));
+     if (mountedRef.current) {
+  setError(
+    err?.title
+      ? err
+      : { title: "Error", message: "Refresh failed: " + (err?.message || "Unknown error") }
+  );
+}
     } finally {
       if (mountedRef.current) setIsLoading(false);
       refreshInFlightRef.current = false;
@@ -1338,6 +1421,7 @@ const TieSheet = () => {
   }
 
   return (
+    <PremiumAccessGuard tournamentId={id}>
     <ErrorBoundary>
       <Toaster
         position="top-center"
@@ -1369,14 +1453,18 @@ const TieSheet = () => {
         )}
 
         {error && (
-          <div className={styles.errorMessage}>
-            <h2>Error</h2>
-            <p>{error}</p>
-            <button className={styles.toggleButton} onClick={() => navigate(`/tournaments/${id}/entry`)}>
-              Go to Entry Page
-            </button>
-          </div>
-        )}
+  <div className={styles.errorMessage}>
+    <h2>{error?.title || "Error"}</h2>
+
+    <p style={{ whiteSpace: "pre-line" }}>
+      {error?.message || String(error)}
+    </p>
+
+    <button className={styles.toggleButton} onClick={() => navigate(`/tournaments/${id}/entry`)}>
+      Go to Entry Page
+    </button>
+  </div>
+)}
 
         {!isLoading && !error && (
           <>
@@ -1577,6 +1665,7 @@ const TieSheet = () => {
         )}
       </div>
     </ErrorBoundary>
+    </PremiumAccessGuard>
   );
 };
 

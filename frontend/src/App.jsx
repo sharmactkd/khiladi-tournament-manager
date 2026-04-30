@@ -21,6 +21,7 @@ import Team from "./pages/Team";
 import TeamEntryForm from "./pages/TeamEntryForm";
 import TeamSubmissions from "./pages/TeamSubmissions";
 import TournamentLayout from "./components/TournamentLayout";
+import SocialAuthSuccess from "./pages/SocialAuthSuccess";
 import "./App.css";
 
 function App() {
@@ -82,7 +83,7 @@ function App() {
               )
             }
           />
-
+<Route path="/auth/social-success" element={<SocialAuthSuccess />} />
           <Route path="/tournaments/:id" element={<TournamentLayout />}>
             <Route index element={<TournamentDetails />} />
             <Route path="entry" element={<Entry />} />

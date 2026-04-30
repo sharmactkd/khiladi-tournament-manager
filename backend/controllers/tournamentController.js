@@ -1,5 +1,6 @@
 import mongoose from "mongoose";
 import Tournament from "../models/tournament.js";
+import Entry from "../models/entry.js";
 import logger from "../utils/logger.js";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 import path from "path";
@@ -25,53 +26,52 @@ const validatePhoneNumber = (contact) => {
   if (!parsed || !parsed.isValid()) {
     throw new Error("Invalid phone number format. Must include country code (e.g., +91).");
   }
+
   const countryCode = parsed.countryCallingCode;
   const nationalNumber = parsed.nationalNumber;
 
   if (countryCode === "91" && nationalNumber.length !== 10) {
     throw new Error("Indian phone numbers must have exactly 10 digits.");
   }
+
   if (countryCode !== "91" && nationalNumber.length > 15) {
     throw new Error("International numbers cannot exceed 15 digits.");
   }
+
   return parsed.number;
 };
 
 const validateFile = (file, fieldName) => {
   if (!file) return;
-  const maxSize = 10 * 1024 * 1024; // 10MB
+
+  const maxSize = 10 * 1024 * 1024;
   const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/svg+xml"];
 
   if (file.size > maxSize) {
     throw new Error(`${fieldName} file size must be under 10MB`);
   }
+
   if (!allowedTypes.includes(file.mimetype)) {
     throw new Error(`${fieldName} must be JPG, PNG, WebP, or SVG`);
   }
 };
 
-// Helper Functions के section में add करो (validateFile के नीचे)
-// NOTE: This is now used ONLY for disk storage paths. For Cloudinary URLs we store the URL as-is.
 const getFilenameFromPath = (fullPath) => {
   if (!fullPath) return null;
-  return path.basename(fullPath); // सिर्फ filename return करेगा, path नहीं
+  return path.basename(fullPath);
 };
 
-// ✅ NEW: Decide what to store in DB for an uploaded file
-// - If CloudinaryStorage: file.path is a full URL → store that URL (secure_url equivalent)
-// - If diskStorage: file.path is a local path → store basename(filename) like before
 const getStoredUploadValue = (file) => {
   if (!file) return undefined;
 
   const p = typeof file.path === "string" ? file.path.trim() : "";
+
   if (p && (p.startsWith("http://") || p.startsWith("https://"))) {
-    return p; // Cloudinary URL
+    return p;
   }
 
-  // fallback: local disk path or unexpected structure
   if (p) return getFilenameFromPath(p);
 
-  // some multer variants can store filename
   if (typeof file.filename === "string" && file.filename.trim()) {
     return file.filename.trim();
   }
@@ -81,6 +81,7 @@ const getStoredUploadValue = (file) => {
 
 const processTournamentType = (tournamentType) => {
   if (!tournamentType) return ["Open"];
+
   if (typeof tournamentType === "string") {
     try {
       return JSON.parse(tournamentType);
@@ -91,6 +92,7 @@ const processTournamentType = (tournamentType) => {
         .filter(Boolean);
     }
   }
+
   return Array.isArray(tournamentType)
     ? [
         ...new Set(
@@ -100,11 +102,6 @@ const processTournamentType = (tournamentType) => {
     : [tournamentType];
 };
 
-// ✅ IMPORTANT FIX:
-// Existing code used path.normalize() for poster/logos.
-// That BREAKS Cloudinary URLs (https:// becomes https:/).
-// So: if it's already a URL, return as-is.
-// Otherwise normalize local/path-ish strings.
 const normalizePath = (filePath) => {
   if (!filePath) return undefined;
 
@@ -116,10 +113,420 @@ const normalizePath = (filePath) => {
   return path.normalize(s).replace(/\\/g, "/");
 };
 
-// ✅ Visibility safe filter (respects visibility if the field exists)
 const getPublicVisibilityFilter = () => ({
   $or: [{ visibility: { $exists: false } }, { visibility: true }],
 });
+
+const allowedResultMedals = ["Gold", "Silver", "Bronze"];
+
+const normalizeResultText = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const normalizeResultMedal = (value) => {
+  const medal = String(value || "").trim();
+
+  if (["g", "gold", "1", "first"].includes(medal.toLowerCase())) return "Gold";
+  if (["s", "silver", "2", "second"].includes(medal.toLowerCase())) return "Silver";
+  if (["b", "bronze", "3", "third"].includes(medal.toLowerCase())) return "Bronze";
+
+  return allowedResultMedals.includes(medal) ? medal : "";
+};
+
+const normalizeResultWeight = (value) => {
+  if (value === undefined || value === null || value === "") return "";
+
+  const cleaned = String(value).replace(/[^0-9.]/g, "").trim();
+
+  if (!cleaned) return "";
+
+  const num = Number(cleaned);
+
+  return Number.isFinite(num) ? String(num) : "";
+};
+
+const buildResultStrictKey = (row) =>
+  [
+    normalizeResultText(row?.name),
+    normalizeResultText(row?.team),
+    normalizeResultText(row?.gender),
+    normalizeResultText(row?.event),
+    normalizeResultText(row?.subEvent),
+    normalizeResultText(row?.ageCategory),
+    normalizeResultText(row?.weightCategory),
+    normalizeResultWeight(row?.weight),
+  ].join("|||");
+
+const buildResultMediumKey = (row) =>
+  [
+    normalizeResultText(row?.name),
+    normalizeResultText(row?.team),
+    normalizeResultText(row?.gender),
+    normalizeResultText(row?.event),
+    normalizeResultText(row?.subEvent),
+    normalizeResultText(row?.ageCategory),
+    normalizeResultText(row?.weightCategory),
+  ].join("|||");
+
+const buildResultLooseKey = (row) =>
+  [
+    normalizeResultText(row?.name),
+    normalizeResultText(row?.team),
+    normalizeResultText(row?.gender),
+    normalizeResultText(row?.ageCategory),
+    normalizeResultText(row?.weightCategory),
+  ].join("|||");
+
+const getPlayerLikeValue = (obj, keys = []) => {
+  if (!obj || typeof obj !== "object") return "";
+
+  for (const key of keys) {
+    if (obj[key] !== undefined && obj[key] !== null && String(obj[key]).trim() !== "") {
+      return obj[key];
+    }
+  }
+
+  return "";
+};
+
+const normalizeMedalPayloadItem = (item = {}, fallback = {}) => {
+  const source = item?.player && typeof item.player === "object" ? item.player : item;
+
+  const medal = normalizeResultMedal(
+    item.medal ||
+      item.result ||
+      item.place ||
+      item.position ||
+      item.rank ||
+      fallback.medal ||
+      fallback.result ||
+      fallback.place
+  );
+
+  if (!medal) return null;
+
+  const normalized = {
+    name: String(
+      getPlayerLikeValue(source, ["name", "playerName", "fullName", "athleteName"]) ||
+        getPlayerLikeValue(item, ["name", "playerName", "fullName", "athleteName"])
+    ).trim(),
+    team: String(
+      getPlayerLikeValue(source, ["team", "teamName", "club", "clubName", "school", "schoolName"]) ||
+        getPlayerLikeValue(item, ["team", "teamName", "club", "clubName", "school", "schoolName"])
+    ).trim(),
+    gender: String(
+      getPlayerLikeValue(source, ["gender"]) ||
+        getPlayerLikeValue(item, ["gender"]) ||
+        fallback.gender ||
+        ""
+    ).trim(),
+    event: String(
+      getPlayerLikeValue(source, ["event"]) ||
+        getPlayerLikeValue(item, ["event"]) ||
+        fallback.event ||
+        ""
+    ).trim(),
+    subEvent: String(
+      getPlayerLikeValue(source, ["subEvent", "sub_event"]) ||
+        getPlayerLikeValue(item, ["subEvent", "sub_event"]) ||
+        fallback.subEvent ||
+        ""
+    ).trim(),
+    ageCategory: String(
+      getPlayerLikeValue(source, ["ageCategory", "age"]) ||
+        getPlayerLikeValue(item, ["ageCategory", "age"]) ||
+        fallback.ageCategory ||
+        ""
+    ).trim(),
+    weightCategory: String(
+      getPlayerLikeValue(source, ["weightCategory", "weightCat"]) ||
+        getPlayerLikeValue(item, ["weightCategory", "weightCat"]) ||
+        fallback.weightCategory ||
+        ""
+    ).trim(),
+    weight:
+      getPlayerLikeValue(source, ["weight"]) ||
+      getPlayerLikeValue(item, ["weight"]) ||
+      fallback.weight ||
+      "",
+    medal,
+  };
+
+  return normalized.name ? normalized : null;
+};
+
+const collectMedalsFromObject = (node, fallback = {}, output = [], visited = new WeakSet()) => {
+  if (!node || typeof node !== "object") return output;
+
+  if (visited.has(node)) return output;
+  visited.add(node);
+
+  if (Array.isArray(node)) {
+    node.forEach((item) => collectMedalsFromObject(item, fallback, output, visited));
+    return output;
+  }
+
+  const nextFallback = {
+    ...fallback,
+    gender: node.gender || fallback.gender || "",
+    event: node.event || fallback.event || "",
+    subEvent: node.subEvent || fallback.subEvent || "",
+    ageCategory: node.ageCategory || fallback.ageCategory || "",
+    weightCategory: node.weightCategory || fallback.weightCategory || "",
+    weight: node.weight || fallback.weight || "",
+  };
+
+  const direct = normalizeMedalPayloadItem(node, nextFallback);
+  if (direct) output.push(direct);
+
+  const medalBuckets = [
+    ["gold", "Gold"],
+    ["goldWinner", "Gold"],
+    ["winner", "Gold"],
+    ["first", "Gold"],
+    ["silver", "Silver"],
+    ["silverWinner", "Silver"],
+    ["runnerUp", "Silver"],
+    ["second", "Silver"],
+    ["bronze", "Bronze"],
+    ["bronzeWinner", "Bronze"],
+    ["third", "Bronze"],
+  ];
+
+  medalBuckets.forEach(([key, medal]) => {
+    if (node[key]) {
+      const value = node[key];
+
+      if (Array.isArray(value)) {
+        value.forEach((item) => {
+          const normalized = normalizeMedalPayloadItem(item, { ...nextFallback, medal });
+          if (normalized) output.push(normalized);
+        });
+      } else {
+        const normalized = normalizeMedalPayloadItem(value, { ...nextFallback, medal });
+        if (normalized) output.push(normalized);
+      }
+    }
+  });
+
+  Object.entries(node).forEach(([key, value]) => {
+    if (
+      [
+        "player",
+        "gold",
+        "goldWinner",
+        "winner",
+        "first",
+        "silver",
+        "silverWinner",
+        "runnerUp",
+        "second",
+        "bronze",
+        "bronzeWinner",
+        "third",
+      ].includes(key)
+    ) {
+      return;
+    }
+
+    if (value && typeof value === "object") {
+      collectMedalsFromObject(value, nextFallback, output, visited);
+    }
+  });
+
+  return output;
+};
+
+const buildUniqueMedalList = (items = []) => {
+  const result = [];
+  const seen = new Set();
+
+  items.forEach((item) => {
+    const normalized = normalizeMedalPayloadItem(item);
+    if (!normalized) return;
+
+    const key = [
+      buildResultStrictKey(normalized),
+      normalized.medal,
+    ].join("###");
+
+    if (seen.has(key)) return;
+
+    seen.add(key);
+    result.push(normalized);
+  });
+
+  return result;
+};
+
+const extractMedalsFromTieSheetPayload = ({ medals, brackets, outcomes, tiesheet }) => {
+  if (Array.isArray(medals)) {
+    return buildUniqueMedalList(medals);
+  }
+
+  const collected = [];
+
+  if (Array.isArray(brackets)) {
+    collectMedalsFromObject(brackets, {}, collected);
+  }
+
+  if (tiesheet && typeof tiesheet === "object") {
+    collectMedalsFromObject(tiesheet, {}, collected);
+  }
+
+  if (outcomes && typeof outcomes === "object" && Array.isArray(brackets)) {
+    const outcomeValues = new Set();
+
+    const collectOutcomeValues = (node) => {
+      if (!node || typeof node !== "object") return;
+
+      if (Array.isArray(node)) {
+        node.forEach(collectOutcomeValues);
+        return;
+      }
+
+      Object.values(node).forEach((value) => {
+        if (value && typeof value === "object") {
+          collectOutcomeValues(value);
+        } else if (value !== undefined && value !== null && String(value).trim()) {
+          outcomeValues.add(normalizeResultText(value));
+        }
+      });
+    };
+
+    collectOutcomeValues(outcomes);
+
+    const bracketPlayers = [];
+    collectMedalsFromObject(brackets, {}, bracketPlayers);
+
+    bracketPlayers.forEach((player) => {
+      const nameKey = normalizeResultText(player.name);
+      if (nameKey && outcomeValues.has(nameKey)) {
+        collected.push({
+          ...player,
+          medal: player.medal || "Gold",
+        });
+      }
+    });
+  }
+
+  return buildUniqueMedalList(collected);
+};
+
+const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => {
+  const validMedals = buildUniqueMedalList(medals || []);
+
+  if (!validMedals.length) {
+    return {
+      attempted: false,
+      matchedCount: 0,
+      clearedCount: 0,
+      medalsReceived: 0,
+      reason: "no-valid-medals",
+    };
+  }
+
+  const entryDoc = await Entry.findOne({ tournamentId });
+
+  if (!entryDoc) {
+    return {
+      attempted: true,
+      matchedCount: 0,
+      clearedCount: 0,
+      medalsReceived: validMedals.length,
+      reason: "entry-doc-not-found",
+    };
+  }
+
+  const targetByStrictKey = new Map();
+  const targetByMediumKey = new Map();
+  const targetByLooseKey = new Map();
+
+  validMedals.forEach((item) => {
+    const strictKey = buildResultStrictKey(item);
+    const mediumKey = buildResultMediumKey(item);
+    const looseKey = buildResultLooseKey(item);
+
+    if (strictKey && !targetByStrictKey.has(strictKey)) targetByStrictKey.set(strictKey, item);
+    if (mediumKey && !targetByMediumKey.has(mediumKey)) targetByMediumKey.set(mediumKey, item);
+    if (looseKey && !targetByLooseKey.has(looseKey)) targetByLooseKey.set(looseKey, item);
+  });
+
+  const hasTieSheetUpdateForSameCategory = (entryObj) =>
+    validMedals.some((m) => {
+      const sameGender = normalizeResultText(m.gender) === normalizeResultText(entryObj.gender);
+      const sameAge = normalizeResultText(m.ageCategory) === normalizeResultText(entryObj.ageCategory);
+      const sameWeight =
+        normalizeResultText(m.weightCategory) === normalizeResultText(entryObj.weightCategory);
+
+      const sameEvent =
+        !m.event ||
+        !entryObj.event ||
+        normalizeResultText(m.event) === normalizeResultText(entryObj.event);
+
+      const sameSubEvent =
+        !m.subEvent ||
+        !entryObj.subEvent ||
+        normalizeResultText(m.subEvent) === normalizeResultText(entryObj.subEvent);
+
+      return sameGender && sameAge && sameWeight && sameEvent && sameSubEvent;
+    });
+
+  const now = new Date();
+  let matchedCount = 0;
+  let clearedCount = 0;
+
+  entryDoc.entries = (entryDoc.entries || []).map((entry) => {
+    const entryObj = entry?.toObject ? entry.toObject() : entry;
+
+    const strictKey = buildResultStrictKey(entryObj);
+    const mediumKey = buildResultMediumKey(entryObj);
+    const looseKey = buildResultLooseKey(entryObj);
+
+    const matched =
+      targetByStrictKey.get(strictKey) ||
+      targetByMediumKey.get(mediumKey) ||
+      targetByLooseKey.get(looseKey);
+
+    if (matched) {
+      matchedCount += 1;
+
+      return {
+        ...entryObj,
+        medal: matched.medal,
+        medalSource: "tiesheet",
+        medalUpdatedAt: now,
+      };
+    }
+
+    if (entryObj.medalSource === "tiesheet" && hasTieSheetUpdateForSameCategory(entryObj)) {
+      clearedCount += 1;
+
+      return {
+        ...entryObj,
+        medal: "",
+        medalSource: "",
+        medalUpdatedAt: null,
+      };
+    }
+
+    return entryObj;
+  });
+
+  entryDoc.updatedBy = userId;
+  await entryDoc.save();
+
+  return {
+    attempted: true,
+    matchedCount,
+    clearedCount,
+    medalsReceived: validMedals.length,
+    lastUpdated: entryDoc.updatedAt,
+    reason: null,
+  };
+};
 
 // ================ PUBLIC ENDPOINTS (No Auth Required) ================
 
@@ -145,17 +552,14 @@ export const getAllTournaments = async (req, res) => {
 
 export const getOngoingTournaments = async (req, res) => {
   try {
-    // ✅ Timezone-safe "today start"
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // ✅ Ongoing + Upcoming (NOT ended yet): dateTo >= today
-    // ✅ Respect visibility if it exists
     const tournaments = await Tournament.find({
       $and: [{ dateTo: { $gte: today } }, getPublicVisibilityFilter()],
     })
       .populate("createdBy", "name")
-      .sort({ dateFrom: 1 }) // upcoming first by start date
+      .sort({ dateFrom: 1 })
       .lean();
 
     const normalized = tournaments.map((t) => ({
@@ -173,12 +577,9 @@ export const getOngoingTournaments = async (req, res) => {
 
 export const getPreviousTournaments = async (req, res) => {
   try {
-    // ✅ Timezone-safe "today start"
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    // ✅ Only ended tournaments: dateTo < today
-    // ✅ Respect visibility if it exists
     const tournaments = await Tournament.find({
       $and: [{ dateTo: { $lt: today } }, getPublicVisibilityFilter()],
     })
@@ -237,6 +638,7 @@ export const getOutcomes = async (req, res) => {
 export const saveOutcomes = async (req, res) => {
   try {
     const { outcomes } = req.body;
+
     if (!outcomes || typeof outcomes !== "object") {
       return res.status(400).json({ message: "Invalid results data" });
     }
@@ -264,9 +666,34 @@ export const getTieSheet = async (req, res) => {
   }
 };
 
+export const getTieSheetOutcomes = async (req, res) => {
+  try {
+    const tournament = await Tournament.findById(req.params.id)
+      .select("tiesheet")
+      .lean();
+
+    if (!tournament) {
+      return res.status(404).json({ message: "Tournament not found" });
+    }
+
+    res.status(200).json({
+      outcomes: tournament?.tiesheet?.outcomes || {},
+      outcomesUpdatedAt: tournament?.tiesheet?.outcomesUpdatedAt || null,
+    });
+  } catch (error) {
+    logger.error("Get tiesheet outcomes failed", {
+      error: error.message,
+      tournamentId: req.params.id,
+    });
+
+    res.status(500).json({ message: "Failed to load tiesheet outcomes" });
+  }
+};
+
 export const saveTieSheet = async (req, res) => {
   try {
     const { tiesheet } = req.body;
+
     if (!tiesheet || typeof tiesheet !== "object" || !Array.isArray(tiesheet.brackets)) {
       return res.status(400).json({ message: "Invalid bracket data" });
     }
@@ -284,28 +711,69 @@ export const saveTieSheet = async (req, res) => {
   }
 };
 
-// ✅ NEW: lightweight real-time outcomes save (tiesheet.outcomes only)
 export const saveTieSheetOutcomes = async (req, res) => {
   try {
-    const { outcomes } = req.body;
+    const { outcomes, brackets, medals, tiesheet } = req.body || {};
 
     if (!outcomes || typeof outcomes !== "object" || Array.isArray(outcomes)) {
       return res.status(400).json({ message: "Invalid outcomes data" });
     }
 
-    const updated = await Tournament.findByIdAndUpdate(
-      req.params.id,
-      { $set: { "tiesheet.outcomes": outcomes } },
-      { new: true, select: "tiesheet" }
-    ).lean();
+   const updated = await Tournament.findByIdAndUpdate(
+  req.params.id,
+  {
+    $set: {
+      "tiesheet.outcomes": outcomes,
+      "tiesheet.outcomesUpdatedAt": new Date(),
+    },
+  },
+  { new: true, select: "tiesheet" }
+).lean();
 
     const saved = updated?.tiesheet?.outcomes || {};
-    res.status(200).json({ message: "TieSheet outcomes saved", outcomes: saved });
+
+    const medalsToSync = extractMedalsFromTieSheetPayload({
+      medals,
+      brackets,
+      outcomes,
+      tiesheet,
+    });
+
+    let syncResult = {
+      attempted: false,
+      matchedCount: 0,
+      clearedCount: 0,
+      medalsReceived: 0,
+      reason: "no-medal-payload",
+    };
+
+    if (medalsToSync.length > 0) {
+      syncResult = await syncTieSheetMedalsToEntries({
+        tournamentId: req.params.id,
+        userId: req.user?._id,
+        medals: medalsToSync,
+      });
+
+      logger.info("TieSheet outcomes saved and medals sync attempted", {
+        tournamentId: req.params.id,
+        matchedCount: syncResult.matchedCount,
+        clearedCount: syncResult.clearedCount,
+        medalsReceived: syncResult.medalsReceived,
+        reason: syncResult.reason,
+      });
+    }
+
+    res.status(200).json({
+      message: "TieSheet outcomes saved",
+      outcomes: saved,
+      medalSync: syncResult,
+    });
   } catch (error) {
     logger.error("Save tiesheet outcomes failed", {
       error: error.message,
       tournamentId: req.params.id,
     });
+
     res.status(500).json({ message: "Failed to save outcomes" });
   }
 };
@@ -323,6 +791,7 @@ export const getOfficials = async (req, res) => {
 export const saveOfficials = async (req, res) => {
   try {
     const { officials } = req.body;
+
     if (!Array.isArray(officials)) {
       return res.status(400).json({ message: "Officials must be an array" });
     }
@@ -353,6 +822,7 @@ export const getTeamPayments = async (req, res) => {
 export const saveTeamPayments = async (req, res) => {
   try {
     const { teamPayments } = req.body;
+
     if (typeof teamPayments !== "object" || teamPayments === null) {
       return res.status(400).json({ message: "Invalid payment data" });
     }
@@ -373,6 +843,7 @@ export const saveTeamPayments = async (req, res) => {
 export const saveTieSheetRecord = async (req, res) => {
   try {
     const record = req.body;
+
     if (!record || typeof record !== "object") {
       return res.status(400).json({ message: "Invalid record data" });
     }
@@ -409,7 +880,9 @@ export const createTournament = async (req, res) => {
       "dateFrom",
       "dateTo",
     ];
+
     const missingFields = requiredFields.filter((field) => !req.body[field]);
+
     if (missingFields.length > 0) {
       await session.abortTransaction();
       return res
@@ -418,11 +891,11 @@ export const createTournament = async (req, res) => {
     }
 
     const contact = validatePhoneNumber(req.body.contact);
-
     const tournamentType = processTournamentType(req.body.tournamentType);
 
     const dateFrom = new Date(req.body.dateFrom);
     const dateTo = new Date(req.body.dateTo);
+
     if (isNaN(dateFrom) || isNaN(dateTo) || dateFrom > dateTo) {
       await session.abortTransaction();
       return res.status(400).json({ message: "End date must be same day or after start date" });
@@ -431,18 +904,18 @@ export const createTournament = async (req, res) => {
     if (req.files?.poster?.[0]) {
       validateFile(req.files.poster[0], "Poster");
     }
+
     if (req.files?.logos) {
       req.files.logos.forEach((logo) => validateFile(logo, "Logo"));
     }
 
-    // ✅ FIX: Cloudinary → store URL, Disk → store filename-only
     const poster = req.files?.poster?.[0] ? getStoredUploadValue(req.files.poster[0]) : undefined;
     const logos = req.files?.logos ? req.files.logos.map((file) => getStoredUploadValue(file)) : [];
 
-    // ✅ Dev-only debug logs (no secrets)
     if (process.env.NODE_ENV !== "production") {
       const posterPath = req.files?.poster?.[0]?.path;
       const logoPaths = (req.files?.logos || []).map((f) => f?.path);
+
       const isCloudinary =
         (typeof posterPath === "string" && /^https?:\/\//i.test(posterPath)) ||
         logoPaths.some((p) => typeof p === "string" && /^https?:\/\//i.test(p));
@@ -478,9 +951,9 @@ export const createTournament = async (req, res) => {
       "foodAndLodging",
       "medalPoints",
     ];
+
     tournamentData = parseNestedFields(tournamentData, nestedFields);
 
-    // ====== SPECIAL HANDLING FOR weightCategories.selected ======
     if (tournamentData.weightCategories?.selected) {
       if (typeof tournamentData.weightCategories.selected === "string") {
         try {
@@ -498,6 +971,7 @@ export const createTournament = async (req, res) => {
       )
         ? tournamentData.weightCategories.selected.male
         : [];
+
       tournamentData.weightCategories.selected.female = Array.isArray(
         tournamentData.weightCategories.selected.female
       )
@@ -506,12 +980,10 @@ export const createTournament = async (req, res) => {
     }
 
     if (tournamentData.weightCategories?.type === "custom") {
-      // custom should be object (may include legacy arrays per age; frontend now sends gender-wise)
       tournamentData.weightCategories.selected = undefined;
     } else {
       tournamentData.weightCategories.custom = undefined;
     }
-    // ===========================================================
 
     if (tournamentData.foodAndLodging) {
       tournamentData.foodAndLodging = {
@@ -538,12 +1010,15 @@ export const createTournament = async (req, res) => {
     const saved = await tournament.save({ session });
 
     await session.commitTransaction();
+
     logger.info("Tournament created successfully", { id: saved._id, createdBy: req.user._id });
 
     res.status(201).json(saved.toObject());
   } catch (error) {
     await session.abortTransaction();
+
     logger.error("Create tournament failed", { error: error.message });
+
     res.status(error.name === "ValidationError" ? 400 : 500).json({
       message: error.message || "Server error during creation",
       details:
@@ -562,6 +1037,7 @@ export const updateTournament = async (req, res) => {
 
   try {
     let updates = { ...req.body };
+
     delete updates._id;
     delete updates.__v;
     delete updates.createdBy;
@@ -576,23 +1052,29 @@ export const updateTournament = async (req, res) => {
       "foodAndLodging",
       "medalPoints",
     ];
+
     updates = parseNestedFields(updates, nestedFields);
 
     if (updates.contact) {
       updates.contact = validatePhoneNumber(updates.contact);
     }
+
     if (updates.tournamentType) {
       updates.tournamentType = processTournamentType(updates.tournamentType);
     }
+
     if (updates.dateFrom) {
       updates.dateFrom = new Date(updates.dateFrom);
     }
+
     if (updates.dateTo) {
       updates.dateTo = new Date(updates.dateTo);
     }
+
     if (updates.playerLimit) {
       updates.playerLimit = parseInt(updates.playerLimit, 10);
     }
+
     if (updates.visibility !== undefined) {
       updates.visibility = updates.visibility === "true" || updates.visibility === true;
     }
@@ -616,38 +1098,45 @@ export const updateTournament = async (req, res) => {
       };
     }
 
-    // ✅ FIX: Cloudinary → store URL, Disk → store filename-only
     if (req.files?.poster?.[0]) {
       validateFile(req.files.poster[0], "Poster");
       updates.poster = getStoredUploadValue(req.files.poster[0]);
     }
+
     if (req.files?.logos?.length > 0) {
       req.files.logos.forEach((logo) => validateFile(logo, "Logo"));
       updates.logos = req.files.logos.map((file) => getStoredUploadValue(file));
     }
 
-    // ✅ Dev-only debug logs (no secrets)
     if (process.env.NODE_ENV !== "production") {
       const posterPath = req.files?.poster?.[0]?.path;
       const logoPaths = (req.files?.logos || []).map((f) => f?.path);
+
       const isCloudinary =
         (typeof posterPath === "string" && /^https?:\/\//i.test(posterPath)) ||
         logoPaths.some((p) => typeof p === "string" && /^https?:\/\//i.test(p));
 
       if (req.files?.poster?.[0] || (req.files?.logos && req.files.logos.length > 0)) {
         console.log("📸 [UPLOAD DEBUG] (update) storage:", isCloudinary ? "cloudinary" : "disk/local");
-        if (req.files?.poster?.[0]) console.log("📸 [UPLOAD DEBUG] (update) poster saved as:", updates.poster);
-        if (req.files?.logos?.length > 0) console.log("📸 [UPLOAD DEBUG] (update) logos saved as:", updates.logos);
+
+        if (req.files?.poster?.[0]) {
+          console.log("📸 [UPLOAD DEBUG] (update) poster saved as:", updates.poster);
+        }
+
+        if (req.files?.logos?.length > 0) {
+          console.log("📸 [UPLOAD DEBUG] (update) logos saved as:", updates.logos);
+        }
       }
     }
 
-    // ====== SPECIAL HANDLING FOR weightCategories.selected (UPDATE) ======
     if (updates.weightCategories?.selected) {
       if (typeof updates.weightCategories.selected === "string") {
         try {
           updates.weightCategories.selected = JSON.parse(updates.weightCategories.selected);
         } catch (err) {
-          logger.warn("Failed to parse weightCategories.selected in update", { error: err.message });
+          logger.warn("Failed to parse weightCategories.selected in update", {
+            error: err.message,
+          });
           updates.weightCategories.selected = { male: [], female: [] };
         }
       }
@@ -655,18 +1144,19 @@ export const updateTournament = async (req, res) => {
       updates.weightCategories.selected.male = Array.isArray(updates.weightCategories.selected.male)
         ? updates.weightCategories.selected.male
         : [];
-      updates.weightCategories.selected.female = Array.isArray(updates.weightCategories.selected.female)
+
+      updates.weightCategories.selected.female = Array.isArray(
+        updates.weightCategories.selected.female
+      )
         ? updates.weightCategories.selected.female
         : [];
     }
 
     if (updates.weightCategories?.type === "custom") {
-      // custom should be object; do not trim/normalize strings here
       updates.weightCategories.selected = undefined;
     } else {
       updates.weightCategories.custom = undefined;
     }
-    // ====================================================================
 
     const updated = await Tournament.findByIdAndUpdate(req.params.id, updates, {
       new: true,
@@ -680,12 +1170,15 @@ export const updateTournament = async (req, res) => {
     }
 
     await session.commitTransaction();
+
     logger.info("Tournament updated successfully", { id: req.params.id, updatedBy: req.user?._id });
 
     res.status(200).json(updated.toObject());
   } catch (error) {
     await session.abortTransaction();
+
     logger.error("Update tournament failed", { error: error.message });
+
     res.status(error.name === "ValidationError" ? 400 : 500).json({
       message: error.message || "Server error during update",
       details:

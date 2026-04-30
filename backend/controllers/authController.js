@@ -260,7 +260,7 @@ export const logoutUser = async (req, res) => {
 /**
  * Social auth success
  */
-export const socialAuthSuccess = (req, res) => {
+export const socialAuthSuccess = async (req, res) => {
   try {
     if (!req.user) {
       logger.warn("Social auth failed - no user", { path: req.path, ip: req.ip });
@@ -273,27 +273,26 @@ export const socialAuthSuccess = (req, res) => {
     const refreshToken = generateRefreshToken(req.user);
 
     req.user.refreshTokens.push(refreshToken);
-    req.user.save({ validateBeforeSave: false }).catch((err) =>
-      logger.error("Refresh token save failed", { error: err.message })
-    );
+    req.user.lastLogin = new Date();
+    await req.user.save({ validateBeforeSave: false });
 
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
-    res.cookie("accessToken", accessToken, accessCookieOptions);
 
-    logger.info("Social auth successful", {
-      userId: req.user._id,
-      provider: req.user.loginProvider,
-      role: normalizeRole(req.user.role),
-    });
+    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
 
-    res.redirect(process.env.FRONTEND_URL || "http://localhost:5173");
+    return res.redirect(
+      `${frontendUrl}/auth/social-success?accessToken=${encodeURIComponent(
+        accessToken
+      )}`
+    );
   } catch (error) {
     logger.error("Social auth success failed", {
       error: error.message,
       stack: error.stack,
     });
-    res.redirect(
+
+    return res.redirect(
       `${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=server_error`
     );
   }
-};
+}; 

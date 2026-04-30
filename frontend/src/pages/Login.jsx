@@ -73,15 +73,16 @@ const Login = () => {
     <span className={styles.socialAccountsText}>via Social Accounts</span>
 
     <div className={styles.socialButtons}>
-      <button
-        type="button"
-        className={styles.socialBtn}
-        onClick={handleGoogleLogin}
-        aria-label="Login with Google"
-        title="Login with Google"
-      >
-        <FcGoogle className={styles.socialIcon} />
-      </button>
+   <button
+  type="button"
+  className={styles.googleLoginBtn}
+  onClick={handleGoogleLogin}
+  aria-label="Login with Google"
+  title="Login with Google"
+>
+  <FcGoogle className={styles.googleIcon} />
+  <span>Login with Google</span>
+</button>
     </div>
 
     <div className={styles.divider}>

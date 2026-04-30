@@ -3,10 +3,10 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { FaPrint, FaFilePdf, FaPlusCircle, FaShareAlt, FaInbox } from "react-icons/fa";
+import { FaPrint, FaFilePdf } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
-import AddTeamEntriesModal from "../components/Team/AddTeamEntriesModal";
-import { getEntries, saveEntries } from "../api";
+import { getEntries } from "../api";
+import PremiumAccessGuard from "../components/payment/PremiumAccessGuard";
 import styles from "./Team.module.css";
 
 const CONDITIONAL_COLUMNS = {
@@ -28,19 +28,6 @@ const getFullImageUrl = (filename) => {
   return `${uploadsUrl}/uploads/${cleanFilename}?t=${Date.now()}`;
 };
 
-const createEmptyEntryState = () => ({
-  sorting: [],
-  filters: {},
-  columnWidths: [],
-  searchTerm: "",
-});
-
-const defaultVisibleColumns = {
-  fathersName: false,
-  school: false,
-  class: false,
-};
-
 const extractEntryRows = (payload) => {
   if (Array.isArray(payload?.entries)) return payload.entries;
   if (Array.isArray(payload)) return payload;
@@ -54,16 +41,13 @@ const Team = () => {
   const { id: rawId } = useParams();
   const id = rawId?.trim();
   const navigate = useNavigate();
-  const { token, user } = useAuth();
+  const { token } = useAuth();
 
   const [entryData, setEntryData] = useState([]);
   const [teamStats, setTeamStats] = useState([]);
   const [selectedTeam, setSelectedTeam] = useState(null);
   const [loading, setLoading] = useState(true);
   const [tournament, setTournament] = useState(null);
-  const [showAddTeamEntriesModal, setShowAddTeamEntriesModal] = useState(false);
-  const [entryVisibleColumns, setEntryVisibleColumns] = useState(defaultVisibleColumns);
-  const [copyMessage, setCopyMessage] = useState("");
 
   const [visibleSubEventColumns, setVisibleSubEventColumns] = useState({
     ...CONDITIONAL_COLUMNS,
@@ -78,33 +62,6 @@ const Team = () => {
 
   const teamsPageRef = useRef(null);
   const playersPageRef = useRef(null);
-
-  const isOrganizer = user?.role === "organizer";
-
-  useEffect(() => {
-    const loadEntryVisibleColumns = () => {
-      try {
-        const saved = localStorage.getItem(`visibleColumns_${id}`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          setEntryVisibleColumns({
-            fathersName: !!parsed?.fathersName,
-            school: !!parsed?.school,
-            class: !!parsed?.class,
-          });
-        } else {
-          setEntryVisibleColumns(defaultVisibleColumns);
-        }
-      } catch (error) {
-        console.error("Error loading visible columns:", error);
-        setEntryVisibleColumns(defaultVisibleColumns);
-      }
-    };
-
-    if (id) {
-      loadEntryVisibleColumns();
-    }
-  }, [id, showAddTeamEntriesModal]);
 
   useEffect(() => {
     const loadPayments = async () => {
@@ -322,12 +279,6 @@ const Team = () => {
     };
   }, [id, token, processTeamStats]);
 
-  useEffect(() => {
-    if (!copyMessage) return;
-    const timer = setTimeout(() => setCopyMessage(""), 2200);
-    return () => clearTimeout(timer);
-  }, [copyMessage]);
-
   const handleTeamClick = (team) => setSelectedTeam(team);
   const handleBackToTeams = () => setSelectedTeam(null);
 
@@ -414,83 +365,6 @@ const Team = () => {
 
   const logoLeft = tournament?.logos?.[0] ? getFullImageUrl(tournament.logos[0]) : null;
   const logoRight = tournament?.logos?.[1] ? getFullImageUrl(tournament.logos[1]) : logoLeft;
-
-  const handleCopyShareLink = async () => {
-    try {
-      const link = `${window.location.origin}/team-entry/${id}`;
-      await navigator.clipboard.writeText(link);
-      setCopyMessage("Share link copied");
-    } catch (error) {
-      console.error("Failed to copy share link:", error);
-      setCopyMessage("Failed to copy link");
-    }
-  };
-
-  const handleTeamEntriesSubmit = async (preparedRows) => {
-    const cleanRows = Array.isArray(preparedRows)
-      ? preparedRows.filter((row) =>
-          Object.entries(row || {}).some(
-            ([key, value]) =>
-              key !== "sr" &&
-              key !== "actions" &&
-              value !== "" &&
-              value !== null &&
-              value !== undefined
-          )
-        )
-      : [];
-
-    if (cleanRows.length === 0) {
-      throw new Error("No valid player rows to submit.");
-    }
-
-    let existingEntries = [];
-    let existingState = createEmptyEntryState();
-
-    try {
-      if (token) {
-        const serverPayload = await getEntries(id);
-        existingEntries = extractEntryRows(serverPayload);
-        existingState =
-          serverPayload?.userState && typeof serverPayload.userState === "object"
-            ? serverPayload.userState
-            : createEmptyEntryState();
-      } else {
-        const localRaw = localStorage.getItem(`entryData_${id}`);
-        if (localRaw) {
-          existingEntries = extractEntryRows(JSON.parse(localRaw));
-        }
-      }
-    } catch (error) {
-      console.warn("Could not load latest entries before merge:", error);
-      const localRaw = localStorage.getItem(`entryData_${id}`);
-      if (localRaw) {
-        existingEntries = extractEntryRows(JSON.parse(localRaw));
-      }
-    }
-
-    const mergedEntries = [...existingEntries, ...cleanRows].map((row, index) => ({
-      ...row,
-      sr: String(index + 1),
-    }));
-
-    localStorage.setItem(`entryData_${id}`, JSON.stringify(mergedEntries));
-
-    if (token) {
-      await saveEntries(id, {
-        entries: mergedEntries,
-        state: {
-          sorting: existingState.sorting || [],
-          filters: existingState.filters || {},
-          columnWidths: existingState.columnWidths || [],
-          searchTerm: existingState.searchTerm || "",
-        },
-      });
-    }
-
-    window.dispatchEvent(new Event(`entryDataUpdated_${id}`));
-    setShowAddTeamEntriesModal(false);
-  };
 
   const generatePDFDoc = async (pageRef) => {
     if (!pageRef.current) {
@@ -602,376 +476,33 @@ const Team = () => {
   if (teamStats.length === 0) {
     return (
       <div className={styles.container}>
-        <div className={styles.buttonSection}>
-          <div className={styles.buttonGroupLeft}></div>
-
-          <div className={styles.buttonGroupCenter}>
-            <button
-              type="button"
-              onClick={() => setShowAddTeamEntriesModal(true)}
-              className={styles.actionButton}
-            >
-              <FaPlusCircle className={styles.buttonIcon} />
-              <span>Add Team Entries</span>
-            </button>
-          </div>
-
-          <div className={styles.buttonGroupRight}>
-            {isOrganizer && (
-              <>
-                <button
-                  type="button"
-                  onClick={handleCopyShareLink}
-                  className={styles.actionButton}
-                >
-                  <FaShareAlt className={styles.buttonIcon} />
-                  <span>Share Entry Form</span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => navigate(`/tournaments/${id}/team-submissions`)}
-                  className={styles.actionButton}
-                >
-                  <FaInbox className={styles.buttonIcon} />
-                  <span>View Submissions</span>
-                </button>
-              </>
-            )}
-          </div>
-        </div>
-
-        {copyMessage ? <p className={styles.copyMessage}>{copyMessage}</p> : null}
-
         <h2>No Teams Found</h2>
         <button onClick={() => navigate(`/tournaments/${id}/entry`)} className={styles.backButton}>
           Go to Entry Page
         </button>
-
-        <AddTeamEntriesModal
-          show={showAddTeamEntriesModal}
-          onClose={() => setShowAddTeamEntriesModal(false)}
-          onSubmit={handleTeamEntriesSubmit}
-          tournamentData={tournament}
-          visibleColumns={entryVisibleColumns}
-        />
       </div>
     );
   }
 
   return (
     <div className={styles.container}>
-      <div className={styles.buttonSection}>
-        <div className={styles.buttonGroupLeft}>
-          <button onClick={printPDF} className={styles.actionButton}>
-            <FaPrint className={styles.buttonIcon} />
-            <span>Print</span>
-          </button>
+      <PremiumAccessGuard tournamentId={id}>
+        <div className={styles.buttonSection}>
+          <div className={styles.buttonGroupLeft}>
+            <button onClick={printPDF} className={styles.actionButton}>
+              <FaPrint className={styles.buttonIcon} />
+              <span>Print</span>
+            </button>
 
-          <button onClick={savePDF} className={styles.actionButton}>
-            <FaFilePdf className={styles.buttonIcon} />
-            <span>Save PDF</span>
-          </button>
-        </div>
-
-        <div className={styles.buttonGroupCenter}>
-          <button
-            type="button"
-            onClick={() => setShowAddTeamEntriesModal(true)}
-            className={styles.actionButton}
-          >
-            <FaPlusCircle className={styles.buttonIcon} />
-            <span>Add Team Entries</span>
-          </button>
-        </div>
-
-        <div className={styles.buttonGroupRight}>
-          {isOrganizer && (
-            <>
-              <button
-                type="button"
-                onClick={handleCopyShareLink}
-                className={styles.actionButton}
-              >
-                <FaShareAlt className={styles.buttonIcon} />
-                <span>Share Entry Form</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => navigate(`/tournaments/${id}/team-submissions`)}
-                className={styles.actionButton}
-              >
-                <FaInbox className={styles.buttonIcon} />
-                <span>View Submissions</span>
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
-      {copyMessage ? <p className={styles.copyMessage}>{copyMessage}</p> : null}
-
-      {!selectedTeam ? (
-        <div ref={teamsPageRef} className={styles.pageContent}>
-          <div className={styles.header}>
-            {logoLeft ? <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} /> : null}
-
-            <div className={styles.headerContent}>
-              <h1 className={styles.tournamentName}>
-                {tournament?.tournamentName
-                  ? tournament.tournamentName.toUpperCase()
-                  : "TOURNAMENT TEAMS"}
-              </h1>
-              <p className={styles.federation}>{tournament?.federation || "N/A"}</p>
-              <h2 className={styles.title}>TOTAL TEAMS - {totalTeams}</h2>
-            </div>
-
-            {logoRight ? (
-              <img src={logoRight} alt="Logo Right" className={styles.logoRight} />
-            ) : null}
-          </div>
-
-          <div className={styles.tableWrapper} style={{ overflowX: "auto" }}>
-            <table className={styles.table}>
-              <thead>
-                <tr>
-                  <th className={styles.colSN}>S.N.</th>
-                  <th className={styles.colTeamName}>Team Name</th>
-                  <th
-                    onClick={() => handleTeamsSort("totalPlayers")}
-                    className={`${styles.sortableHeader} ${styles.colTotalPlayers}`}
-                  >
-                    Total
-                    <br />
-                    Players
-                    {teamsSortConfig.key === "totalPlayers" ? (
-                      <span className={styles.sortIndicator}>
-                        {teamsSortConfig.direction === "desc" ? " ▼" : " ▲"}
-                      </span>
-                    ) : null}
-                  </th>
-                  <th className={styles.colGender}>Male</th>
-                  <th className={styles.colGender}>Female</th>
-
-                  {visibleSubEventColumns.kyorugi ? (
-                    <th className={styles.colSubEvent}>Kyorugi</th>
-                  ) : null}
-                  {visibleSubEventColumns.fresher ? (
-                    <th className={styles.colSubEvent}>Fresher</th>
-                  ) : null}
-                  {visibleSubEventColumns.tagTeam ? (
-                    <th className={styles.colSubEvent}>Tag Team</th>
-                  ) : null}
-                  {visibleSubEventColumns.poomsae ? (
-                    <th className={styles.colSubEvent}>Poomsae</th>
-                  ) : null}
-                  {visibleSubEventColumns.individual ? (
-                    <th className={styles.colSubEvent}>Individual</th>
-                  ) : null}
-                  {visibleSubEventColumns.pair ? (
-                    <th className={styles.colSubEvent}>Pair</th>
-                  ) : null}
-                  {visibleSubEventColumns.teamPoomsae ? (
-                    <th className={styles.colSubEvent}>Team Poomsae</th>
-                  ) : null}
-
-                  {hasFoodLodging ? (
-                    <th className={styles.colFoodLodging}>
-                      Food & Lodging
-                      <br />
-                      (Members)
-                    </th>
-                  ) : null}
-                  {hasFees ? <th className={styles.colTotalFee}>Total Fee</th> : null}
-                  {hasFees ? <th className={styles.colDueAmount}>Due Amount</th> : null}
-                  {hasFees ? <th className={styles.colPaymentMode}>Payment Mode</th> : null}
-                  {hasFees ? <th className={styles.colCashOnline}>Cash Payment</th> : null}
-                  {hasFees ? <th className={styles.colCashOnline}>Online Payment</th> : null}
-                  {hasFees ? <th className={styles.colTxnId}>Transaction ID</th> : null}
-                  {hasFees ? <th className={styles.colPaymentStatus}>Payment Status</th> : null}
-
-                  <th className={styles.colCoachManager}>Coach</th>
-                  <th className={styles.colContact}>Contact</th>
-                  <th className={styles.colCoachManager}>Manager</th>
-                  <th className={styles.colContact}>Contact</th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {sortedTeamStats.map((team, index) => {
-                  const pay = paymentData[team.name] || {};
-                  const mode = pay.mode || "Cash";
-                  const showOnline = mode === "Online" || mode === "Cash + Online";
-                  const showCash = mode === "Cash" || mode === "Cash + Online";
-
-                  const paidAmount = Number(pay.cash || 0) + Number(pay.online || 0);
-                  const totalDue = getTotalFee(team);
-
-                  const isPaid = paidAmount >= totalDue && paidAmount > 0;
-                  const isPartial = paidAmount > 0 && paidAmount < totalDue;
-
-                  const statusCellClass = isPaid
-                    ? styles.statusPaidCell
-                    : isPartial
-                    ? styles.statusPartialCell
-                    : styles.statusDueCell;
-
-                  return (
-                    <tr
-                      key={team.name}
-                      onClick={() => handleTeamClick(team)}
-                      className={styles.clickableRow}
-                    >
-                      <td className={styles.colSN}>{index + 1}</td>
-                      <td className={styles.colTeamName}>{team.name}</td>
-                      <td className={styles.colTotalPlayers}>{team.totalPlayers}</td>
-                      <td className={styles.colGender}>{team.malePlayers}</td>
-                      <td className={styles.colGender}>{team.femalePlayers}</td>
-
-                      {visibleSubEventColumns.kyorugi ? (
-                        <td className={styles.colSubEvent}>{team.kyorugi}</td>
-                      ) : null}
-                      {visibleSubEventColumns.fresher ? (
-                        <td className={styles.colSubEvent}>{team.fresher}</td>
-                      ) : null}
-                      {visibleSubEventColumns.tagTeam ? (
-                        <td className={styles.colSubEvent}>{team.tagTeam}</td>
-                      ) : null}
-                      {visibleSubEventColumns.poomsae ? (
-                        <td className={styles.colSubEvent}>{team.poomsae}</td>
-                      ) : null}
-                      {visibleSubEventColumns.individual ? (
-                        <td className={styles.colSubEvent}>{team.individual}</td>
-                      ) : null}
-                      {visibleSubEventColumns.pair ? (
-                        <td className={styles.colSubEvent}>{team.pair}</td>
-                      ) : null}
-                      {visibleSubEventColumns.teamPoomsae ? (
-                        <td className={styles.colSubEvent}>{team.teamPoomsae}</td>
-                      ) : null}
-
-                      {hasFoodLodging ? (
-                        <td className={styles.colFoodLodging}>
-                          <input
-                            type="number"
-                            min="0"
-                            value={pay.foodMembers || 0}
-                            onChange={(e) =>
-                              updatePayment(team.name, "foodMembers", Number(e.target.value))
-                            }
-                            onClick={(e) => e.stopPropagation()}
-                            className={styles.paymentInput}
-                          />
-                        </td>
-                      ) : null}
-
-                      {hasFees ? (
-                        <td className={styles.colTotalFee}>
-                          <strong>₹{totalDue}</strong>
-                        </td>
-                      ) : null}
-
-                      {hasFees ? (
-                        <td
-                          className={`${styles.colDueAmount} ${
-                            !isPaid ? styles.dueAmountCell : ""
-                          }`}
-                        >
-                          <strong>{isPaid ? "-" : `₹${totalDue - paidAmount}`}</strong>
-                        </td>
-                      ) : null}
-
-                      {hasFees ? (
-                        <td className={styles.colPaymentMode}>
-                          <select
-                            value={mode}
-                            onChange={(e) => updatePayment(team.name, "mode", e.target.value)}
-                            onClick={(e) => e.stopPropagation()}
-                            className={styles.paymentInput}
-                          >
-                            <option>Cash</option>
-                            <option>Online</option>
-                            <option>Cash + Online</option>
-                          </select>
-                        </td>
-                      ) : null}
-
-                      {hasFees ? (
-                        <td className={styles.colCashOnline}>
-                          {showCash ? (
-                            <input
-                              type="number"
-                              value={pay.cash || ""}
-                              onChange={(e) => updatePayment(team.name, "cash", e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
-                              placeholder="Cash"
-                              className={styles.paymentInput}
-                            />
-                          ) : (
-                            "-"
-                          )}
-                        </td>
-                      ) : null}
-
-                      {hasFees ? (
-                        <td className={styles.colCashOnline}>
-                          {showOnline ? (
-                            <input
-                              type="number"
-                              value={pay.online || ""}
-                              onChange={(e) => updatePayment(team.name, "online", e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
-                              placeholder="Online"
-                              className={styles.paymentInput}
-                            />
-                          ) : (
-                            "-"
-                          )}
-                        </td>
-                      ) : null}
-
-                      {hasFees ? (
-                        <td className={styles.colTxnId}>
-                          {showOnline ? (
-                            <input
-                              type="text"
-                              value={pay.txnId || ""}
-                              onChange={(e) => updatePayment(team.name, "txnId", e.target.value)}
-                              onClick={(e) => e.stopPropagation()}
-                              placeholder="Txn ID"
-                              className={styles.paymentInput}
-                            />
-                          ) : (
-                            "-"
-                          )}
-                        </td>
-                      ) : null}
-
-                      {hasFees ? (
-                        <td className={`${styles.colPaymentStatus} ${statusCellClass}`}>
-                          <strong>{isPaid ? "Paid" : isPartial ? "Partial Paid" : "Due"}</strong>
-                        </td>
-                      ) : null}
-
-                      <td className={styles.colCoachManager}>{team.coach || "-"}</td>
-                      <td className={styles.colContact}>{team.coachContact || "-"}</td>
-                      <td className={styles.colCoachManager}>{team.manager || "-"}</td>
-                      <td className={styles.colContact}>{team.managerContact || "-"}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <button onClick={savePDF} className={styles.actionButton}>
+              <FaFilePdf className={styles.buttonIcon} />
+              <span>Save PDF</span>
+            </button>
           </div>
         </div>
-      ) : (
-        <div>
-          <button onClick={handleBackToTeams} className={styles.backButton}>
-            ← Back to Teams List
-          </button>
 
-          <div ref={playersPageRef} className={styles.pageContent}>
+        {!selectedTeam ? (
+          <div ref={teamsPageRef} className={styles.pageContent}>
             <div className={styles.header}>
               {logoLeft ? <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} /> : null}
 
@@ -982,7 +513,7 @@ const Team = () => {
                     : "TOURNAMENT TEAMS"}
                 </h1>
                 <p className={styles.federation}>{tournament?.federation || "N/A"}</p>
-                <h2 className={styles.title}>TEAM - {selectedTeam.name.toUpperCase()}</h2>
+                <h2 className={styles.title}>TOTAL TEAMS - {totalTeams}</h2>
               </div>
 
               {logoRight ? (
@@ -990,74 +521,325 @@ const Team = () => {
               ) : null}
             </div>
 
-            <h3 className={styles.playersListHeading}>Players List</h3>
-            <p className={styles.playersSummary}>
-              Total Players: {selectedTeam.totalPlayers} | Male: {selectedTeam.malePlayers} |
-              Female: {selectedTeam.femalePlayers}
-            </p>
-
-            <div className={styles.tableWrapper}>
+            <div className={styles.tableWrapper} style={{ overflowX: "auto" }}>
               <table className={styles.table}>
                 <thead>
                   <tr>
-                    <th>Sr.</th>
-                    <th>Title</th>
-                    <th>Name</th>
-                    <th>Gender</th>
-                    <th>DOB</th>
-                    <th>Weight</th>
-                    <th>Event</th>
-                    <th>Sub Event</th>
-                    <th>Age Category</th>
-                    <th>Weight Category</th>
-                    <th>Medal</th>
-                    <th>Coach</th>
-                    <th>Coach Contact</th>
-                    <th>Manager</th>
-                    <th>Manager Contact</th>
-                    {selectedTeam.players[0]?.fathersName ? <th>Father's Name</th> : null}
-                    {selectedTeam.players[0]?.school ? <th>School</th> : null}
-                    {selectedTeam.players[0]?.class ? <th>Class</th> : null}
+                    <th className={styles.colSN}>S.N.</th>
+                    <th className={styles.colTeamName}>Team Name</th>
+                    <th
+                      onClick={() => handleTeamsSort("totalPlayers")}
+                      className={`${styles.sortableHeader} ${styles.colTotalPlayers}`}
+                    >
+                      Total
+                      <br />
+                      Players
+                      {teamsSortConfig.key === "totalPlayers" ? (
+                        <span className={styles.sortIndicator}>
+                          {teamsSortConfig.direction === "desc" ? " ▼" : " ▲"}
+                        </span>
+                      ) : null}
+                    </th>
+                    <th className={styles.colGender}>Male</th>
+                    <th className={styles.colGender}>Female</th>
+
+                    {visibleSubEventColumns.kyorugi ? (
+                      <th className={styles.colSubEvent}>Kyorugi</th>
+                    ) : null}
+                    {visibleSubEventColumns.fresher ? (
+                      <th className={styles.colSubEvent}>Fresher</th>
+                    ) : null}
+                    {visibleSubEventColumns.tagTeam ? (
+                      <th className={styles.colSubEvent}>Tag Team</th>
+                    ) : null}
+                    {visibleSubEventColumns.poomsae ? (
+                      <th className={styles.colSubEvent}>Poomsae</th>
+                    ) : null}
+                    {visibleSubEventColumns.individual ? (
+                      <th className={styles.colSubEvent}>Individual</th>
+                    ) : null}
+                    {visibleSubEventColumns.pair ? (
+                      <th className={styles.colSubEvent}>Pair</th>
+                    ) : null}
+                    {visibleSubEventColumns.teamPoomsae ? (
+                      <th className={styles.colSubEvent}>Team Poomsae</th>
+                    ) : null}
+
+                    {hasFoodLodging ? (
+                      <th className={styles.colFoodLodging}>
+                        Food & Lodging
+                        <br />
+                        (Members)
+                      </th>
+                    ) : null}
+                    {hasFees ? <th className={styles.colTotalFee}>Total Fee</th> : null}
+                    {hasFees ? <th className={styles.colDueAmount}>Due Amount</th> : null}
+                    {hasFees ? <th className={styles.colPaymentMode}>Payment Mode</th> : null}
+                    {hasFees ? <th className={styles.colCashOnline}>Cash Payment</th> : null}
+                    {hasFees ? <th className={styles.colCashOnline}>Online Payment</th> : null}
+                    {hasFees ? <th className={styles.colTxnId}>Transaction ID</th> : null}
+                    {hasFees ? <th className={styles.colPaymentStatus}>Payment Status</th> : null}
+
+                    <th className={styles.colCoachManager}>Coach</th>
+                    <th className={styles.colContact}>Contact</th>
+                    <th className={styles.colCoachManager}>Manager</th>
+                    <th className={styles.colContact}>Contact</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {selectedTeam.players.map((player, index) => (
-                    <tr key={`${player.name || "player"}-${index}`}>
-                      <td>{player.sr}</td>
-                      <td>{player.title || "-"}</td>
-                      <td>{player.name || "-"}</td>
-                      <td>{player.gender || "-"}</td>
-                      <td>{player.dob || "-"}</td>
-                      <td>{player.weight || "-"}</td>
-                      <td>{player.event || "-"}</td>
-                      <td>{player.subEvent || "-"}</td>
-                      <td>{player.ageCategory || "-"}</td>
-                      <td>{player.weightCategory || "-"}</td>
-                      <td>{player.medal || "-"}</td>
-                      <td>{player.coach || "-"}</td>
-                      <td>{player.coachContact || "-"}</td>
-                      <td>{player.manager || "-"}</td>
-                      <td>{player.managerContact || "-"}</td>
-                      {player.fathersName ? <td>{player.fathersName}</td> : null}
-                      {player.school ? <td>{player.school}</td> : null}
-                      {player.class ? <td>{player.class}</td> : null}
-                    </tr>
-                  ))}
+                  {sortedTeamStats.map((team, index) => {
+                    const pay = paymentData[team.name] || {};
+                    const mode = pay.mode || "Cash";
+                    const showOnline = mode === "Online" || mode === "Cash + Online";
+                    const showCash = mode === "Cash" || mode === "Cash + Online";
+
+                    const paidAmount = Number(pay.cash || 0) + Number(pay.online || 0);
+                    const totalDue = getTotalFee(team);
+
+                    const isPaid = paidAmount >= totalDue && paidAmount > 0;
+                    const isPartial = paidAmount > 0 && paidAmount < totalDue;
+
+                    const statusCellClass = isPaid
+                      ? styles.statusPaidCell
+                      : isPartial
+                      ? styles.statusPartialCell
+                      : styles.statusDueCell;
+
+                    return (
+                      <tr
+                        key={team.name}
+                        onClick={() => handleTeamClick(team)}
+                        className={styles.clickableRow}
+                      >
+                        <td className={styles.colSN}>{index + 1}</td>
+                        <td className={styles.colTeamName}>{team.name}</td>
+                        <td className={styles.colTotalPlayers}>{team.totalPlayers}</td>
+                        <td className={styles.colGender}>{team.malePlayers}</td>
+                        <td className={styles.colGender}>{team.femalePlayers}</td>
+
+                        {visibleSubEventColumns.kyorugi ? (
+                          <td className={styles.colSubEvent}>{team.kyorugi}</td>
+                        ) : null}
+                        {visibleSubEventColumns.fresher ? (
+                          <td className={styles.colSubEvent}>{team.fresher}</td>
+                        ) : null}
+                        {visibleSubEventColumns.tagTeam ? (
+                          <td className={styles.colSubEvent}>{team.tagTeam}</td>
+                        ) : null}
+                        {visibleSubEventColumns.poomsae ? (
+                          <td className={styles.colSubEvent}>{team.poomsae}</td>
+                        ) : null}
+                        {visibleSubEventColumns.individual ? (
+                          <td className={styles.colSubEvent}>{team.individual}</td>
+                        ) : null}
+                        {visibleSubEventColumns.pair ? (
+                          <td className={styles.colSubEvent}>{team.pair}</td>
+                        ) : null}
+                        {visibleSubEventColumns.teamPoomsae ? (
+                          <td className={styles.colSubEvent}>{team.teamPoomsae}</td>
+                        ) : null}
+
+                        {hasFoodLodging ? (
+                          <td className={styles.colFoodLodging}>
+                            <input
+                              type="number"
+                              min="0"
+                              value={pay.foodMembers || 0}
+                              onChange={(e) =>
+                                updatePayment(team.name, "foodMembers", Number(e.target.value))
+                              }
+                              onClick={(e) => e.stopPropagation()}
+                              className={styles.paymentInput}
+                            />
+                          </td>
+                        ) : null}
+
+                        {hasFees ? (
+                          <td className={styles.colTotalFee}>
+                            <strong>₹{totalDue}</strong>
+                          </td>
+                        ) : null}
+
+                        {hasFees ? (
+                          <td
+                            className={`${styles.colDueAmount} ${
+                              !isPaid ? styles.dueAmountCell : ""
+                            }`}
+                          >
+                            <strong>{isPaid ? "-" : `₹${totalDue - paidAmount}`}</strong>
+                          </td>
+                        ) : null}
+
+                        {hasFees ? (
+                          <td className={styles.colPaymentMode}>
+                            <select
+                              value={mode}
+                              onChange={(e) => updatePayment(team.name, "mode", e.target.value)}
+                              onClick={(e) => e.stopPropagation()}
+                              className={styles.paymentInput}
+                            >
+                              <option>Cash</option>
+                              <option>Online</option>
+                              <option>Cash + Online</option>
+                            </select>
+                          </td>
+                        ) : null}
+
+                        {hasFees ? (
+                          <td className={styles.colCashOnline}>
+                            {showCash ? (
+                              <input
+                                type="number"
+                                value={pay.cash || ""}
+                                onChange={(e) => updatePayment(team.name, "cash", e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                placeholder="Cash"
+                                className={styles.paymentInput}
+                              />
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                        ) : null}
+
+                        {hasFees ? (
+                          <td className={styles.colCashOnline}>
+                            {showOnline ? (
+                              <input
+                                type="number"
+                                value={pay.online || ""}
+                                onChange={(e) => updatePayment(team.name, "online", e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                placeholder="Online"
+                                className={styles.paymentInput}
+                              />
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                        ) : null}
+
+                        {hasFees ? (
+                          <td className={styles.colTxnId}>
+                            {showOnline ? (
+                              <input
+                                type="text"
+                                value={pay.txnId || ""}
+                                onChange={(e) => updatePayment(team.name, "txnId", e.target.value)}
+                                onClick={(e) => e.stopPropagation()}
+                                placeholder="Txn ID"
+                                className={styles.paymentInput}
+                              />
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                        ) : null}
+
+                        {hasFees ? (
+                          <td className={`${styles.colPaymentStatus} ${statusCellClass}`}>
+                            <strong>{isPaid ? "Paid" : isPartial ? "Partial Paid" : "Due"}</strong>
+                          </td>
+                        ) : null}
+
+                        <td className={styles.colCoachManager}>{team.coach || "-"}</td>
+                        <td className={styles.colContact}>{team.coachContact || "-"}</td>
+                        <td className={styles.colCoachManager}>{team.manager || "-"}</td>
+                        <td className={styles.colContact}>{team.managerContact || "-"}</td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
-        </div>
-      )}
+        ) : (
+          <div>
+            <button onClick={handleBackToTeams} className={styles.backButton}>
+              ← Back to Teams List
+            </button>
 
-      <AddTeamEntriesModal
-        show={showAddTeamEntriesModal}
-        onClose={() => setShowAddTeamEntriesModal(false)}
-        onSubmit={handleTeamEntriesSubmit}
-        tournamentData={tournament}
-        visibleColumns={entryVisibleColumns}
-      />
+            <div ref={playersPageRef} className={styles.pageContent}>
+              <div className={styles.header}>
+                {logoLeft ? <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} /> : null}
+
+                <div className={styles.headerContent}>
+                  <h1 className={styles.tournamentName}>
+                    {tournament?.tournamentName
+                      ? tournament.tournamentName.toUpperCase()
+                      : "TOURNAMENT TEAMS"}
+                  </h1>
+                  <p className={styles.federation}>{tournament?.federation || "N/A"}</p>
+                  <h2 className={styles.title}>TEAM - {selectedTeam.name.toUpperCase()}</h2>
+                </div>
+
+                {logoRight ? (
+                  <img src={logoRight} alt="Logo Right" className={styles.logoRight} />
+                ) : null}
+              </div>
+
+              <h3 className={styles.playersListHeading}>Players List</h3>
+              <p className={styles.playersSummary}>
+                Total Players: {selectedTeam.totalPlayers} | Male: {selectedTeam.malePlayers} |
+                Female: {selectedTeam.femalePlayers}
+              </p>
+
+              <div className={styles.tableWrapper}>
+                <table className={styles.table}>
+                  <thead>
+                    <tr>
+                      <th>Sr.</th>
+                      <th>Title</th>
+                      <th>Name</th>
+                      <th>Gender</th>
+                      <th>DOB</th>
+                      <th>Weight</th>
+                      <th>Event</th>
+                      <th>Sub Event</th>
+                      <th>Age Category</th>
+                      <th>Weight Category</th>
+                      <th>Medal</th>
+                      <th>Coach</th>
+                      <th>Coach Contact</th>
+                      <th>Manager</th>
+                      <th>Manager Contact</th>
+                      {selectedTeam.players[0]?.fathersName ? <th>Father's Name</th> : null}
+                      {selectedTeam.players[0]?.school ? <th>School</th> : null}
+                      {selectedTeam.players[0]?.class ? <th>Class</th> : null}
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {selectedTeam.players.map((player, index) => (
+                      <tr key={`${player.name || "player"}-${index}`}>
+                        <td>{player.sr}</td>
+                        <td>{player.title || "-"}</td>
+                        <td>{player.name || "-"}</td>
+                        <td>{player.gender || "-"}</td>
+                        <td>{player.dob || "-"}</td>
+                        <td>{player.weight || "-"}</td>
+                        <td>{player.event || "-"}</td>
+                        <td>{player.subEvent || "-"}</td>
+                        <td>{player.ageCategory || "-"}</td>
+                        <td>{player.weightCategory || "-"}</td>
+                        <td>{player.medal || "-"}</td>
+                        <td>{player.coach || "-"}</td>
+                        <td>{player.coachContact || "-"}</td>
+                        <td>{player.manager || "-"}</td>
+                        <td>{player.managerContact || "-"}</td>
+                        {player.fathersName ? <td>{player.fathersName}</td> : null}
+                        {player.school ? <td>{player.school}</td> : null}
+                        {player.class ? <td>{player.class}</td> : null}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+      </PremiumAccessGuard>
     </div>
   );
 };

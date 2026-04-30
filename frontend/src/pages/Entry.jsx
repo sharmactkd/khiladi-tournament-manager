@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getTournamentById } from '../api';
+import { getTournamentById, getEntries as getEntriesApi, saveEntries } from '../api';
 import * as XLSX from 'xlsx';
-import { getEntries as getEntriesApi } from '../api';
+import { FaPlusCircle, FaShareAlt, FaInbox } from 'react-icons/fa';
 
 import EntryHeader from '../components/Entry/EntryHeader';
 import EntryTable from '../components/Entry/EntryTable';
 import ExceededPlayers from '../components/Entry/ExceededPlayers';
 import ImportModal from '../components/Entry/ImportModal';
 import ImageImport from '../components/import/ImageImport';
+import AddTeamEntriesModal from '../components/Team/AddTeamEntriesModal';
 
 import { baseColumnsDef, optionalColumnsDef } from '../components/Entry/constants';
 
@@ -17,14 +18,8 @@ import styles from './Entry.module.css';
 
 const isDev = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV;
 
-// Temporary feature flag to hide image import UI without removing code.
 const ENABLE_IMAGE_IMPORT = false;
 
-// ---- API base URL (behavior-preserving, fixes localhost-hardcoding) ----
-// Priority:
-// 1) VITE_API_BASE_URL
-// 2) If frontend is not on localhost => use same origin (supports reverse proxy / same-domain backend)
-// 3) Dev fallback => http://localhost:5000
 const resolveApiBaseUrl = () => {
   const envUrl =
     typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_BASE_URL
@@ -43,7 +38,6 @@ const resolveApiBaseUrl = () => {
   return 'http://localhost:5000';
 };
 
-// Text width calculator
 const getTextWidth = (text = '', font = '16px "Helvetica Neue", Arial, sans-serif') => {
   if (typeof document === 'undefined') return 100;
   const canvas = document.createElement('canvas');
@@ -54,13 +48,25 @@ const getTextWidth = (text = '', font = '16px "Helvetica Neue", Arial, sans-seri
   return Math.ceil(metrics.width) + 20;
 };
 
-// Debounce utility
 const debounce = (func, wait) => {
   let timeout;
   return (...args) => {
     clearTimeout(timeout);
     timeout = setTimeout(() => func(...args), wait);
   };
+};
+
+const createEmptyEntryState = () => ({
+  sorting: [],
+  filters: {},
+  columnWidths: [],
+  searchTerm: '',
+});
+
+const extractEntryRows = (payload) => {
+  if (Array.isArray(payload?.entries)) return payload.entries;
+  if (Array.isArray(payload)) return payload;
+  return [];
 };
 
 const Entry = () => {
@@ -77,9 +83,8 @@ const Entry = () => {
   }
 
   const navigate = useNavigate();
-  const { token, loading: authLoading } = useAuth();
+  const { token, user, loading: authLoading } = useAuth();
 
-  // ── Core States ─────────────────────────────────────────────────────────
   const [data, setData] = useState([]);
   const [tournamentData, setTournamentData] = useState(null);
   const [selectedImportFile, setSelectedImportFile] = useState(null);
@@ -98,16 +103,17 @@ const Entry = () => {
   const entryTableRef = useRef(null);
   const dataRef = useRef(data);
 
-  // ── Import Modal States ─────────────────────────────────────────────────
   const [showImportModal, setShowImportModal] = useState(false);
   const [showImageImportModal, setShowImageImportModal] = useState(false);
+  const [showAddTeamEntriesModal, setShowAddTeamEntriesModal] = useState(false);
+  const [copyMessage, setCopyMessage] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
-  // ── Undo/Redo History ───────────────────────────────────────────────────
   const [history, setHistory] = useState([]);
   const [redoHistory, setRedoHistory] = useState([]);
 
-  // ── Dynamic Columns ─────────────────────────────────────────────────────
+  const isOrganizer = user?.role === 'organizer';
+
   const columnsDef = useMemo(() => {
     const activeOptional = optionalColumnsDef.filter((col) => visibleColumns[col.id]);
     const teamIndex = baseColumnsDef.findIndex((col) => col.id === 'team');
@@ -133,7 +139,6 @@ const Entry = () => {
     setColumnWidths(newWidths);
   }, [data, columnsDef]);
 
-  // ── Load Tournament ─────────────────────────────────────────────────────
   useEffect(() => {
     const fetchTournament = async () => {
       try {
@@ -148,7 +153,6 @@ const Entry = () => {
     fetchTournament();
   }, [id]);
 
-  // ── Load Entries (Server latest first, local only fallback) ─────────────
   useEffect(() => {
     if (authLoading) return;
 
@@ -159,31 +163,28 @@ const Entry = () => {
       let serverState = null;
       let usedSource = 'none';
 
-      const apiBase = resolveApiBaseUrl();
-
-      // 1) SERVER FIRST (latest truth)
       if (token && id) {
-  try {
-    const payload = await getEntriesApi(id);
-    serverEntries = Array.isArray(payload.entries) ? payload.entries : [];
-    serverState = payload.userState && typeof payload.userState === 'object' ? payload.userState : null;
-    usedSource = 'server';
+        try {
+          const payload = await getEntriesApi(id);
+          serverEntries = Array.isArray(payload.entries) ? payload.entries : [];
+          serverState = payload.userState && typeof payload.userState === 'object' ? payload.userState : null;
+          usedSource = 'server';
 
-    if (isDev) {
-      console.log('[Entry.jsx][LOAD] server success', {
-        count: serverEntries.length,
-        lastUpdated: payload.lastUpdated,
-      });
-    }
-  } catch (err) {
-    console.error('[Entry.jsx][LOAD] server fetch failed:', err);
-    setLoadError('Failed to load entries from server. Using local backup if available.');
-  }
-}
+          if (isDev) {
+            console.log('[Entry.jsx][LOAD] server success', {
+              count: serverEntries.length,
+              lastUpdated: payload.lastUpdated,
+            });
+          }
+        } catch (err) {
+          console.error('[Entry.jsx][LOAD] server fetch failed:', err);
+          setLoadError('Failed to load entries from server. Using local backup if available.');
+        }
+      }
 
-      // 2) LOCAL FALLBACK ONLY IF server had no entries OR server failed
       let localEntries = [];
       let localParsedOk = false;
+
       if (usedSource !== 'server' || serverEntries.length === 0) {
         const saved = localStorage.getItem(`entryData_${id}`);
         if (saved) {
@@ -198,27 +199,22 @@ const Entry = () => {
         }
       }
 
-      // Choose final
       let finalEntries = [];
       let finalState = {};
 
       if (usedSource === 'server') {
-        // Server wins (even if empty) — because empty means truly empty in DB
         finalEntries = serverEntries;
         finalState = serverState || {};
       } else if (localParsedOk && localEntries.length > 0) {
         finalEntries = localEntries;
       }
 
-      // Ensure at least one row
       if (!finalEntries || finalEntries.length === 0) {
         finalEntries = [emptyRow];
       }
 
       finalEntries = regenerateSrNumbers(finalEntries);
 
-      // Apply state (only if server provided it; local does NOT override server)
-      // Behavior-preserving: these still default to existing states if not present.
       React.startTransition(() => {
         setData(finalEntries);
 
@@ -226,12 +222,10 @@ const Entry = () => {
           setSorting(finalState.sorting || []);
           const stableFilters = finalState.filters ? { ...finalState.filters } : {};
           setFilters(stableFilters);
-          setSearchTerm(finalState.searchTerm || '');
-          // Column widths are still driven by UI/compute; we keep original behavior by not forcing overwrite here.
+          setSearchTerm('');
         }
       });
 
-      // Always update local backup with what we loaded finally
       localStorage.setItem(`entryData_${id}`, JSON.stringify(finalEntries));
 
       if (isDev) {
@@ -242,25 +236,27 @@ const Entry = () => {
     loadEntries();
   }, [id, token, authLoading, columnsDef, regenerateSrNumbers]);
 
-  // ── Auto-save local backup (always keep latest UI state) ────────────────
   useEffect(() => {
     dataRef.current = data;
   }, [data]);
 
   useEffect(() => {
-    // Keep local backup always synced with UI
     localStorage.setItem(`entryData_${id}`, JSON.stringify(dataRef.current));
     localStorage.setItem(`visibleColumns_${id}`, JSON.stringify(visibleColumns));
-  }, [id, visibleColumns]); // behavior-preserving (local backup), avoids unstable dep on dataRef.current
+  }, [id, visibleColumns]);
 
-  // ── Column Widths Recalculation (debounced) ──────────────────────────────
+  useEffect(() => {
+    if (!copyMessage) return;
+    const timer = setTimeout(() => setCopyMessage(''), 2200);
+    return () => clearTimeout(timer);
+  }, [copyMessage]);
+
   const debouncedRecalculate = useMemo(() => debounce(recalculateColumnWidths, 300), [recalculateColumnWidths]);
 
   useEffect(() => {
     debouncedRecalculate();
   }, [data, columnsDef, debouncedRecalculate]);
 
-  // ── Undo / Redo Logic ───────────────────────────────────────────────────
   const saveToHistory = useCallback(() => {
     setHistory((prev) => {
       const newHistory = [...prev, structuredClone(data)];
@@ -288,30 +284,29 @@ const Entry = () => {
     debouncedRecalculate();
   }, [redoHistory, data, debouncedRecalculate]);
 
-  // ── Data Mutation Handlers ──────────────────────────────────────────────
- const updateData = useCallback(
-  (rowIndex, columnId, value) => {
-    let finalValue = value;
+  const updateData = useCallback(
+    (rowIndex, columnId, value) => {
+      let finalValue = value;
 
-    if (columnId === "gender") {
-      const v = String(value || "").trim().toLowerCase();
-      if (["m", "male"].includes(v)) finalValue = "Male";
-      else if (["f", "female"].includes(v)) finalValue = "Female";
-    }
+      if (columnId === 'gender') {
+        const v = String(value || '').trim().toLowerCase();
+        if (['m', 'male'].includes(v)) finalValue = 'Male';
+        else if (['f', 'female'].includes(v)) finalValue = 'Female';
+      }
 
-    if (columnId === "weight") {
-      finalValue = String(value || "").replace(/[^0-9.]/g, "");
-    }
+      if (columnId === 'weight') {
+        finalValue = String(value || '').replace(/[^0-9.]/g, '');
+      }
 
-    saveToHistory();
-    setData((prev) => {
-      const newData = [...prev];
-      newData[rowIndex] = { ...newData[rowIndex], [columnId]: finalValue };
-      return newData;
-    });
-  },
-  [saveToHistory]
-);
+      saveToHistory();
+      setData((prev) => {
+        const newData = [...prev];
+        newData[rowIndex] = { ...newData[rowIndex], [columnId]: finalValue };
+        return newData;
+      });
+    },
+    [saveToHistory]
+  );
 
   const addNewRow = useCallback(() => {
     saveToHistory();
@@ -415,7 +410,21 @@ const Entry = () => {
         if (cleaned.name) cleaned.name = String(cleaned.name).trim().toUpperCase();
         if (cleaned.team) cleaned.team = String(cleaned.team).trim().toUpperCase();
 
-        const titleCaseFields = ['event', 'subEvent', 'ageCategory', 'weightCategory', 'medal', 'coach', 'manager'];
+        const titleCaseFields = ['event', 'subEvent', 'ageCategory', 'weightCategory', 'coach', 'manager'];
+
+        if (cleaned.medal) {
+          const medalValue = String(cleaned.medal).trim().toLowerCase();
+
+          if (medalValue === 'g' || medalValue === 'gold') cleaned.medal = 'Gold';
+          else if (medalValue === 's' || medalValue === 'silver') cleaned.medal = 'Silver';
+          else if (medalValue === 'b' || medalValue === 'bronze') cleaned.medal = 'Bronze';
+          else if (medalValue === 'x' || medalValue === 'x-x-x-x' || medalValue === 'xxxx') {
+            cleaned.medal = 'X-X-X-X';
+          } else {
+            cleaned.medal = '';
+          }
+        }
+
         titleCaseFields.forEach((field) => {
           if (cleaned[field]) {
             cleaned[field] = String(cleaned[field])
@@ -463,6 +472,84 @@ const Entry = () => {
     [data, columnsDef, saveToHistory, regenerateSrNumbers, debouncedRecalculate]
   );
 
+  const handleCopyShareLink = async () => {
+    try {
+      const link = `${window.location.origin}/team-entry/${id}`;
+      await navigator.clipboard.writeText(link);
+      setCopyMessage('Share link copied');
+    } catch (error) {
+      console.error('Failed to copy share link:', error);
+      setCopyMessage('Failed to copy link');
+    }
+  };
+
+  const handleTeamEntriesSubmit = async (preparedRows) => {
+    const cleanRows = Array.isArray(preparedRows)
+      ? preparedRows.filter((row) =>
+          Object.entries(row || {}).some(
+            ([key, value]) =>
+              key !== 'sr' &&
+              key !== 'actions' &&
+              value !== '' &&
+              value !== null &&
+              value !== undefined
+          )
+        )
+      : [];
+
+    if (cleanRows.length === 0) {
+      throw new Error('No valid player rows to submit.');
+    }
+
+    let existingEntries = [];
+    let existingState = createEmptyEntryState();
+
+    try {
+      if (token) {
+        const serverPayload = await getEntriesApi(id);
+        existingEntries = extractEntryRows(serverPayload);
+        existingState =
+          serverPayload?.userState && typeof serverPayload.userState === 'object'
+            ? serverPayload.userState
+            : createEmptyEntryState();
+      } else {
+        const localRaw = localStorage.getItem(`entryData_${id}`);
+        if (localRaw) {
+          existingEntries = extractEntryRows(JSON.parse(localRaw));
+        }
+      }
+    } catch (error) {
+      console.warn('Could not load latest entries before merge:', error);
+      const localRaw = localStorage.getItem(`entryData_${id}`);
+      if (localRaw) {
+        existingEntries = extractEntryRows(JSON.parse(localRaw));
+      }
+    }
+
+    const mergedEntries = [...existingEntries, ...cleanRows].map((row, index) => ({
+      ...row,
+      sr: String(index + 1),
+    }));
+
+    localStorage.setItem(`entryData_${id}`, JSON.stringify(mergedEntries));
+
+    if (token) {
+      await saveEntries(id, {
+        entries: mergedEntries,
+        state: {
+          sorting: existingState.sorting || [],
+          filters: existingState.filters || {},
+          columnWidths: existingState.columnWidths || [],
+          searchTerm: existingState.searchTerm || '',
+        },
+      });
+    }
+
+    setData(regenerateSrNumbers(mergedEntries));
+    window.dispatchEvent(new Event(`entryDataUpdated_${id}`));
+    setShowAddTeamEntriesModal(false);
+  };
+
   const handleExport = useCallback(() => {
     try {
       const wb = XLSX.utils.book_new();
@@ -483,17 +570,13 @@ const Entry = () => {
   }, [data, id, columnsDef]);
 
   const handleGenerateTieSheets = useCallback(async () => {
-    // Keep existing behavior (local backup + state pass),
-    // but guarantee server-truth is updated BEFORE TieSheet fetches it.
     try {
-      // Flush any pending debounced save and wait for completion
       const flush = entryTableRef.current?.flushSaveNow;
       if (typeof flush === 'function') {
         if (isDev) console.log('[Entry.jsx] Flushing save before TieSheet navigation...');
         await flush('generate-tiesheets');
       }
     } catch (err) {
-      // Behavior-preserving: even if flush fails, user can still navigate (same as current UX)
       console.error('[Entry.jsx] Flush save before navigation failed:', err);
     }
 
@@ -521,6 +604,10 @@ const Entry = () => {
         tournamentData={tournamentData}
         isLoading={isLoading}
         visibleColumns={visibleColumns}
+        onAddTeamEntries={() => setShowAddTeamEntriesModal(true)}
+onShareEntryForm={handleCopyShareLink}
+onViewTeamSubmissions={() => navigate(`/tournaments/${id}/team-submissions`)}
+showOrganizerActions={isOrganizer}
         onToggleColumn={handleToggleColumn}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
@@ -539,6 +626,10 @@ const Entry = () => {
         onGenerateTieSheets={handleGenerateTieSheets}
         showImportModal={showImportModal}
       />
+
+    
+
+      {copyMessage ? <p className={styles.copyMessage}>{copyMessage}</p> : null}
 
       {ENABLE_IMAGE_IMPORT && (
         <div
@@ -625,6 +716,14 @@ const Entry = () => {
         token={token}
         tournamentId={id}
         apiBaseUrl={resolveApiBaseUrl()}
+      />
+
+      <AddTeamEntriesModal
+        show={showAddTeamEntriesModal}
+        onClose={() => setShowAddTeamEntriesModal(false)}
+        onSubmit={handleTeamEntriesSubmit}
+        tournamentData={tournamentData}
+        visibleColumns={visibleColumns}
       />
 
       <ImportModal

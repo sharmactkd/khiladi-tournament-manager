@@ -11,13 +11,16 @@ import {
   faSearch,
   faTimes,
   faSpinner,
+  faPlusCircle,
+  faShareAlt,
+  faInbox,
 } from '@fortawesome/free-solid-svg-icons';
 import styles from '../../pages/Entry.module.css';
 
 const EntryHeader = ({
   tournamentData,
   isLoading = false,
-  isSaving = false,           // ← अब इस्तेमाल करेंगे
+  isSaving = false,
   visibleColumns = { fathersName: false, school: false, class: false },
   onToggleColumn,
   searchTerm = '',
@@ -36,10 +39,14 @@ const EntryHeader = ({
   filterColumn,
   setFilterColumn,
   showImportModal = false,
+
+  // Team-entry buttons
+  onAddTeamEntries,
+  onShareEntryForm,
+  onViewTeamSubmissions,
+  showOrganizerActions = true,
 }) => {
   const fileInputRef = useRef(null);
-
-
 
   const triggerFileInput = () => {
     if (!isLoading && !showImportModal) {
@@ -49,17 +56,58 @@ const EntryHeader = ({
 
   return (
     <div className={styles.headerContainer}>
-      {/* Tournament Title */}
+      {/* Tournament Title + Team Actions */}
       <div className={styles.titleSection}>
-        <h2>
-          Entries for {tournamentData?.name || 'Tournament'}
-          {isLoading && <span className={styles.loadingText}> (Loading...)</span>}
-          {isSaving && (
-            <span className={styles.savingText}>
-              <FontAwesomeIcon icon={faSpinner} spin /> Saving...
-            </span>
-          )}
-        </h2>
+        <div className={styles.entryTitleRow}>
+          <h2>
+            Entries for {tournamentData?.name || tournamentData?.tournamentName || 'Tournament'}
+            {isLoading && <span className={styles.loadingText}> (Loading...)</span>}
+            {isSaving && (
+              <span className={styles.savingText}>
+                <FontAwesomeIcon icon={faSpinner} spin /> Saving...
+              </span>
+            )}
+          </h2>
+
+          <div className={styles.entryTitleActions}>
+            <button
+              type="button"
+              className={styles.teamEntryActionButton}
+              onClick={onAddTeamEntries}
+              disabled={isLoading}
+              title="Add team entries"
+            >
+              <FontAwesomeIcon icon={faPlusCircle} />
+              <span>Add Team Entries</span>
+            </button>
+
+            {showOrganizerActions && (
+              <>
+                <button
+                  type="button"
+                  className={styles.teamEntryActionButton}
+                  onClick={onShareEntryForm}
+                  disabled={isLoading}
+                  title="Share entry form"
+                >
+                  <FontAwesomeIcon icon={faShareAlt} />
+                  <span>Share Entry Form</span>
+                </button>
+
+                <button
+                  type="button"
+                  className={styles.teamEntryActionButton}
+                  onClick={onViewTeamSubmissions}
+                  disabled={isLoading}
+                  title="View team submissions"
+                >
+                  <FontAwesomeIcon icon={faInbox} />
+                  <span>View Submissions</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Controls - Responsive flex-wrap */}
@@ -107,7 +155,6 @@ const EntryHeader = ({
               Clean Empty
             </button>
 
-            {/* Filters Clear (Chip style में convert) */}
             {Object.keys(filters || {}).length > 0 && (
               <div className={styles.filterChips}>
                 <button
@@ -149,7 +196,7 @@ const EntryHeader = ({
               className={styles.actionButton}
               onClick={onUndo}
               disabled={isLoading || historyLength === 0}
-              aria-label={`Undo last change (Ctrl+Z)`}
+              aria-label="Undo last change (Ctrl+Z)"
               title={`Undo (${historyLength} steps) - Ctrl+Z`}
             >
               <FontAwesomeIcon icon={faUndo} />
@@ -160,7 +207,7 @@ const EntryHeader = ({
               className={styles.actionButton}
               onClick={onRedo}
               disabled={isLoading || redoHistoryLength === 0}
-              aria-label={`Redo last change (Ctrl+Y)`}
+              aria-label="Redo last change (Ctrl+Y)"
               title={`Redo (${redoHistoryLength} steps) - Ctrl+Y`}
             >
               <FontAwesomeIcon icon={faRedo} />
@@ -222,6 +269,7 @@ const EntryHeader = ({
       <div className={styles.searchContainer}>
         <div className={styles.searchWrapper}>
           <FontAwesomeIcon icon={faSearch} className={styles.searchIcon} />
+
           <input
             type="text"
             className={styles.searchInput}
@@ -231,6 +279,19 @@ const EntryHeader = ({
             disabled={isLoading}
             aria-label="Search players by name"
           />
+
+          {searchTerm && (
+            <button
+              type="button"
+              onClick={() => onSearchChange?.('')}
+              disabled={isLoading}
+              title="Clear search"
+              aria-label="Clear search"
+              className={styles.clearSearchBtn}
+            >
+              <FontAwesomeIcon icon={faTimes} />
+            </button>
+          )}
         </div>
       </div>
     </div>

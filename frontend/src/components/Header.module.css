@@ -47,6 +47,7 @@
 .logo {
   height: 56px;              /* ✅ header se bada nahi */
   width: auto;
+  padding-top: 10px;
   object-fit: contain;
   display: block;
   cursor: pointer;

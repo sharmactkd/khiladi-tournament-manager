@@ -442,3 +442,27 @@
     gap: 10px;
   }
 }
+
+.eventToggleWrapper {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+.eventToggleButton {
+  padding: 8px 16px;
+  border: 1px solid #cf0006;
+  background: #ffffff;
+  color: #cf0006;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.eventToggleActive {
+  background: #cf0006;
+  color: #ffffff;
+}

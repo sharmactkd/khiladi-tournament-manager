@@ -4,6 +4,167 @@ import mongoose from "mongoose";
 
 const isDev = process.env.NODE_ENV !== "production";
 
+const allowedMedals = ["Gold", "Silver", "Bronze", "X-X-X-X", ""];
+const allowedMedalSources = ["", "manual", "tiesheet"];
+
+const normalizeText = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
+const normalizeMedal = (value) => {
+  const medal = String(value || "").trim();
+  return allowedMedals.includes(medal) ? medal : "";
+};
+
+const normalizeMedalSource = (value) => {
+  const source = String(value || "").trim();
+
+  if (source === "manual-entry") return "manual";
+
+  return allowedMedalSources.includes(source) ? source : "";
+};
+
+const normalizeGender = (value) => {
+  const v = String(value || "").trim().toLowerCase();
+
+  if (["male", "m", "boy", "boys"].includes(v)) return "Male";
+  if (["female", "f", "girl", "girls"].includes(v)) return "Female";
+
+  return "";
+};
+
+const normalizeWeight = (value) => {
+  if (value === undefined || value === null || value === "") return null;
+
+  const cleaned = String(value).replace(/[^0-9.]/g, "").trim();
+
+  if (!cleaned) return null;
+
+  const num = Number(cleaned);
+
+  return Number.isFinite(num) ? num : null;
+};
+
+const normalizeDob = (value) => {
+  if (!value) return null;
+
+  if (value instanceof Date && !isNaN(value.getTime())) return value;
+
+  const str = String(value).trim();
+
+  const match = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+
+  if (match) {
+    const day = Number(match[1]);
+    const month = Number(match[2]) - 1;
+    const year = Number(match[3]);
+
+    const date = new Date(year, month, day);
+
+    if (!isNaN(date.getTime())) return date;
+
+    return null;
+  }
+
+  const parsed = new Date(str);
+
+  if (!isNaN(parsed.getTime())) return parsed;
+
+  return null;
+};
+
+const normalizeDateKey = (value) => {
+  const date = normalizeDob(value);
+
+  if (!date) return "";
+
+  return date.toISOString().slice(0, 10);
+};
+
+const normalizeWeightKey = (value) => {
+  const weight = normalizeWeight(value);
+
+  if (weight === null) return "";
+
+  return String(weight);
+};
+
+const buildStrictMatchKey = (row) =>
+  [
+    normalizeText(row?.name),
+    normalizeText(row?.team),
+    normalizeText(row?.gender),
+    normalizeText(row?.event),
+    normalizeText(row?.subEvent),
+    normalizeText(row?.ageCategory),
+    normalizeText(row?.weightCategory),
+    normalizeWeightKey(row?.weight),
+    normalizeDateKey(row?.dob),
+  ].join("|||");
+
+const buildMediumMatchKey = (row) =>
+  [
+    normalizeText(row?.name),
+    normalizeText(row?.team),
+    normalizeText(row?.gender),
+    normalizeText(row?.event),
+    normalizeText(row?.subEvent),
+    normalizeText(row?.ageCategory),
+    normalizeText(row?.weightCategory),
+  ].join("|||");
+
+const buildLooseMatchKey = (row) =>
+  [
+    normalizeText(row?.name),
+    normalizeText(row?.team),
+    normalizeText(row?.gender),
+    normalizeText(row?.ageCategory),
+    normalizeText(row?.weightCategory),
+  ].join("|||");
+
+const buildExistingEntryMaps = (existingEntries = []) => {
+  const strict = new Map();
+  const medium = new Map();
+  const loose = new Map();
+
+  existingEntries.forEach((entry) => {
+    const plain = entry?.toObject ? entry.toObject() : entry;
+
+    const strictKey = buildStrictMatchKey(plain);
+    const mediumKey = buildMediumMatchKey(plain);
+    const looseKey = buildLooseMatchKey(plain);
+
+    if (strictKey && !strict.has(strictKey)) strict.set(strictKey, plain);
+    if (mediumKey && !medium.has(mediumKey)) medium.set(mediumKey, plain);
+    if (looseKey && !loose.has(looseKey)) loose.set(looseKey, plain);
+  });
+
+  return { strict, medium, loose };
+};
+
+const findExistingMatch = (entry, maps) => {
+  const strictKey = buildStrictMatchKey(entry);
+  const mediumKey = buildMediumMatchKey(entry);
+  const looseKey = buildLooseMatchKey(entry);
+
+  return (
+    maps.strict.get(strictKey) ||
+    maps.medium.get(mediumKey) ||
+    maps.loose.get(looseKey) ||
+    null
+  );
+};
+
+const mapEntryForResponse = (e) => ({
+  ...e,
+  school: e.school ?? e.schoolName ?? "",
+  medal: normalizeMedal(e.medal),
+  medalSource: normalizeMedalSource(e.medalSource),
+  medalUpdatedAt: e.medalUpdatedAt || null,
+});
+
 export const getEntries = async (req, res) => {
   try {
     const { id } = req.params;
@@ -27,13 +188,7 @@ export const getEntries = async (req, res) => {
       });
     }
 
-    // ✅ Backward/forward compatibility mapping:
-    // - Frontend uses `school`
-    // - Old docs might have `schoolName`
-    const mappedEntries = (entryDoc.entries || []).map((e) => ({
-      ...e,
-      school: e.school ?? e.schoolName ?? "",
-    }));
+    const mappedEntries = (entryDoc.entries || []).map(mapEntryForResponse);
 
     if (isDev) {
       console.log("[getEntries] Found entry doc:", {
@@ -52,6 +207,7 @@ export const getEntries = async (req, res) => {
     });
   } catch (error) {
     console.error("Get entries error:", error);
+
     res.status(500).json({
       error: "Failed to retrieve entries",
       details: error.message,
@@ -84,64 +240,31 @@ export const saveEntries = async (req, res) => {
       return res.status(400).json({ error: "Invalid tournament ID" });
     }
 
+    const existingEntryDoc = await Entry.findOne({ tournamentId: id }).lean();
+    const existingMaps = buildExistingEntryMaps(existingEntryDoc?.entries || []);
+    const now = new Date();
+
     const filteredEntries = (entries || []).filter((entry) => {
       if (!entry || typeof entry !== "object") return false;
+
       return Object.entries(entry).some(([key, val]) => {
         if (key === "sr" || key === "srNo" || key === "actions") return false;
         return val !== undefined && val !== null && val !== "" && val !== 0;
       });
     });
 
-    const normalizeGender = (value) => {
-      const v = String(value || "").trim().toLowerCase();
-      if (["male", "m", "boy", "boys"].includes(v)) return "Male";
-      if (["female", "f", "girl", "girls"].includes(v)) return "Female";
-      return "";
-    };
-
-    const normalizeWeight = (value) => {
-      if (value === undefined || value === null || value === "") return null;
-      const cleaned = String(value).replace(/[^0-9.]/g, "").trim();
-      if (!cleaned) return null;
-      const num = Number(cleaned);
-      return Number.isFinite(num) ? num : null;
-    };
-
-    const normalizeDob = (value) => {
-      if (!value) return null;
-
-      if (value instanceof Date && !isNaN(value.getTime())) return value;
-
-      const str = String(value).trim();
-
-      // dd-mm-yyyy or dd/mm/yyyy
-      const match = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
-      if (match) {
-        const day = Number(match[1]);
-        const month = Number(match[2]) - 1;
-        const year = Number(match[3]);
-        const date = new Date(year, month, day);
-        if (!isNaN(date.getTime())) return date;
-        return null;
-      }
-
-      const parsed = new Date(str);
-      if (!isNaN(parsed.getTime())) return parsed;
-
-      return null;
-    };
-
     const mappedEntries = filteredEntries.map((e, i) => {
       const { sr, actions, ...rest } = e;
 
       const school = e.school ?? e.schoolName ?? "";
 
-      return {
+      const baseEntry = {
         ...rest,
         srNo: i + 1,
         title: String(e.title || "").trim(),
         name: String(e.name || "").trim(),
         fathersName: String(e.fathersName || "").trim(),
+        school: String(school || "").trim(),
         schoolName: String(school || "").trim(),
         class: String(e.class || "").trim(),
         team: String(e.team || "").trim(),
@@ -152,13 +275,42 @@ export const saveEntries = async (req, res) => {
         subEvent: String(e.subEvent || "").trim(),
         ageCategory: String(e.ageCategory || "").trim(),
         weightCategory: String(e.weightCategory || "").trim(),
-        medal: ["Gold", "Silver", "Bronze", ""].includes(String(e.medal || "").trim())
-          ? String(e.medal || "").trim()
-          : "",
         coach: String(e.coach || "").trim(),
         coachContact: String(e.coachContact || "").trim(),
         manager: String(e.manager || "").trim(),
         managerContact: String(e.managerContact || "").trim(),
+      };
+
+      const incomingMedal = normalizeMedal(e.medal);
+      const existingMatch = findExistingMatch(baseEntry, existingMaps);
+
+      const existingMedal = normalizeMedal(existingMatch?.medal);
+      const existingMedalSource = normalizeMedalSource(existingMatch?.medalSource);
+      const existingMedalUpdatedAt = existingMatch?.medalUpdatedAt || null;
+
+      if (existingMedalSource === "tiesheet") {
+        return {
+          ...baseEntry,
+          medal: existingMedal,
+          medalSource: "tiesheet",
+          medalUpdatedAt: existingMedalUpdatedAt,
+        };
+      }
+
+      if (incomingMedal) {
+        return {
+          ...baseEntry,
+          medal: incomingMedal,
+          medalSource: "manual",
+          medalUpdatedAt: now,
+        };
+      }
+
+      return {
+        ...baseEntry,
+        medal: "",
+        medalSource: "",
+        medalUpdatedAt: null,
       };
     });
 
@@ -173,16 +325,12 @@ export const saveEntries = async (req, res) => {
       },
     };
 
-    const updated = await Entry.findOneAndUpdate(
-      { tournamentId: id },
-      update,
-      {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
-        runValidators: true,
-      }
-    ).lean();
+    const updated = await Entry.findOneAndUpdate({ tournamentId: id }, update, {
+      upsert: true,
+      new: true,
+      setDefaultsOnInsert: true,
+      runValidators: true,
+    }).lean();
 
     if (isDev) {
       console.log("[saveEntries] DB write OK:", {

@@ -528,6 +528,33 @@
   }
 }
 
+.googleLoginBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 230px;
+  height: 42px;
+  border: 1px solid #d8d8d8;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #333;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.googleLoginBtn:hover {
+  border-color: #cf0006;
+  box-shadow: 0 4px 12px rgba(207, 0, 6, 0.12);
+  transform: translateY(-1px);
+}
+
+.googleIcon {
+  font-size: 22px;
+}
+
 @media (max-width: 480px) {
   .eyeBtn {
     top: 25px;

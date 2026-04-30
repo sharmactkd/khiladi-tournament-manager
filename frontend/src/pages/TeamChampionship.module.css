@@ -272,3 +272,35 @@
     padding: 8px 4px;
   }
 }
+
+.eventTabs {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 15px 0;
+}
+
+.eventTab {
+  padding: 9px 16px;
+  border: 1px solid #cf0006;
+  background: #ffffff;
+  color: #cf0006;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.activeEventTab {
+  background: #cf0006;
+  color: #ffffff;
+}
+
+.subTitle {
+  margin: 6px 0 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #cf0006;
+  letter-spacing: 0.5px;
+}

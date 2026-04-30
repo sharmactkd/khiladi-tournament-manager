@@ -1,4 +1,7 @@
-// backend/config/passport.js   ← sirf ye 4 line change + 1 line add kar dena
+// backend/config/passport.js
+
+import dotenv from "dotenv";
+dotenv.config();
 
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
@@ -6,8 +9,13 @@ import User from "../models/user.js";
 
 const backendUrl = process.env.BACKEND_URL || "http://localhost:5000";
 
-// ←←← Ye 1 line add kar do (production mein bahut bada fayda)
-const isProduction = process.env.NODE_ENV === "production";
+if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+  throw new Error("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET are required");
+}
+
+const normalizeRole = (role) => {
+  return ["organizer", "coach", "player"].includes(role) ? role : "player";
+};
 
 passport.use(
   new GoogleStrategy(
@@ -16,33 +24,48 @@ passport.use(
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
       callbackURL: `${backendUrl}/api/auth/google/callback`,
       scope: ["profile", "email"],
-      // ←←← Ye 1 line change kar do
-      proxy: true,                        // ← ab hamesha true, niche wali line delete kar dena
+      proxy: true,
     },
     async (accessToken, refreshToken, profile, done) => {
       try {
-        const email = profile.emails?.[0]?.value;
-        if (!email) return done(new Error("Google ne email nahi diya"));
+        const googleId = profile.id;
+        const email = profile.emails?.[0]?.value?.toLowerCase();
+        const name = profile.displayName || "Google User";
+        const profilePicture = profile.photos?.[0]?.value || null;
 
-        let user = await User.findOne({ $or: [{ email }, { googleId: profile.id }] });
+        if (!email) {
+          return done(new Error("Google email not found"));
+        }
+
+        let user = await User.findOne({
+          $or: [{ email }, { googleId }],
+        }).select("+refreshTokens");
 
         if (!user) {
           user = new User({
-            name: profile.displayName,
+            name,
             email,
-            googleId: profile.id,
+            googleId,
             isVerified: true,
-            // ←←← Ye 2 line add kar do (bohot log maangte hain)
-            profilePicture: profile.photos?.[0]?.value || null,
-            loginProvider: "google", // future mein analytics ke liye kaam aayega
+            profilePicture,
+            loginProvider: "google",
+            role: "player",
+            refreshTokens: [],
           });
-          await user.save();
-        } else if (!user.googleId) {
-          user.googleId = profile.id;
+
+          await user.save({ validateBeforeSave: false });
+        } else {
+          user.googleId = user.googleId || googleId;
           user.isVerified = true;
-          // ←←← Ye bhi add kar do (user ko profile photo mil jaaye)
-          if (!user.profilePicture) user.profilePicture = profile.photos?.[0]?.value;
-          await user.save();
+          user.loginProvider = user.loginProvider || "google";
+          user.role = normalizeRole(user.role);
+          user.lastLogin = new Date();
+
+          if (!user.profilePicture && profilePicture) {
+            user.profilePicture = profilePicture;
+          }
+
+          await user.save({ validateBeforeSave: false });
         }
 
         return done(null, user);
@@ -52,6 +75,5 @@ passport.use(
     }
   )
 );
-
 
 export default passport;

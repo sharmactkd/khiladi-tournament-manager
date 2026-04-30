@@ -11,6 +11,7 @@ import {
   saveOutcomes,
   getTieSheet,
   saveTieSheet,
+  getTieSheetOutcomes,
   saveTieSheetOutcomes,
   getOfficials,
   saveOfficials,
@@ -162,6 +163,8 @@ router.put("/:id/tiesheet", authMiddleware, requireOwnership, saveTieSheet);
 
 // ✅ NEW: lightweight outcomes update
 router.patch("/:id/tiesheet/outcomes", authMiddleware, requireOwnership, saveTieSheetOutcomes);
+router.get("/:id/tiesheet-outcomes", authMiddleware, requireOwnership, getTieSheetOutcomes);
+router.put("/:id/tiesheet-outcomes", authMiddleware, requireOwnership, saveTieSheetOutcomes);
 
 // Officials
 router.get("/:id/officials", authMiddleware, requireOwnership, getOfficials);

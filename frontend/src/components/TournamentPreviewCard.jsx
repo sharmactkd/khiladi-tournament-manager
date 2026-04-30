@@ -18,6 +18,16 @@ const getFullImageUrl = (url) => {
   return `${uploadsBase}/uploads/${cleanUrl.replace(/^\/+/, "")}`;
 };
 
+const optimizeImageUrl = (url) => {
+  if (!url) return url;
+
+  if (url.includes("res.cloudinary.com") && url.includes("/upload/")) {
+    return url.replace("/upload/", "/upload/w_500,q_auto,f_auto/");
+  }
+
+  return url;
+};
+
 const TournamentPreviewCard = ({ tournament, onClick }) => {
   const navigate = useNavigate();
   const [imageFailed, setImageFailed] = useState(false);
@@ -73,6 +83,8 @@ const fullImageUrl =
   src={fullImageUrl}
   alt={tournamentName}
   className={styles.image}
+  loading="lazy"
+  decoding="async"
   onError={(e) => {
     e.target.onerror = null;
     e.target.src = "/EVOLVE.png";

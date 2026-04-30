@@ -4,6 +4,7 @@ import { useParams } from "react-router-dom";
 import jsPDF from "jspdf";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
+import PremiumAccessGuard from "../components/payment/PremiumAccessGuard";
 import styles from "./TieSheetRecord.module.css";
 import DOMPurify from "dompurify";
 
@@ -32,7 +33,7 @@ const TieSheetRecord = () => {
     return DOMPurify.sanitize(String(html || ""), {
       USE_PROFILES: { html: true },
       // allow common safe attrs; DOMPurify by default strips on* handlers
-      ADD_ATTR: ["data-bracket-key", "data-game-id", "data-participant-position"],
+      ADD_ATTR: ["data-bracket-key", "data-match-position", "data-participant-position"],
     });
   }, []);
 
@@ -287,6 +288,7 @@ const TieSheetRecord = () => {
 
   return (
     <div className={styles.container}>
+       <PremiumAccessGuard tournamentId={id}>
       <h1 className={styles.title}>Tie-Sheet History</h1>
 
       {records.length === 0 ? (
@@ -339,6 +341,7 @@ const TieSheetRecord = () => {
           );
         })
       )}
+      </PremiumAccessGuard>
     </div>
   );
 };

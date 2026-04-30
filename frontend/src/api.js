@@ -158,6 +158,7 @@ export const deleteWeightPreset = (id) => apiCall("delete", `/weight-presets/${i
 
 export const getEntries = (tournamentId) =>
   apiCall("get", `/tournaments/${tournamentId}/entries`);
+
 export const saveEntries = (tournamentId, payload) =>
   apiCall("post", `/tournaments/${tournamentId}/entries`, payload);
 

@@ -15,6 +15,34 @@ const AGE_CATEGORY_ORDER = [
   'Under - 19',
 ];
 
+const getWeightSortValue = (weightCategory = "") => {
+  const text = String(weightCategory).toLowerCase();
+
+  const underMatch = text.match(/under\s*-?\s*(\d+)|u\s*-?\s*(\d+)/);
+  if (underMatch) return Number(underMatch[1] || underMatch[2]);
+
+  const overMatch = text.match(/over\s*-?\s*(\d+)/);
+  if (overMatch) return Number(overMatch[1]) + 1000;
+
+  const anyNumber = text.match(/(\d+)/);
+  if (anyNumber) return Number(anyNumber[1]);
+
+  return 9999;
+};
+
+const compareWeightCategories = (a, b) => {
+  const weightA = getWeightSortValue(a?.weightCategory);
+  const weightB = getWeightSortValue(b?.weightCategory);
+
+  if (weightA !== weightB) return weightA - weightB;
+
+  return String(a?.weightCategory || "").localeCompare(
+    String(b?.weightCategory || ""),
+    undefined,
+    { numeric: true, sensitivity: "base" }
+  );
+};
+
 // ── Helper: Smart Seed Players ──────────────────────────────────────────────
 const smartSeedPlayers = (playersList) => {
   if (playersList.length <= 2) return [...playersList];
@@ -467,8 +495,8 @@ export default function useBracketGenerator({
           const aIdx = AGE_CATEGORY_ORDER.indexOf(a.ageCategory);
           const bIdx = AGE_CATEGORY_ORDER.indexOf(b.ageCategory);
           if (aIdx !== bIdx) return aIdx - bIdx;
-          const weightCmp = a.weightCategory.localeCompare(b.weightCategory);
-          if (weightCmp !== 0) return weightCmp;
+        const weightCmp = compareWeightCategories(a, b);
+if (weightCmp !== 0) return weightCmp;
           const poolOrder = a.pool ? (a.pool === 'Final' ? 999 : a.pool.charCodeAt(0)) : 0;
           const pbOrder = b.pool ? (b.pool === 'Final' ? 999 : b.pool.charCodeAt(0)) : 0;
           return poolOrder - pbOrder;
@@ -519,8 +547,8 @@ export default function useBracketGenerator({
           const aIdx = AGE_CATEGORY_ORDER.indexOf(a.ageCategory);
           const bIdx = AGE_CATEGORY_ORDER.indexOf(b.ageCategory);
           if (aIdx !== bIdx) return aIdx - bIdx;
-          const weightCmp = a.weightCategory.localeCompare(b.weightCategory);
-          if (weightCmp !== 0) return weightCmp;
+       const weightCmp = compareWeightCategories(a, b);
+if (weightCmp !== 0) return weightCmp;
           const poolOrder = a.pool ? (a.pool === 'Final' ? 999 : a.pool.charCodeAt(0)) : 0;
           const pbOrder = b.pool ? (b.pool === 'Final' ? 999 : b.pool.charCodeAt(0)) : 0;
           return poolOrder - pbOrder;

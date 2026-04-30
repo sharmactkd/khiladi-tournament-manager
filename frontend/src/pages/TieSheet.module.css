@@ -404,6 +404,7 @@
   display: flex;
   flex-direction: column;
   flex: 1;
+  min-width: 0;
   width: 100%;
   box-sizing: border-box;
 }
@@ -451,7 +452,8 @@
   background: #ffffff;
   border: 1px solid #e0e0e0;
   width: 100%;
-
+ justify-content: flex-start !important;
+  text-align: left !important;
   height: var(--team-height, 22px);
 
   padding-left: 5px;
@@ -462,6 +464,24 @@
   font-family: Arial, Helvetica, sans-serif;
   overflow: hidden;
   border-top: none;
+}
+
+.participant,
+.teamBox {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.playerName,
+.teamName {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden !important;
+  white-space: nowrap !important;
+  text-overflow: clip !important;
+  box-sizing: border-box;
 }
 
 .teamName {
@@ -1133,7 +1153,7 @@
 }
 
 .tenPlayer .playerName {
-  font-size: 16px !important;
+  font-size: 14px !important;
 }
 
 .tenPlayer .teamName {
@@ -1186,7 +1206,7 @@
 }
 
 .twelvePlayer .playerName {
-  font-size: 16px !important;
+  font-size: 14px !important;
 }
 
 .twelvePlayer .teamName {
@@ -1194,7 +1214,7 @@
 }
 
 .twelvePlayer .matchNumber {
-  font-size: 16px !important;
+  font-size: 14px !important;
 }
 
 
@@ -1440,3 +1460,52 @@
   page-break-after: always !important;
   break-inside: avoid !important;
 }
+
+.errorMessage {
+  max-width: 760px;
+  margin: 60px auto;
+  padding: 28px 32px;
+  background: #fff7f7;
+  border: 1px solid #fecaca;
+  border-left: 6px solid #cf0006;
+  border-radius: 14px;
+  color: #1f2937;
+  font-family: Arial, Helvetica, sans-serif;
+  text-align: left;
+  line-height: 1.6;
+}
+
+.errorMessage h2 {
+  margin: 0 0 14px;
+  font-size: 26px;
+  font-weight: 800;
+  color: #cf0006;
+  letter-spacing: -0.3px;
+}
+
+.errorMessage p {
+  margin: 0 0 22px;
+  white-space: pre-line;
+  font-size: 16px;
+  font-weight: bold;
+  color: #374151;
+}
+
+.errorMessage button {
+  border: none;
+  background: #cf0006;
+  color: #ffffff;
+  padding: 11px 18px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.errorMessage button:hover {
+  background: #a50040;
+  transform: translateY(-1px);
+  box-shadow: 0 8px 18px rgba(207, 0, 6, 0.22);
+}
+

@@ -1,100 +1,153 @@
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { Medal as MedalIcon } from "lucide-react";
+import PremiumAccessGuard from "../components/payment/PremiumAccessGuard";
 import styles from "./Winner.module.css";
 
-import { sanitizeId } from "../components/TieSheet/bracketUtils";
+const EVENT_ORDER = ["OVERALL", "KYORUGI", "POOMSAE", "FRESHER", "TAG TEAM"];
 
-/* ──────────────────────────────────────────────────────────────
-   Utils
-   ────────────────────────────────────────────────────────────── */
 const getFullImageUrl = (filename) => {
   if (!filename) return "";
   if (filename.startsWith("http")) return filename;
+
   const cleanFilename = filename.replace(/^.*[\\/]/, "");
   const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
   const uploadsUrl = baseUrl.replace(/\/api$/, "");
+
   return `${uploadsUrl}/uploads/${cleanFilename}?t=${Date.now()}`;
 };
 
-const getOutcomesForKey = (allOutcomes, bracketKey) => {
-  if (!allOutcomes || typeof allOutcomes !== "object") return {};
-  if (!bracketKey) return {};
-  return allOutcomes[bracketKey] || allOutcomes[sanitizeId(bracketKey)] || {};
+const normalizeBaseUrl = () => {
+  const rawBase = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+  return rawBase.replace(/\/+$/, "");
 };
 
-const getFinalGame = (bracket) => {
-  if (bracket?.gamesByRound?.length > 0) {
-    return bracket.gamesByRound[bracket.gamesByRound.length - 1]?.[0] || null;
-  }
-  if (bracket?.game) return bracket.game;
-  return null;
+const normalizeMedal = (value) => {
+  const medal = String(value || "").trim();
+  return ["Gold", "Silver", "Bronze"].includes(medal) ? medal : "";
 };
 
-const getSemiFinalGames = (bracket) => {
-  if (bracket?.gamesByRound?.length >= 2) {
-    return bracket.gamesByRound[bracket.gamesByRound.length - 2] || [];
-  }
-  return [];
+const normalizeText = (value) => String(value || "").trim();
+
+const normalizeGender = (value) => {
+  const v = String(value || "").trim().toLowerCase();
+  if (["male", "m", "boy", "boys"].includes(v)) return "Male";
+  if (["female", "f", "girl", "girls"].includes(v)) return "Female";
+  return normalizeText(value);
 };
 
-/**
- * Supports multiple saved outcome shapes:
- * 1) { "3": "home" }
- * 2) { 3: "away" }
- * 3) { "game_3": "home" }
- * 4) { "3": { winner: "home" } }
- * 5) { "game_3": { winner: "away" } }
- */
-const getWinnerSide = (outcomesObj, gameId) => {
-  if (!outcomesObj || typeof outcomesObj !== "object" || gameId === undefined || gameId === null) {
-    return null;
-  }
+const normalizeAgeCategory = (value) => {
+  const v = String(value || "").trim();
+  const lower = v.toLowerCase();
 
-  const candidates = [
-    outcomesObj[gameId],
-    outcomesObj[String(gameId)],
-    outcomesObj[`game_${gameId}`],
-    outcomesObj[gameId]?.winner,
-    outcomesObj[String(gameId)]?.winner,
-    outcomesObj[`game_${gameId}`]?.winner,
-  ];
+  if (lower === "sub-junior" || lower === "sub junior") return "Sub-Junior";
+  if (lower === "cadet") return "Cadet";
+  if (lower === "junior") return "Junior";
+  if (lower === "senior") return "Senior";
+  if (lower === "under-14" || lower === "under - 14" || lower === "under 14") return "Under - 14";
+  if (lower === "under-17" || lower === "under - 17" || lower === "under 17") return "Under - 17";
+  if (lower === "under-19" || lower === "under - 19" || lower === "under 19") return "Under - 19";
 
-  const found = candidates.find((value) => value === "home" || value === "away");
-  return found || null;
+  return v;
 };
 
-/* ──────────────────────────────────────────────────────────────
-   Header / Footer
-   ────────────────────────────────────────────────────────────── */
-const PageHeader = ({ tournamentName, federation, logoLeft, logoRight, age, gender }) => (
+const getEventType = (player) => {
+  const event = String(player?.event || "").trim().toLowerCase();
+  const subEvent = String(player?.subEvent || "").trim().toLowerCase();
+
+  if (subEvent.includes("tag")) return "TAG TEAM";
+  if (subEvent.includes("fresher") || subEvent.includes("freshers")) return "FRESHER";
+  if (event.includes("poomsae")) return "POOMSAE";
+  if (event.includes("kyorugi")) return "KYORUGI";
+
+  return "";
+};
+
+const getWeightSortValue = (weightCategory = "") => {
+  const text = String(weightCategory).toLowerCase();
+
+  const underMatch = text.match(/under\s*-?\s*(\d+)|u\s*-?\s*(\d+)/);
+  if (underMatch) return Number(underMatch[1] || underMatch[2]);
+
+  const overMatch = text.match(/over\s*-?\s*(\d+)/);
+  if (overMatch) return Number(overMatch[1]) + 1000;
+
+  const anyNumber = text.match(/(\d+)/);
+  if (anyNumber) return Number(anyNumber[1]);
+
+  return 9999;
+};
+
+const medalOrder = {
+  Gold: 1,
+  Silver: 2,
+  Bronze: 3,
+};
+
+const ageCategoryOrder = [
+  "Sub-Junior",
+  "Cadet",
+  "Junior",
+  "Senior",
+  "Under - 14",
+  "Under - 17",
+  "Under - 19",
+];
+
+const genderOrder = ["Male", "Female"];
+
+const sortByAgeGenderWeight = (a, b) => {
+  const ageA = ageCategoryOrder.indexOf(a.age);
+  const ageB = ageCategoryOrder.indexOf(b.age);
+
+  if (ageA !== ageB) return (ageA === -1 ? 999 : ageA) - (ageB === -1 ? 999 : ageB);
+
+  const genderA = genderOrder.indexOf(a.gender);
+  const genderB = genderOrder.indexOf(b.gender);
+
+  if (genderA !== genderB) return (genderA === -1 ? 999 : genderA) - (genderB === -1 ? 999 : genderB);
+
+  return getWeightSortValue(a.weightCategory) - getWeightSortValue(b.weightCategory);
+};
+
+const PageHeader = ({ tournamentName, federation, logoLeft, logoRight, age, gender, selectedEvent }) => (
   <div className={styles.pageHeader}>
     {logoLeft && (
       <img
         src={logoLeft}
         alt="Logo Left"
         className={styles.logoLeft}
-        onError={(e) => (e.target.style.display = "none")}
+        onError={(e) => {
+          e.currentTarget.style.display = "none";
+        }}
       />
     )}
+
     <div className={styles.headerContent}>
       <h1 className={styles.tournamentName}>{String(tournamentName || "").toUpperCase()}</h1>
       <p className={styles.federation}>{federation}</p>
-      <h2 className={styles.medalTitle}>MEDAL WINNERS</h2>
+
+      <h2 className={styles.medalTitle}>
+        {selectedEvent === "OVERALL" ? "MEDAL WINNERS" : `${selectedEvent} MEDAL WINNERS`}
+      </h2>
+
       <h3 className={styles.ageGenderTitle}>
-        {age} - {String(gender || "").toUpperCase()} Division
+        {age} - {String(gender || "").toUpperCase()}
       </h3>
     </div>
+
     {logoRight && (
       <img
         src={logoRight}
         alt="Logo Right"
         className={styles.logoRight}
-        onError={(e) => (e.target.style.display = "none")}
+        onError={(e) => {
+          e.currentTarget.style.display = "none";
+        }}
       />
     )}
   </div>
@@ -103,9 +156,7 @@ const PageHeader = ({ tournamentName, federation, logoLeft, logoRight, age, gend
 const PageFooter = ({ pageIdx, totalPages }) => (
   <div className={styles.pageFooter}>
     <div className={styles.footerContent}>
-      <span className={styles.footerText}>
-        Generated by EVOLVE - Tournament Manager | www.khiladi.com
-      </span>
+      <span className={styles.footerText}>Generated by EVOLVE - Tournament Manager | www.khiladi.com</span>
       <span className={styles.pageNumber}>
         Page {pageIdx + 1} of {totalPages} |{" "}
         {new Date().toLocaleString("en-US", {
@@ -121,17 +172,14 @@ const PageFooter = ({ pageIdx, totalPages }) => (
   </div>
 );
 
-/* ──────────────────────────────────────────────────────────────
-   Main
-   ────────────────────────────────────────────────────────────── */
 const Winner = () => {
   const { id: rawId } = useParams();
   const id = rawId?.trim();
   const { token, isAuthenticated } = useAuth();
 
   const [tournament, setTournament] = useState(null);
-  const [brackets, setBrackets] = useState([]);
-  const [bracketsOutcomes, setBracketsOutcomes] = useState({});
+  const [players, setPlayers] = useState([]);
+  const [selectedEvent, setSelectedEvent] = useState("KYORUGI");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -146,11 +194,14 @@ const Winner = () => {
         setIsLoading(true);
         setError(null);
 
-        const rawBase = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-        const baseUrl = rawBase.replace(/\/+$/, "");
+        const baseUrl = normalizeBaseUrl();
         const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
 
-        const tournamentRes = await axios.get(`${baseUrl}/tournament/${id}`, config);
+        const [tournamentRes, entriesRes] = await Promise.all([
+          axios.get(`${baseUrl}/tournament/${id}`, config),
+          axios.get(`${baseUrl}/tournaments/${id}/entries?ts=${Date.now()}`, config),
+        ]);
+
         const td = tournamentRes.data;
 
         setTournament({
@@ -159,39 +210,34 @@ const Winner = () => {
           logos: td.logos || [],
         });
 
-        const [tieSheetRes, outcomesRes] = await Promise.allSettled([
-          axios.get(`${baseUrl}/tournament/${id}/tiesheet`, config),
-          axios.get(`${baseUrl}/tournament/${id}/tiesheet-outcomes`, config),
-        ]);
+        const rows = Array.isArray(entriesRes?.data?.entries) ? entriesRes.data.entries : [];
 
-        let savedTieSheet = null;
-        let liveOutcomes = {};
+        const normalizedRows = rows
+          .map((p) => {
+            const normalized = {
+              ...p,
+              name: normalizeText(p.name),
+              team: normalizeText(p.team),
+              gender: normalizeGender(p.gender),
+              ageCategory: normalizeAgeCategory(p.ageCategory),
+              weightCategory: normalizeText(p.weightCategory),
+              medal: normalizeMedal(p.medal),
+              event: normalizeText(p.event),
+              subEvent: normalizeText(p.subEvent),
+            };
 
-        if (tieSheetRes.status === "fulfilled") {
-          savedTieSheet = tieSheetRes.value?.data?.tiesheet || null;
-        }
+            return {
+              ...normalized,
+              eventType: getEventType(normalized),
+            };
+          })
+          .filter((p) => p.name && p.gender && p.ageCategory && p.weightCategory && p.medal);
 
-        if (outcomesRes.status === "fulfilled") {
-          liveOutcomes = outcomesRes.value?.data?.outcomes || {};
-        }
-
-        if (savedTieSheet?.brackets?.length) {
-          setBrackets(savedTieSheet.brackets);
-
-          const finalOutcomes =
-            liveOutcomes && Object.keys(liveOutcomes).length > 0
-              ? liveOutcomes
-              : savedTieSheet.outcomes || {};
-
-          setBracketsOutcomes(finalOutcomes);
-        } else {
-          throw new Error("No tie-sheet generated yet.");
-        }
-
-        setIsLoading(false);
+        setPlayers(normalizedRows);
       } catch (err) {
         console.error("Winner page load failed:", err);
         setError(err?.message || "Failed to load data");
+      } finally {
         setIsLoading(false);
       }
     };
@@ -199,291 +245,67 @@ const Winner = () => {
     if (id) fetchData();
   }, [id, token]);
 
-  /**
-   * Show only one bracket per weight category:
-   * - If pooled category exists, prefer PoolFinal
-   * - Else use normal base bracket
-   */
-  const displayBrackets = useMemo(() => {
-    const list = Array.isArray(brackets) ? brackets : [];
-    const byBase = new Map();
+  const availableEvents = useMemo(() => {
+    const foundEvents = [...new Set(players.map((p) => p.eventType).filter(Boolean))].sort(
+      (a, b) => EVENT_ORDER.indexOf(a) - EVENT_ORDER.indexOf(b)
+    );
 
-    for (const b of list) {
-      if (!b?.key) continue;
-      const baseKey = b.key.replace(/_Pool.*$/, "");
+    return ["OVERALL", ...foundEvents];
+  }, [players]);
 
-      const existing = byBase.get(baseKey);
-      const isPoolFinal = b.key === `${baseKey}_PoolFinal`;
-
-      if (!existing) {
-        byBase.set(baseKey, b);
-      } else {
-        const existingBaseKey = existing.key.replace(/_Pool.*$/, "");
-        const existingIsPoolFinal = existing.key === `${existingBaseKey}_PoolFinal`;
-        if (!existingIsPoolFinal && isPoolFinal) {
-          byBase.set(baseKey, b);
-        }
-      }
+  useEffect(() => {
+    if (!availableEvents.includes(selectedEvent)) {
+      setSelectedEvent("KYORUGI");
     }
+  }, [availableEvents, selectedEvent]);
 
-    return Array.from(byBase.values());
-  }, [brackets]);
-
-  const getName = useCallback(
-    (side, bracketKey, pool = null) => {
-      if (!side) return "";
-      if (side.team) return side.team.name || "";
-
-      if (side.sourceGame) {
-        const sg = side.sourceGame;
-
-        let src = getOutcomesForKey(bracketsOutcomes, bracketKey);
-
-        if (bracketKey.endsWith("_PoolFinal") && (pool || side.pool)) {
-          const cat = bracketKey.replace("_PoolFinal", "");
-          const poolKey = `${cat}_Pool${pool || side.pool}`;
-          src = getOutcomesForKey(bracketsOutcomes, poolKey);
-        }
-
-        const winnerSide = getWinnerSide(src, sg.id);
-        if (winnerSide) {
-          return getName(sg.sides?.[winnerSide], bracketKey, pool || side.pool);
-        }
-      }
-
-      return "";
-    },
-    [bracketsOutcomes]
-  );
-
-  const getTeamName = useCallback((side, sideName, bracketKey, outcomes) => {
-    if (!side) return { id: "", name: "", team: "" };
-
-    if (side.team) {
-      return {
-        id: side.team.id || "",
-        name: side.team.name || "TBD",
-        team: side.team.team || "",
-      };
-    }
-
-    if (side.sourceGame) {
-      const sg = side.sourceGame;
-
-      let srcOutcomes = getOutcomesForKey(outcomes, bracketKey);
-
-      if (bracketKey.endsWith("_PoolFinal") && side.pool) {
-        const cat = bracketKey.replace("_PoolFinal", "");
-        const poolKey = `${cat}_Pool${side.pool}`;
-        srcOutcomes = getOutcomesForKey(outcomes, poolKey);
-      }
-
-      const prevWinner = getWinnerSide(srcOutcomes, sg.id);
-      if (prevWinner) {
-        return getTeamName(sg.sides?.[prevWinner], prevWinner, bracketKey, outcomes);
-      }
-
-      return { id: `tbd_${sg.id}_${sideName}`, name: "", team: "" };
-    }
-
-    return { id: "", name: "", team: "" };
-  }, []);
-
-  const getMedalWinners = useCallback(
-    (bracket) => {
-      const baseKey = bracket.key.replace(/_Pool.*$/, "");
-      const poolFinal = brackets.find((b) => b?.key === `${baseKey}_PoolFinal`);
-      const playerCount = bracket.categoryPlayerCount || bracket.playerCount;
-
-      const blank = { name: "", team: "" };
-      let gold = blank;
-      let silver = blank;
-      let bronze1 = blank;
-      let bronze2 = blank;
-
-      // ✅ Pooled category
-      if (poolFinal) {
-        const finalGame = getFinalGame(poolFinal);
-        const finalOut = getOutcomesForKey(bracketsOutcomes, poolFinal.key);
-        const winSide = finalGame ? getWinnerSide(finalOut, finalGame.id) : null;
-
-        if (finalGame && (winSide === "home" || winSide === "away")) {
-          const goldSide = finalGame.sides?.[winSide];
-          const silverSide = finalGame.sides?.[winSide === "home" ? "away" : "home"];
-
-          const goldInfo = getTeamName(goldSide, winSide, poolFinal.key, bracketsOutcomes);
-          const silverInfo = getTeamName(
-            silverSide,
-            winSide === "home" ? "away" : "home",
-            poolFinal.key,
-            bracketsOutcomes
-          );
-
-          gold = {
-            name: getName(goldSide, poolFinal.key, goldSide?.pool) || goldInfo.name,
-            team: goldInfo.team,
-          };
-
-          silver = {
-            name: getName(silverSide, poolFinal.key, silverSide?.pool) || silverInfo.name,
-            team: silverInfo.team,
-          };
-        }
-
-        if (playerCount >= 4) {
-          ["A", "B"].forEach((p) => {
-            const poolBracket = brackets.find((b) => b?.key === `${baseKey}_Pool${p}`);
-            if (!poolBracket) return;
-
-            const semis = getSemiFinalGames(poolBracket);
-            const semi = semis?.[0];
-            if (!semi) return;
-
-            const semiOutcomes = getOutcomesForKey(bracketsOutcomes, poolBracket.key);
-            const semiWinner = getWinnerSide(semiOutcomes, semi.id);
-
-            if (semiWinner === "home" || semiWinner === "away") {
-              const loseSide = semiWinner === "home" ? "away" : "home";
-              const loserInfo = getTeamName(
-                semi.sides?.[loseSide],
-                loseSide,
-                poolBracket.key,
-                bracketsOutcomes
-              );
-
-              const loser = {
-                name: getName(semi.sides?.[loseSide], poolBracket.key) || loserInfo.name,
-                team: loserInfo.team,
-              };
-
-              if (p === "A") bronze1 = loser;
-              else bronze2 = loser;
-            }
-          });
-        }
-
-        return { gold, silver, bronze1, bronze2 };
-      }
-
-      // ✅ Single elimination
-      const finalGame = getFinalGame(bracket);
-      const out = getOutcomesForKey(bracketsOutcomes, baseKey);
-      const winSide = finalGame ? getWinnerSide(out, finalGame.id) : null;
-
-      if (playerCount === 1) {
-        const singleSide =
-          finalGame?.sides?.home?.team
-            ? finalGame.sides.home
-            : finalGame?.sides?.away?.team
-            ? finalGame.sides.away
-            : null;
-
-        if (singleSide) {
-          const info = getTeamName(singleSide, "home", baseKey, bracketsOutcomes);
-          gold = {
-            name: getName(singleSide, baseKey) || info.name,
-            team: info.team,
-          };
-        }
-
-        return { gold, silver, bronze1, bronze2 };
-      }
-
-      if (finalGame && (winSide === "home" || winSide === "away")) {
-        const goldSide = finalGame.sides?.[winSide];
-        const silverSide = finalGame.sides?.[winSide === "home" ? "away" : "home"];
-
-        const goldInfo = getTeamName(goldSide, winSide, baseKey, bracketsOutcomes);
-        const silverInfo = getTeamName(
-          silverSide,
-          winSide === "home" ? "away" : "home",
-          baseKey,
-          bracketsOutcomes
-        );
-
-        gold = {
-          name: getName(goldSide, baseKey) || goldInfo.name,
-          team: goldInfo.team,
-        };
-
-        silver = {
-          name: getName(silverSide, baseKey) || silverInfo.name,
-          team: silverInfo.team,
-        };
-      }
-
-      if (playerCount === 3) {
-        const firstRound = bracket.gamesByRound?.[0]?.[0];
-        const firstWinner = firstRound ? getWinnerSide(out, firstRound.id) : null;
-
-        if (firstRound && (firstWinner === "home" || firstWinner === "away")) {
-          const loseSide = firstWinner === "home" ? "away" : "home";
-          const info = getTeamName(firstRound.sides?.[loseSide], loseSide, baseKey, bracketsOutcomes);
-          bronze1 = {
-            name: getName(firstRound.sides?.[loseSide], baseKey) || info.name,
-            team: info.team,
-          };
-        }
-      } else if (playerCount >= 4) {
-        const semis = getSemiFinalGames(bracket);
-
-        if (semis?.length >= 1) {
-          const semi1 = semis[0];
-          const semi1Winner = getWinnerSide(out, semi1.id);
-
-          if (semi1 && (semi1Winner === "home" || semi1Winner === "away")) {
-            const loseSide = semi1Winner === "home" ? "away" : "home";
-            const info = getTeamName(semi1.sides?.[loseSide], loseSide, baseKey, bracketsOutcomes);
-            bronze1 = {
-              name: getName(semi1.sides?.[loseSide], baseKey) || info.name,
-              team: info.team,
-            };
-          }
-
-          if (semis.length >= 2) {
-            const semi2 = semis[1];
-            const semi2Winner = getWinnerSide(out, semi2.id);
-
-            if (semi2 && (semi2Winner === "home" || semi2Winner === "away")) {
-              const loseSide = semi2Winner === "home" ? "away" : "home";
-              const info = getTeamName(semi2.sides?.[loseSide], loseSide, baseKey, bracketsOutcomes);
-              bronze2 = {
-                name: getName(semi2.sides?.[loseSide], baseKey) || info.name,
-                team: info.team,
-              };
-            }
-          }
-        }
-      }
-
-      return { gold, silver, bronze1, bronze2 };
-    },
-    [brackets, bracketsOutcomes, getName, getTeamName]
-  );
+  const filteredPlayers = useMemo(() => {
+    if (selectedEvent === "OVERALL") return players;
+    return players.filter((player) => player.eventType === selectedEvent);
+  }, [players, selectedEvent]);
 
   const grouped = useMemo(() => {
-    const g = {};
-    displayBrackets.forEach((b) => {
-      const k = `${b.gender}_${b.ageCategory}`;
-      if (!g[k]) g[k] = [];
-      g[k].push(b);
+    const pageMap = new Map();
+
+    filteredPlayers.forEach((player) => {
+      const pageKey = `${player.gender}_${player.ageCategory}`;
+      const weightKey = player.weightCategory || "Unknown";
+
+      if (!pageMap.has(pageKey)) {
+        pageMap.set(pageKey, {
+          gender: player.gender,
+          age: player.ageCategory,
+          weights: new Map(),
+        });
+      }
+
+      const page = pageMap.get(pageKey);
+
+      if (!page.weights.has(weightKey)) {
+        page.weights.set(weightKey, []);
+      }
+
+      page.weights.get(weightKey).push(player);
     });
 
-    Object.keys(g).forEach((k) => {
-      g[k].sort((a, b) => String(a.weightCategory || "").localeCompare(String(b.weightCategory || "")));
-    });
+    const pages = Array.from(pageMap.values()).map((page) => ({
+      ...page,
+      weights: Array.from(page.weights.entries())
+        .map(([weightCategory, medalRows]) => ({
+          weightCategory,
+          rows: medalRows.sort((a, b) => {
+            const medalDiff = (medalOrder[a.medal] || 99) - (medalOrder[b.medal] || 99);
+            if (medalDiff !== 0) return medalDiff;
+            return String(a.name || "").localeCompare(String(b.name || ""));
+          }),
+        }))
+        .sort((a, b) => getWeightSortValue(a.weightCategory) - getWeightSortValue(b.weightCategory)),
+    }));
 
-    return g;
-  }, [displayBrackets]);
+    return pages.sort(sortByAgeGenderWeight);
+  }, [filteredPlayers]);
 
-  const hasWinners = useMemo(() => {
-    return Object.values(grouped).some((group) =>
-      group.some((b) => {
-        const w = getMedalWinners(b);
-        return w.gold.name || w.silver.name || w.bronze1.name || w.bronze2.name;
-      })
-    );
-  }, [grouped, getMedalWinners]);
+  const hasWinners = grouped.length > 0;
 
   const generatePDFDoc = async () => {
     const pages = document.querySelectorAll(`.${styles.winnerPage}`);
@@ -491,11 +313,12 @@ const Winner = () => {
 
     const doc = new jsPDF("p", "mm", "a4");
 
-    for (let i = 0; i < pages.length; i++) {
+    for (let i = 0; i < pages.length; i += 1) {
       if (i > 0) doc.addPage();
 
       const clone = pages[i].cloneNode(true);
       const container = document.createElement("div");
+
       Object.assign(container.style, {
         position: "absolute",
         left: "-9999px",
@@ -503,6 +326,7 @@ const Winner = () => {
         height: "297mm",
         background: "#fff",
       });
+
       container.appendChild(clone);
       document.body.appendChild(container);
 
@@ -514,6 +338,7 @@ const Winner = () => {
           width: 794,
           height: 1123,
         });
+
         const img = canvas.toDataURL("image/png");
         doc.addImage(img, "PNG", 0, 0, 210, 297);
       } finally {
@@ -526,15 +351,19 @@ const Winner = () => {
 
   const saveAllPDF = async () => {
     const doc = await generatePDFDoc();
-    if (doc) doc.save(`Medal_Winners_${tournament?.name || "Tournament"}_${id}.pdf`);
+    if (doc) {
+      doc.save(`Medal_Winners_${selectedEvent}_${tournament?.name || "Tournament"}_${id}.pdf`);
+    }
   };
 
   const printAllPDF = async () => {
     const doc = await generatePDFDoc();
+
     if (doc) {
       const blob = doc.output("blob");
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
+
       setTimeout(() => {
         try {
           URL.revokeObjectURL(url);
@@ -556,9 +385,11 @@ const Winner = () => {
       <div className={styles.errorContainer}>
         <h2 className={styles.errorTitle}>Error Loading Winners</h2>
         <p className={styles.errorMessage}>{error}</p>
+
         <button className={styles.retryButton} onClick={() => window.location.reload()}>
           Retry
         </button>
+
         <button className={styles.backButton} onClick={() => window.history.back()}>
           Go Back
         </button>
@@ -577,126 +408,119 @@ const Winner = () => {
 
   return (
     <div className={styles.winnerContainer}>
+       <PremiumAccessGuard tournamentId={id}>
       <div className={styles.buttonSection}>
         <div className={styles.pdfButtonWrapper}>
           <button onClick={printAllPDF} className={styles.printButton} disabled={!hasWinners}>
             Print
           </button>
+
           <button onClick={saveAllPDF} className={styles.pdfButton} disabled={!hasWinners}>
             Save PDF
           </button>
         </div>
+
+        <div className={styles.eventToggleWrapper}>
+          {availableEvents.map((eventName) => (
+            <button
+              key={eventName}
+              type="button"
+              onClick={() => setSelectedEvent(eventName)}
+              className={`${styles.eventToggleButton} ${
+                selectedEvent === eventName ? styles.eventToggleActive : ""
+              }`}
+            >
+              {eventName}
+            </button>
+          ))}
+        </div>
       </div>
 
       {hasWinners ? (
-        Object.entries(grouped).map(([key, catBrackets], catIdx) => {
-          const [gender, age] = key.split("_");
+        grouped.map((page, catIdx) => (
+          <div key={`${selectedEvent}_${page.gender}_${page.age}`} className={styles.winnerPage}>
+            <PageHeader
+              tournamentName={tournament?.name}
+              federation={tournament?.federation}
+              logoLeft={logoLeft}
+              logoRight={logoRight}
+              age={page.age}
+              gender={page.gender}
+              selectedEvent={selectedEvent}
+            />
 
-          return (
-            <div key={key} className={styles.winnerPage}>
-              <PageHeader
-                tournamentName={tournament?.name}
-                federation={tournament?.federation}
-                logoLeft={logoLeft}
-                logoRight={logoRight}
-                age={age}
-                gender={gender}
-              />
+            <div className={styles.tableContainer}>
+              <table className={styles.medalTable}>
+                <thead>
+                  <tr>
+                    <th className={styles.weightHeader}>Weight Category</th>
+                    <th className={styles.medalHeader}>Medal</th>
+                    <th className={styles.participantHeader}>Name</th>
+                    <th className={styles.teamHeader}>Team</th>
+                    <th className={styles.markHeader}>Mark</th>
+                  </tr>
+                </thead>
 
-              <div className={styles.tableContainer}>
-                <table className={styles.medalTable}>
-                  <thead>
-                    <tr>
-                      <th className={styles.weightHeader}>Weight Category</th>
-                      <th className={styles.medalHeader}>Medal</th>
-                      <th className={styles.participantHeader}>Name</th>
-                      <th className={styles.teamHeader}>Team</th>
-                      <th className={styles.markHeader}>Mark</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {catBrackets.map((bracket) => {
-                      const { gold, silver, bronze1, bronze2 } = getMedalWinners(bracket);
-                      const playerCount = bracket.categoryPlayerCount || bracket.playerCount;
-                      const rows = [];
-
-                      if (gold.name) rows.push({ medal: "Gold", name: gold.name, team: gold.team });
-                      if (silver.name) rows.push({ medal: "Silver", name: silver.name, team: silver.team });
-
-                      if ((bronze1.name || bronze2.name) && playerCount >= 3) {
-                        if (bronze1.name) rows.push({ medal: "Bronze", name: bronze1.name, team: bronze1.team });
-                        if (bronze2.name && playerCount >= 4) {
-                          rows.push({ medal: "Bronze", name: bronze2.name, team: bronze2.team });
-                        }
-                      }
-
-                      if (!rows.length) {
-                        return (
-                          <tr key={`${bracket.key}-none`}>
-                            <td className={styles.weightCell}>{bracket.weightCategory}</td>
-                            <td colSpan={4} className={styles.noMedalCell}>
-                              No results recorded yet
-                            </td>
-                          </tr>
-                        );
-                      }
-
-                      return rows.map((r, i) => (
-                        <tr key={`${bracket.key}-${r.medal}-${i}`}>
-                          {i === 0 && (
-                            <td rowSpan={rows.length} className={`${styles.weightCell} ${styles.weightCellFirst}`}>
-                              {bracket.weightCategory}
-                            </td>
-                          )}
-
-                          <td className={styles.medalCell}>
-                            <div className={styles.medalContainer}>
-                              <MedalIcon className={`${styles.medalIcon} ${medalIconCls[r.medal]}`} />
-                              <span className={styles.medalText}>{r.medal}</span>
-                            </div>
+                <tbody>
+                  {page.weights.map((group) =>
+                    group.rows.map((r, i) => (
+                      <tr key={`${page.gender}_${page.age}_${group.weightCategory}_${r.medal}_${r.name}_${i}`}>
+                        {i === 0 && (
+                          <td rowSpan={group.rows.length} className={`${styles.weightCell} ${styles.weightCellFirst}`}>
+                            {group.weightCategory}
                           </td>
+                        )}
 
-                          <td className={`${styles.participantCell} ${styles.winnerName}`}>
-                            <strong>{r.name || "TBD"}</strong>
-                          </td>
+                        <td className={styles.medalCell}>
+                          <div className={styles.medalContainer}>
+                            <MedalIcon className={`${styles.medalIcon} ${medalIconCls[r.medal]}`} />
+                            <span className={styles.medalText}>{r.medal}</span>
+                          </div>
+                        </td>
 
-                          <td className={styles.teamCell}>
-                            {r.team ? (
-                              <span className={styles.teamName}>{r.team}</span>
-                            ) : (
-                              <span className={styles.noTeam}>-</span>
-                            )}
-                          </td>
+                        <td className={`${styles.participantCell} ${styles.winnerName}`}>
+                          <strong>{r.name || "TBD"}</strong>
+                        </td>
 
-                          <td className={styles.markCell}></td>
-                        </tr>
-                      ));
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                        <td className={styles.teamCell}>
+                          {r.team ? <span className={styles.teamName}>{r.team}</span> : <span className={styles.noTeam}>-</span>}
+                        </td>
 
-              <PageFooter pageIdx={catIdx} totalPages={Object.keys(grouped).length} />
+                        <td className={styles.markCell}></td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
-          );
-        })
+
+            <PageFooter pageIdx={catIdx} totalPages={grouped.length} />
+          </div>
+        ))
       ) : (
         <div className={styles.noWinnersContainer}>
           <MedalIcon className={styles.noWinnersIcon} />
-          <h2 className={styles.noWinnersTitle}>No Winners Yet!</h2>
+
+          <h2 className={styles.noWinnersTitle}>No {selectedEvent} Winners Yet!</h2>
+
           <p className={styles.noWinnersText}>
-            No tournament results have been recorded yet. Please complete the matches in the <strong>Tie Sheet</strong> section first.
+            No results found for <strong>{selectedEvent}</strong>. Please declare medals in the{" "}
+            <strong>Entry</strong> section or declare winners in the <strong>Tie Sheet</strong> section first.
           </p>
+
           <button
             className={styles.goToTieSheetButton}
-            onClick={() => (window.location.href = `/tournaments/${id}/tiesheet`)}
+            onClick={() => {
+              window.location.href = `/tournaments/${id}/tie-sheet`;
+            }}
           >
             Go to Tie Sheet
           </button>
         </div>
       )}
+      </PremiumAccessGuard>
     </div>
+        
   );
 };
 

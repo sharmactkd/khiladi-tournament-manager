@@ -1226,6 +1226,12 @@ textarea {
   gap: 1rem;
 }
 
+.pointSystem > div {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .pointSystem input {
   border: 1px solid #cf0006; 
 }
@@ -1860,6 +1866,58 @@ textarea {
   font-weight: 700;
 }
 
+.errorHighlight {
+  border: 2px solid #cf0006 !important;
+  box-shadow: 0 0 0 4px rgba(207, 0, 6, 0.18) !important;
+  border-radius: 6px !important;
+  animation: errorPulse 0.8s ease-in-out 2;
+}
+
+.weightActionCell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.weightActionBtn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: #cf0006;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.weightActionBtn:hover {
+  background: #a00005;
+  transform: translateY(-1px);
+}
+
+.weightDeleteBtn {
+  background: #111827;
+}
+
+.weightDeleteBtn:hover {
+  background: #000;
+}
+
+@keyframes errorPulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(207, 0, 6, 0.35);
+  }
+  100% {
+    box-shadow: 0 0 0 6px rgba(207, 0, 6, 0);
+  }
+}
 /* Mobile Responsive */
 @media (max-width: 768px) {
   .openCategoryHint {

@@ -32,12 +32,12 @@ const Submit = ({ initialTournament }) => {
     <div className={styles.section}>
       <button
         type="submit"
-        disabled={isSubmitting || !isValid || !dirty}
+       disabled={isSubmitting}
         className={styles.submitButton}
-        style={{
-          opacity: isSubmitting || !isValid || !dirty ? 0.6 : 1,
-          cursor: isSubmitting || !isValid || !dirty ? 'not-allowed' : 'pointer'
-        }}
+       style={{
+  opacity: isSubmitting ? 0.6 : 1,
+  cursor: isSubmitting ? "not-allowed" : "pointer"
+}}
       >
         {isSubmitting ? (
           <>

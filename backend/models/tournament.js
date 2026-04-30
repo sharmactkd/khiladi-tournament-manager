@@ -137,9 +137,9 @@ const tournamentSchema = new mongoose.Schema(
       },
     },
     medalPoints: {
-      gold: { type: Number, default: 12, min: 0 },
-      silver: { type: Number, default: 7, min: 0 },
-      bronze: { type: Number, default: 5, min: 0 },
+      gold: { type: Number, default: 5, min: 0 },
+      silver: { type: Number, default: 3, min: 0 },
+      bronze: { type: Number, default: 1, min: 0 },
     },
     description: { type: String, default: "", trim: true },
     matchSchedule: { type: String, default: "", trim: true },

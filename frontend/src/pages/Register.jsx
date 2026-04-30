@@ -84,15 +84,16 @@ const Register = () => {
         <p className={styles.subtitle}>Create Your Account</p>
 
         <div className={styles.socialLogin}>
-          <button
-            type="button"
-            className={styles.socialButton}
-            onClick={handleGoogleLogin}
-            aria-label="Continue with Google"
-            title="Continue with Google"
-          >
-            <FcGoogle className={styles.socialIcon} />
-          </button>
+  <button
+  type="button"
+  className={styles.googleLoginBtn}
+  onClick={handleGoogleLogin}
+  aria-label="Register with Google"
+  title="Register with Google"
+>
+  <FcGoogle className={styles.googleIcon} />
+  <span>Register with Google</span>
+</button>
         </div>
 
         <div className={styles.divider}>

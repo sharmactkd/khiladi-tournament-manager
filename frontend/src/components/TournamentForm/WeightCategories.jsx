@@ -1,10 +1,13 @@
 // src/components/TournamentForm/WeightCategories.jsx
 
 import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faPlus, faTrashCan } from "@fortawesome/free-solid-svg-icons";
+
 import { WT_WEIGHTS, SGFI_WEIGHTS } from "./constants";
 import styles from "../../pages/TournamentForm.module.css";
 
-import api from "../../api.js"; // default export
+import api from "../../api.js";
 import { getWeightPresets, saveWeightPreset } from "../../api.js";
 
 const EMPTY_ROW = { min: "", max: "", category: "", description: "" };
@@ -12,25 +15,23 @@ const EMPTY_ROW = { min: "", max: "", category: "", description: "" };
 const isPlainObject = (v) => v && typeof v === "object" && !Array.isArray(v);
 
 const normalizeAgeGenderCustom = (ageValue) => {
-  // Accept legacy format: [rows]
   if (Array.isArray(ageValue)) {
     return {
-      Male: Array.isArray(ageValue) && ageValue.length > 0 ? ageValue : [EMPTY_ROW],
-      Female: Array.isArray(ageValue) && ageValue.length > 0 ? ageValue : [EMPTY_ROW],
+      Male: ageValue.length > 0 ? ageValue : [EMPTY_ROW],
+      Female: ageValue.length > 0 ? ageValue : [EMPTY_ROW],
     };
   }
 
-  // New format: { Male: [...], Female: [...] }
   if (isPlainObject(ageValue)) {
     const male = Array.isArray(ageValue.Male) ? ageValue.Male : [];
     const female = Array.isArray(ageValue.Female) ? ageValue.Female : [];
+
     return {
       Male: male.length > 0 ? male : [EMPTY_ROW],
       Female: female.length > 0 ? female : [EMPTY_ROW],
     };
   }
 
-  // Missing/invalid
   return { Male: [EMPTY_ROW], Female: [EMPTY_ROW] };
 };
 
@@ -38,6 +39,8 @@ const Weights = ({ values, setFieldValue }) => {
   const [presetName, setPresetName] = useState("");
   const [presets, setPresets] = useState([]);
   const [presetLoading, setPresetLoading] = useState(false);
+
+  const inputRefs = useRef({});
 
   const selectedAges = useMemo(
     () => [
@@ -63,6 +66,7 @@ const Weights = ({ values, setFieldValue }) => {
   const getStandardForAge = useCallback((age) => {
     const wtAges = ["Sub-Junior", "Cadet", "Junior", "Senior"];
     const sgfiAges = ["Under - 14", "Under - 17", "Under - 19"];
+
     if (wtAges.includes(age)) return "WT";
     if (sgfiAges.includes(age)) return "SGFI";
     return null;
@@ -77,10 +81,6 @@ const Weights = ({ values, setFieldValue }) => {
   const showCadetToggle =
     sortedSelectedAges.includes("Cadet") && values.weightCategories?.type === "WT";
 
-  // Refs for input focus
-  const inputRefs = useRef({});
-
-  // ===== Presets =====
   useEffect(() => {
     const fetchPresets = async () => {
       if (values.weightCategories?.type !== "custom") {
@@ -89,10 +89,12 @@ const Weights = ({ values, setFieldValue }) => {
       }
 
       setPresetLoading(true);
+
       try {
         const res = await getWeightPresets();
 
         let presetsArray = [];
+
         if (res?.data?.presets && Array.isArray(res.data.presets)) {
           presetsArray = res.data.presets;
         } else if (res?.presets && Array.isArray(res.presets)) {
@@ -101,9 +103,6 @@ const Weights = ({ values, setFieldValue }) => {
           presetsArray = res.data;
         } else if (Array.isArray(res)) {
           presetsArray = res;
-        } else {
-          console.warn("Unexpected presets response format:", res);
-          presetsArray = [];
         }
 
         setPresets(
@@ -124,7 +123,6 @@ const Weights = ({ values, setFieldValue }) => {
     fetchPresets();
   }, [values.weightCategories?.type]);
 
-  // ===== Ensure custom structure exists for selected ages (AGE + GENDER) =====
   useEffect(() => {
     if (values.weightCategories?.type !== "custom") return;
 
@@ -136,7 +134,6 @@ const Weights = ({ values, setFieldValue }) => {
       const normalized = normalizeAgeGenderCustom(nextCustom[age]);
       const existing = nextCustom[age];
 
-      // Decide if we need to replace
       const shouldReplace =
         Array.isArray(existing) ||
         !isPlainObject(existing) ||
@@ -148,28 +145,19 @@ const Weights = ({ values, setFieldValue }) => {
       if (shouldReplace) {
         nextCustom[age] = normalized;
         changed = true;
-      } else {
-        // Ensure at least one row each
-        if (existing.Male.length === 0) {
-          nextCustom[age] = { ...existing, Male: [EMPTY_ROW] };
-          changed = true;
-        }
-        if (existing.Female.length === 0) {
-          nextCustom[age] = { ...(nextCustom[age] || existing), Female: [EMPTY_ROW] };
-          changed = true;
-        }
       }
     });
-
-    // Optional cleanup: remove custom ages that are no longer selected (keep minimal behavior)
-    // Not doing removal to avoid unexpected data loss.
 
     if (changed) {
       setFieldValue("weightCategories.custom", nextCustom);
     }
-  }, [values.weightCategories?.type, selectedAges, values.weightCategories?.custom, setFieldValue]);
+  }, [
+    values.weightCategories?.type,
+    selectedAges,
+    values.weightCategories?.custom,
+    setFieldValue,
+  ]);
 
-  // ===== Helpers for custom rows =====
   const getRows = useCallback(
     (age, gender) => {
       const ageVal = values.weightCategories?.custom?.[age];
@@ -183,16 +171,17 @@ const Weights = ({ values, setFieldValue }) => {
     (age, gender, rows) => {
       const currentCustom = values.weightCategories?.custom || {};
       const normalizedAge = normalizeAgeGenderCustom(currentCustom[age]);
+
       const nextAge = {
         ...normalizedAge,
         [gender]: rows && rows.length > 0 ? rows : [EMPTY_ROW],
       };
+
       setFieldValue(`weightCategories.custom.${age}`, nextAge);
     },
     [values.weightCategories?.custom, setFieldValue]
   );
 
-  // Add new row and focus on Max field of new row
   const addRowAndFocus = useCallback(
     (age, gender) => {
       const rows = getRows(age, gender);
@@ -203,28 +192,73 @@ const Weights = ({ values, setFieldValue }) => {
           ? parseFloat(lastMax)
           : null;
 
-      const suggestedMin =
-        lastMaxNum != null ? (lastMaxNum + 0.1).toFixed(1) : "";
+      const suggestedMin = lastMaxNum != null ? (lastMaxNum + 0.1).toFixed(1) : "";
 
       const newRowIndex = rows.length;
-      const newRows = [...rows, { min: suggestedMin, max: "", category: "", description: "" }];
+      const newRows = [
+        ...rows,
+        { min: suggestedMin, max: "", category: "", description: "" },
+      ];
 
       setRows(age, gender, newRows);
 
       setTimeout(() => {
         const maxKey = `${age}-${gender}-${newRowIndex}-max`;
-        if (inputRefs.current[maxKey]) {
-          inputRefs.current[maxKey].focus();
-          inputRefs.current[maxKey].select();
-        }
+        inputRefs.current[maxKey]?.focus();
+        inputRefs.current[maxKey]?.select();
       }, 0);
     },
     [getRows, setRows]
   );
 
+  const addRowBelowAndFocus = useCallback(
+    (age, gender, index) => {
+      const rows = getRows(age, gender);
+
+      const prevMaxRaw = rows[index]?.max;
+      const prevMax =
+        prevMaxRaw !== "" && prevMaxRaw != null && !Number.isNaN(Number(prevMaxRaw))
+          ? parseFloat(prevMaxRaw)
+          : null;
+
+      const suggestedMin = prevMax != null ? (prevMax + 0.1).toFixed(1) : "";
+
+      const newRowIndex = index + 1;
+
+      const newRows = [
+        ...rows.slice(0, index + 1),
+        {
+          min: suggestedMin,
+          max: "",
+          category: "",
+          description: "",
+        },
+        ...rows.slice(index + 1),
+      ];
+
+      setRows(age, gender, newRows);
+
+      setTimeout(() => {
+        const maxKey = `${age}-${gender}-${newRowIndex}-max`;
+        inputRefs.current[maxKey]?.focus();
+        inputRefs.current[maxKey]?.select();
+      }, 0);
+    },
+    [getRows, setRows]
+  );
+
+  const removeRow = useCallback(
+    (age, gender, rows, index) => {
+      const newRows = rows.filter((_, i) => i !== index);
+      setRows(age, gender, newRows.length > 0 ? newRows : [EMPTY_ROW]);
+    },
+    [setRows]
+  );
+
   const handleKeyDown = useCallback(
     (e, age, gender, rowIndex, field) => {
       if (e.key !== "Enter") return;
+
       e.preventDefault();
 
       if (field === "max") {
@@ -234,10 +268,8 @@ const Weights = ({ values, setFieldValue }) => {
 
       if (field === "min") {
         const maxKey = `${age}-${gender}-${rowIndex}-max`;
-        if (inputRefs.current[maxKey]) {
-          inputRefs.current[maxKey].focus();
-          inputRefs.current[maxKey].select();
-        }
+        inputRefs.current[maxKey]?.focus();
+        inputRefs.current[maxKey]?.select();
       }
     },
     [addRowAndFocus]
@@ -249,7 +281,6 @@ const Weights = ({ values, setFieldValue }) => {
       const next = { ...rows[index] };
 
       if (field === "min" || field === "max") {
-        // Keep empty string as empty to allow open-ended max
         next[field] = value === "" ? "" : parseFloat(value);
       } else {
         next[field] = value;
@@ -261,7 +292,6 @@ const Weights = ({ values, setFieldValue }) => {
     [getRows, setRows]
   );
 
-  // ===== Auto-generate category & description for CUSTOM (supports open-ended max) =====
   useEffect(() => {
     if (values.weightCategories?.type !== "custom") return;
 
@@ -274,7 +304,6 @@ const Weights = ({ values, setFieldValue }) => {
 
       ["Male", "Female"].forEach((gender) => {
         const rows = Array.isArray(normalizedAge[gender]) ? normalizedAge[gender] : [];
-        if (rows.length === 0) return;
 
         const updatedRows = rows.map((row, idx) => {
           const min =
@@ -287,7 +316,6 @@ const Weights = ({ values, setFieldValue }) => {
               ? parseFloat(row.max)
               : null;
 
-          // Case 1: open-ended last category (max blank)
           if (min !== null && (row.max === "" || row.max == null)) {
             const category = `${min}+ KG`;
             const description = `(Over ${min}kg)`;
@@ -296,20 +324,21 @@ const Weights = ({ values, setFieldValue }) => {
               hasChanges = true;
               return { ...row, category, description };
             }
+
             return row;
           }
 
-          // Case 2: invalid or incomplete
           if (min === null || max === null || min >= max) {
             if (row.category || row.description) {
               hasChanges = true;
               return { ...row, category: "", description: "" };
             }
+
             return row;
           }
 
-          // Case 3: bounded category
           const category = `Under - ${max} KG`;
+
           let description = "";
 
           if (idx === 0) {
@@ -325,6 +354,7 @@ const Weights = ({ values, setFieldValue }) => {
               prevMaxRaw !== "" && prevMaxRaw != null && !Number.isNaN(Number(prevMaxRaw))
                 ? parseFloat(prevMaxRaw)
                 : null;
+
             description =
               prevMax != null
                 ? `(Over ${prevMax}kg & Not exceeding ${max}kg)`
@@ -335,6 +365,7 @@ const Weights = ({ values, setFieldValue }) => {
             hasChanges = true;
             return { ...row, category, description };
           }
+
           return row;
         });
 
@@ -347,9 +378,13 @@ const Weights = ({ values, setFieldValue }) => {
     if (hasChanges) {
       setFieldValue("weightCategories.custom", nextCustom);
     }
-  }, [values.weightCategories?.type, values.weightCategories?.custom, selectedAges, setFieldValue]);
+  }, [
+    values.weightCategories?.type,
+    values.weightCategories?.custom,
+    selectedAges,
+    setFieldValue,
+  ]);
 
-  // ===== Auto-save STANDARD weights (unchanged behavior) =====
   useEffect(() => {
     if (values.weightCategories?.type === "custom") return;
 
@@ -367,6 +402,7 @@ const Weights = ({ values, setFieldValue }) => {
             values.cadetCategoryType === "height"
               ? WT_WEIGHTS.Cadet.height
               : WT_WEIGHTS.Cadet.weight;
+
           maleWeights = cadetData.Male || [];
           femaleWeights = cadetData.Female || [];
         } else {
@@ -379,6 +415,7 @@ const Weights = ({ values, setFieldValue }) => {
       }
 
       const extractLabel = (str) => String(str).split(" (")[0].trim();
+
       allMale = [...allMale, ...maleWeights.map(extractLabel)];
       allFemale = [...allFemale, ...femaleWeights.map(extractLabel)];
     });
@@ -406,6 +443,107 @@ const Weights = ({ values, setFieldValue }) => {
     setFieldValue,
   ]);
 
+  const renderCustomTable = (age, gender, rows) => (
+    <div className={styles.genderColumn}>
+      <h4 style={{ color: "#cf0006" }}>{gender}</h4>
+
+      <div className={styles.weightTableContainer}>
+        <table className={styles.weightTable}>
+          <thead>
+            <tr>
+              <th>S.No.</th>
+              <th>Min. Weight (kg)</th>
+              <th>Max. Weight (kg)</th>
+              <th>Category</th>
+              <th>Description</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {rows.map((row, idx) => {
+              const minKey = `${age}-${gender}-${idx}-min`;
+              const maxKey = `${age}-${gender}-${idx}-max`;
+
+              const prevMaxRaw = idx > 0 ? rows[idx - 1]?.max : "";
+              const prevMax =
+                prevMaxRaw !== "" && prevMaxRaw != null && !Number.isNaN(Number(prevMaxRaw))
+                  ? parseFloat(prevMaxRaw)
+                  : null;
+
+              const minPlaceholder =
+                idx > 0 && prevMax != null ? (prevMax + 0.1).toFixed(1) : "e.g. 30";
+
+              return (
+                <tr key={`${age}-${gender}-${idx}`}>
+                  <td>{idx + 1}</td>
+
+                  <td>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      placeholder={minPlaceholder}
+                      value={row.min ?? ""}
+                      onChange={(e) => updateRow(age, gender, idx, "min", e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, age, gender, idx, "min")}
+                      ref={(el) => (inputRefs.current[minKey] = el)}
+                      className={styles.numberInput}
+                    />
+                  </td>
+
+                  <td>
+                    <input
+                      type="number"
+                      step="0.1"
+                      min="0"
+                      placeholder="e.g. 35"
+                      value={row.max ?? ""}
+                      onChange={(e) => updateRow(age, gender, idx, "max", e.target.value)}
+                      onKeyDown={(e) => handleKeyDown(e, age, gender, idx, "max")}
+                      ref={(el) => (inputRefs.current[maxKey] = el)}
+                      className={styles.numberInput}
+                    />
+                  </td>
+
+                  <td>
+                    <strong>{row.category || ""}</strong>
+                  </td>
+
+                  <td>{row.description || ""}</td>
+
+                  <td>
+                    <div className={styles.weightActionCell}>
+                      <button
+                        type="button"
+                        className={styles.weightActionBtn}
+                        onClick={() => addRowBelowAndFocus(age, gender, idx)}
+                        title="Add row below"
+                        aria-label="Add row below"
+                      >
+                        <FontAwesomeIcon icon={faPlus} />
+                      </button>
+
+                      <button
+                        type="button"
+                        className={`${styles.weightActionBtn} ${styles.weightDeleteBtn}`}
+                        onClick={() => removeRow(age, gender, rows, idx)}
+                        title="Remove row"
+                        aria-label="Remove row"
+                      >
+                        <FontAwesomeIcon icon={faTrashCan} />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+
   if (selectedAges.length === 0 && values.weightCategories?.type !== "custom") {
     return (
       <p className={styles.infoText}>
@@ -416,15 +554,16 @@ const Weights = ({ values, setFieldValue }) => {
 
   return (
     <>
-      {/* Weight Type Dropdown */}
       <div className={styles.fieldWrapper}>
         <label htmlFor="weightTypeSelect"></label>
+
         <select
           id="weightTypeSelect"
           className={styles.select}
           value={values.weightCategories?.type || "WT"}
           onChange={(e) => {
             const newType = e.target.value;
+
             setFieldValue("weightCategories.type", newType);
             setFieldValue("weightCategories.selected", { male: [], female: [] });
 
@@ -448,7 +587,6 @@ const Weights = ({ values, setFieldValue }) => {
         </select>
       </div>
 
-      {/* Standard Weights */}
       {values.weightCategories?.type !== "custom" && (
         <>
           {sortedSelectedAges.map((age) => {
@@ -462,6 +600,7 @@ const Weights = ({ values, setFieldValue }) => {
                   values.cadetCategoryType === "height"
                     ? WT_WEIGHTS.Cadet.height
                     : WT_WEIGHTS.Cadet.weight;
+
                 maleWeights = cadetData.Male || [];
                 femaleWeights = cadetData.Female || [];
               } else {
@@ -475,13 +614,14 @@ const Weights = ({ values, setFieldValue }) => {
 
             return (
               <div key={age} className={styles.ageGroupSection}>
-                {/* Cadet Toggle - Above Table */}
                 {age === "Cadet" && showCadetToggle && (
                   <div className={styles.cadetToggleContainer}>
                     <div className={styles.cadetRadioGroup}>
                       <label
                         className={`${styles.cadetRadioLabel} ${
-                          values.cadetCategoryType === "weight" ? styles.cadetRadioSelected : ""
+                          values.cadetCategoryType === "weight"
+                            ? styles.cadetRadioSelected
+                            : ""
                         }`}
                       >
                         <input
@@ -493,9 +633,12 @@ const Weights = ({ values, setFieldValue }) => {
                         />
                         Cadet Weight-based Categories
                       </label>
+
                       <label
                         className={`${styles.cadetRadioLabel} ${
-                          values.cadetCategoryType === "height" ? styles.cadetRadioSelected : ""
+                          values.cadetCategoryType === "height"
+                            ? styles.cadetRadioSelected
+                            : ""
                         }`}
                       >
                         <input
@@ -518,6 +661,7 @@ const Weights = ({ values, setFieldValue }) => {
                 <div className={styles.genderSections}>
                   <div className={styles.genderColumn}>
                     <h4 style={{ color: "#cf0006" }}>Male</h4>
+
                     <div className={styles.weightTableContainer}>
                       <table className={styles.weightTable}>
                         <thead>
@@ -527,12 +671,14 @@ const Weights = ({ values, setFieldValue }) => {
                             <th>Description</th>
                           </tr>
                         </thead>
+
                         <tbody>
                           {maleWeights.length > 0 ? (
                             maleWeights.map((cat, i) => {
                               const parts = String(cat).split(" (");
                               const label = parts[0];
                               const desc = parts[1] ? parts[1].replace(")", "") : "";
+
                               return (
                                 <tr key={`${age}-male-${i}`}>
                                   <td>{i + 1}</td>
@@ -553,6 +699,7 @@ const Weights = ({ values, setFieldValue }) => {
 
                   <div className={styles.genderColumn}>
                     <h4 style={{ color: "#cf0006" }}>Female</h4>
+
                     <div className={styles.weightTableContainer}>
                       <table className={styles.weightTable}>
                         <thead>
@@ -562,12 +709,14 @@ const Weights = ({ values, setFieldValue }) => {
                             <th>Description</th>
                           </tr>
                         </thead>
+
                         <tbody>
                           {femaleWeights.length > 0 ? (
                             femaleWeights.map((cat, i) => {
                               const parts = String(cat).split(" (");
                               const label = parts[0];
                               const desc = parts[1] ? parts[1].replace(")", "") : "";
+
                               return (
                                 <tr key={`${age}-female-${i}`}>
                                   <td>{i + 1}</td>
@@ -592,56 +741,57 @@ const Weights = ({ values, setFieldValue }) => {
         </>
       )}
 
-          {/* Custom Weight Categories (AGE + GENDER) */}
-      {values.weightCategories?.type === 'custom' && (
+      {values.weightCategories?.type === "custom" && (
         <div className={`${styles.fieldWrapper} ${styles.customWeightWrapper}`}>
-          {/* Preset Controls - Server Based */}
           <div className={styles.presetControls}>
             <select
-             onChange={async (e) => {
-  const presetId = e.target.value;
-  if (!presetId) {
-    e.target.value = "";
-    return;
-  }
+              onChange={async (e) => {
+                const presetId = e.target.value;
 
-  const selectedPreset = presets.find((preset) => String(preset.id) === String(presetId));
+                if (!presetId) {
+                  e.target.value = "";
+                  return;
+                }
 
-  try {
-    const res = await api.get(`/weight-presets/${presetId}`);
-    const presetData = res.data?.data || res.data?.preset?.data || res.data;
+                const selectedPreset = presets.find(
+                  (preset) => String(preset.id) === String(presetId)
+                );
 
-    if (presetData && typeof presetData === "object") {
-      // Normalize incoming preset to ensure age+gender structure
-      const nextCustom = { ...(presetData || {}) };
-      selectedAges.forEach((age) => {
-        nextCustom[age] = normalizeAgeGenderCustom(nextCustom[age]);
-      });
+                try {
+                  const res = await api.get(`/weight-presets/${presetId}`);
+                  const presetData = res.data?.data || res.data?.preset?.data || res.data;
 
-      setFieldValue("weightCategories.custom", nextCustom);
+                  if (presetData && typeof presetData === "object") {
+                    const nextCustom = { ...(presetData || {}) };
 
-      // Show loaded preset name in input field
-      if (selectedPreset?.name) {
-        setPresetName(selectedPreset.name);
-      }
+                    selectedAges.forEach((age) => {
+                      nextCustom[age] = normalizeAgeGenderCustom(nextCustom[age]);
+                    });
 
-      alert("Preset loaded successfully!");
-    } else {
-      alert("Preset data not found");
-    }
-  } catch (err) {
-    console.error("Failed to load preset:", err);
-    alert("Failed to load preset. Please try again.");
-  }
+                    setFieldValue("weightCategories.custom", nextCustom);
 
-  e.target.value = "";
-}}
+                    if (selectedPreset?.name) {
+                      setPresetName(selectedPreset.name);
+                    }
+
+                    alert("Preset loaded successfully!");
+                  } else {
+                    alert("Preset data not found");
+                  }
+                } catch (err) {
+                  console.error("Failed to load preset:", err);
+                  alert("Failed to load preset. Please try again.");
+                }
+
+                e.target.value = "";
+              }}
               value=""
               disabled={presetLoading}
             >
               <option value="">
                 {presetLoading ? "-- Loading Presets... --" : "-- Load Saved Preset --"}
               </option>
+
               {presets.map((preset) => (
                 <option key={preset.id} value={preset.id}>
                   {preset.name}
@@ -664,13 +814,13 @@ const Weights = ({ values, setFieldValue }) => {
                 if (!presetName.trim()) return;
 
                 try {
-                  // Save what is currently in form (already normalized)
                   await saveWeightPreset(presetName.trim(), values.weightCategories.custom);
                   setPresetName("");
                   alert("Preset saved successfully on server!");
 
                   const res = await getWeightPresets();
                   const list = res?.presets || res?.data?.presets || [];
+
                   setPresets(
                     (Array.isArray(list) ? list : []).map((p) => ({
                       id: p._id || p.id,
@@ -689,16 +839,14 @@ const Weights = ({ values, setFieldValue }) => {
             </button>
           </div>
 
-          {/* Single global hint - shown only once */}
           <div className={styles.openCategoryHint}>
             💡 <strong>To create "Over" (Open-Ended) category:</strong>
             <br />
-            Simply leave the <strong>Max. Weight</strong> field blank in the last row;
-           
-            It will automatically become <strong>"Over Category"</strong> with description, Example "(Over 80kg)".
+            Simply leave the <strong>Max. Weight</strong> field blank in the last row; It will
+            automatically become <strong>"Over Category"</strong> with description, Example
+            "(Over 80kg)".
           </div>
 
-          {/* Age-wise + Gender-wise Custom Tables */}
           {selectedAges.map((age) => {
             const maleRows = getRows(age, "Male");
             const femaleRows = getRows(age, "Female");
@@ -708,191 +856,8 @@ const Weights = ({ values, setFieldValue }) => {
                 <h3>{age} - Custom Weight Divisions</h3>
 
                 <div className={styles.genderSections}>
-                  {/* Male */}
-                  <div className={styles.genderColumn}>
-                    <h4 style={{ color: "#cf0006" }}>Male</h4>
-
-                    <div className={styles.weightTableContainer}>
-                      <table className={styles.weightTable}>
-                        <thead>
-                          <tr>
-                            <th>S.No.</th>
-                            <th>Min. Weight (kg)</th>
-                            <th>Max. Weight (kg)</th>
-                            <th>Category</th>
-                            <th>Description</th>
-                            <th>Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {maleRows.map((row, idx) => {
-                            const minKey = `${age}-Male-${idx}-min`;
-                            const maxKey = `${age}-Male-${idx}-max`;
-
-                            const prevMaxRaw = idx > 0 ? maleRows[idx - 1]?.max : "";
-                            const prevMax =
-                              prevMaxRaw !== "" && prevMaxRaw != null && !Number.isNaN(Number(prevMaxRaw))
-                                ? parseFloat(prevMaxRaw)
-                                : null;
-
-                            const minPlaceholder =
-                              idx > 0 && prevMax != null ? (prevMax + 0.1).toFixed(1) : "e.g. 30";
-
-                            return (
-                              <tr key={`male-${idx}`}>
-                                <td>{idx + 1}</td>
-                                <td>
-                                  <input
-                                    type="number"
-                                    step="0.1"
-                                    min="0"
-                                    placeholder={minPlaceholder}
-                                    value={row.min ?? ""}
-                                    onChange={(e) => updateRow(age, "Male", idx, "min", e.target.value)}
-                                    onKeyDown={(e) => handleKeyDown(e, age, "Male", idx, "min")}
-                                    ref={(el) => (inputRefs.current[minKey] = el)}
-                                    className={styles.numberInput}
-                                  />
-                                </td>
-                                <td>
-                                  <input
-                                    type="number"
-                                    step="0.1"
-                                    min="0"
-                                    placeholder="e.g. 35"
-                                    value={row.max ?? ""}
-                                    onChange={(e) => updateRow(age, "Male", idx, "max", e.target.value)}
-                                    onKeyDown={(e) => handleKeyDown(e, age, "Male", idx, "max")}
-                                    ref={(el) => (inputRefs.current[maxKey] = el)}
-                                    className={styles.numberInput}
-                                  />
-                                </td>
-                                <td>
-                                  <strong>{row.category || ""}</strong>
-                                </td>
-                                <td>{row.description || ""}</td>
-                                <td>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const newRows = maleRows.filter((_, i) => i !== idx);
-                                      setRows(age, "Male", newRows.length > 0 ? newRows : [EMPTY_ROW]);
-                                    }}
-                                    className={styles.removeRowBtn}
-                                  >
-                                    Remove
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => addRowAndFocus(age, "Male")}
-                      className={styles.addRowButton}
-                    >
-                      + Add Division for {age} (Male)
-                    </button>
-                  </div>
-
-                  {/* Female */}
-                  <div className={styles.genderColumn}>
-                    <h4 style={{ color: "#cf0006" }}>Female</h4>
-
-                    <div className={styles.weightTableContainer}>
-                      <table className={styles.weightTable}>
-                        <thead>
-                          <tr>
-                            <th>S.No.</th>
-                            <th>Min. Weight (kg)</th>
-                            <th>Max. Weight (kg)</th>
-                            <th>Category</th>
-                            <th>Description</th>
-                            <th>Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {femaleRows.map((row, idx) => {
-                            const minKey = `${age}-Female-${idx}-min`;
-                            const maxKey = `${age}-Female-${idx}-max`;
-
-                            const prevMaxRaw = idx > 0 ? femaleRows[idx - 1]?.max : "";
-                            const prevMax =
-                              prevMaxRaw !== "" && prevMaxRaw != null && !Number.isNaN(Number(prevMaxRaw))
-                                ? parseFloat(prevMaxRaw)
-                                : null;
-
-                            const minPlaceholder =
-                              idx > 0 && prevMax != null ? (prevMax + 0.1).toFixed(1) : "e.g. 30";
-
-                            return (
-                              <tr key={`female-${idx}`}>
-                                <td>{idx + 1}</td>
-                                <td>
-                                  <input
-                                    type="number"
-                                    step="0.1"
-                                    min="0"
-                                    placeholder={minPlaceholder}
-                                    value={row.min ?? ""}
-                                    onChange={(e) =>
-                                      updateRow(age, "Female", idx, "min", e.target.value)
-                                    }
-                                    onKeyDown={(e) => handleKeyDown(e, age, "Female", idx, "min")}
-                                    ref={(el) => (inputRefs.current[minKey] = el)}
-                                    className={styles.numberInput}
-                                  />
-                                </td>
-                                <td>
-                                  <input
-                                    type="number"
-                                    step="0.1"
-                                    min="0"
-                                    placeholder="e.g. 35"
-                                    value={row.max ?? ""}
-                                    onChange={(e) =>
-                                      updateRow(age, "Female", idx, "max", e.target.value)
-                                    }
-                                    onKeyDown={(e) => handleKeyDown(e, age, "Female", idx, "max")}
-                                    ref={(el) => (inputRefs.current[maxKey] = el)}
-                                    className={styles.numberInput}
-                                  />
-                                </td>
-                                <td>
-                                  <strong>{row.category || ""}</strong>
-                                </td>
-                                <td>{row.description || ""}</td>
-                                <td>
-                                  <button
-                                    type="button"
-                                    onClick={() => {
-                                      const newRows = femaleRows.filter((_, i) => i !== idx);
-                                      setRows(age, "Female", newRows.length > 0 ? newRows : [EMPTY_ROW]);
-                                    }}
-                                    className={styles.removeRowBtn}
-                                  >
-                                    Remove
-                                  </button>
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => addRowAndFocus(age, "Female")}
-                      className={styles.addRowButton}
-                    >
-                      + Add Division for {age} (Female)
-                    </button>
-                  </div>
+                  {renderCustomTable(age, "Male", maleRows)}
+                  {renderCustomTable(age, "Female", femaleRows)}
                 </div>
               </div>
             );

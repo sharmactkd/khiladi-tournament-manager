@@ -59,9 +59,11 @@ const BracketHeader = ({
         {bracket?.gender && (
           <span className={styles.categoryItem}>{bracket.gender}</span>
         )}
-        {bracket?.weightCategory && (
-          <span className={styles.categoryItem}>{bracket.weightCategory}</span>
-        )}
+      {bracket?.weightCategory && (
+  <span className={styles.categoryItem}>
+    {String(bracket.weightCategory).split('(')[0].trim()}
+  </span>
+)}
         <span className={styles.categoryItem}>
           Total Players: {bracket?.categoryPlayerCount || bracket?.playerCount || 'N/A'}
         </span>

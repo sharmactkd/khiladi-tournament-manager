@@ -11,28 +11,40 @@ import {
 } from './helpers';
 import styles from '../../pages/Entry.module.css';
 
-// Helper: Force DD-MM-YYYY format for DOB
 const formatDOB = (val) => {
   if (!val) return '';
+
   if (val.includes('T') || (val.includes('-') && val.length > 10)) {
     try {
       const date = new Date(val);
+
       if (!isNaN(date.getTime())) {
         const day = date.getDate().toString().padStart(2, '0');
         const month = (date.getMonth() + 1).toString().padStart(2, '0');
         const year = date.getFullYear();
+
         return `${day}-${month}-${year}`;
       }
-    } catch (error) {
-      // silent fail
-    }
+    } catch {}
   }
+
   return val;
+};
+
+const formatWeightCategory = (value) => {
+  if (!value) return '';
+  return String(value).split('(')[0].trim();
 };
 
 const EditableCell = ({ getValue, row, column, table }) => {
   const rawInitial = getValue() || '';
-  const initialValue = column.id === 'dob' ? formatDOB(rawInitial) : rawInitial;
+
+  const initialValue =
+    column.id === 'dob'
+      ? formatDOB(rawInitial)
+      : column.id === 'weightCategory'
+        ? formatWeightCategory(rawInitial)
+        : rawInitial;
 
   const [value, setValue] = useState(initialValue || '');
   const [isContactValid, setIsContactValid] = useState(true);
@@ -40,12 +52,8 @@ const EditableCell = ({ getValue, row, column, table }) => {
 
   const inputRef = useRef(null);
   const isNavigatingRef = useRef(false);
-
-  // Prevent double-commit (blur + global outside click)
   const commitLockRef = useRef(false);
   const lastCommitKeyRef = useRef('');
-
-  // Prevent duplicate toast spam for same invalid attempt
   const lastToastKeyRef = useRef('');
 
   const {
@@ -58,34 +66,81 @@ const EditableCell = ({ getValue, row, column, table }) => {
   } = table.options.meta || {};
 
   const data = table.options.data || [];
+
+  // 🔹 Autofill (Excel-like suggestion)
+const autofillColumns = ['team', 'coach', 'manager'];
+
+const autofillSuggestion = React.useMemo(() => {
+  if (!autofillColumns.includes(column.id)) return '';
+
+  const typed = String(value || '').trim().toLowerCase();
+  if (!typed) return '';
+
+  const values = [...new Set(
+    data
+      .map((row) => String(row?.[column.id] || '').trim())
+      .filter(Boolean)
+  )];
+
+  return (
+    values.find(
+      (item) =>
+        item.toLowerCase().startsWith(typed) &&
+        item.toLowerCase() !== typed
+    ) || ''
+  );
+}, [column.id, value, data]);
+
   const isEditing =
     editingCell?.rowIndex === row.index && editingCell?.colIndex === column.getIndex();
+
   const highlightRow = shouldHighlightRow(row, data, tournamentData);
 
-  const showValidationToast = useCallback((message, uniqueKey = '') => {
-    const normalizedMessage = String(message || '').trim();
-    if (!normalizedMessage) return;
+  const isTieSheetMedalLocked =
+    column.id === 'medal' && row.original?.medalSource === 'tiesheet';
 
-    const finalKey = uniqueKey || `${row.index}-${column.id}-${normalizedMessage}`;
-    if (lastToastKeyRef.current === finalKey) return;
+  const showValidationToast = useCallback(
+    (message, uniqueKey = '') => {
+      const normalizedMessage = String(message || '').trim();
 
-    lastToastKeyRef.current = finalKey;
+      if (!normalizedMessage) return;
 
-    toast.error(normalizedMessage, {
-      toastId: finalKey,
+      const finalKey = uniqueKey || `${row.index}-${column.id}-${normalizedMessage}`;
+
+      if (lastToastKeyRef.current === finalKey) return;
+
+      lastToastKeyRef.current = finalKey;
+
+      toast.error(normalizedMessage, {
+        toastId: finalKey,
+        position: 'top-right',
+        autoClose: 2500,
+        hideProgressBar: false,
+        closeOnClick: true,
+        pauseOnHover: true,
+        draggable: true,
+      });
+    },
+    [row.index, column.id]
+  );
+
+  const showTieSheetLockToast = useCallback(() => {
+    toast.warning('This medal was declared from TieSheet. Clear/change TieSheet result to edit it.', {
+      toastId: `tiesheet-medal-locked-${row.index}`,
       position: 'top-right',
       autoClose: 2500,
-      hideProgressBar: false,
-      closeOnClick: true,
-      pauseOnHover: true,
-      draggable: true,
     });
-  }, [row.index, column.id]);
+  }, [row.index]);
 
-  // Sync value only when NOT editing
   useEffect(() => {
     if (!isEditing) {
-      const formatted = column.id === 'dob' ? formatDOB(rawInitial) : rawInitial;
+      const formatted =
+        column.id === 'dob'
+          ? formatDOB(rawInitial)
+          : column.id === 'weightCategory'
+            ? formatWeightCategory(rawInitial)
+            : rawInitial;
+
       setValue(formatted);
       setErrorMessage('');
       lastToastKeyRef.current = '';
@@ -97,7 +152,6 @@ const EditableCell = ({ getValue, row, column, table }) => {
     }
   }, [rawInitial, column.id, isEditing]);
 
-  // Focus on edit start
   useEffect(() => {
     if (isEditing && inputRef.current) {
       inputRef.current.focus();
@@ -108,6 +162,13 @@ const EditableCell = ({ getValue, row, column, table }) => {
   const startEditing = useCallback(
     (e) => {
       if (['actions', 'sr', 'title'].includes(column.id)) return;
+
+      if (isTieSheetMedalLocked) {
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        showTieSheetLockToast();
+        return;
+      }
 
       if (e?.type === 'pointerdown' || e?.type === 'mousedown' || e?.type === 'touchstart') {
         e.stopPropagation();
@@ -120,12 +181,16 @@ const EditableCell = ({ getValue, row, column, table }) => {
         setEditingCell?.({ rowIndex: row.index, colIndex: column.getIndex() });
       });
     },
-    [column.id, setEditingCell, row.index, column]
+    [column.id, column, row.index, setEditingCell, isTieSheetMedalLocked, showTieSheetLockToast]
   );
 
-  // Commit logic
   const validateAndCommit = useCallback(
     (commitValue = value) => {
+      if (isTieSheetMedalLocked) {
+        showTieSheetLockToast();
+        return false;
+      }
+
       let finalValue = String(commitValue ?? '').trim();
       let isValid = true;
       let validationMessage = '';
@@ -135,6 +200,7 @@ const EditableCell = ({ getValue, row, column, table }) => {
       if (column.id === 'dob') {
         if (finalValue) {
           const validation = validateDOB(finalValue);
+
           if (!validation.isValid) {
             validationMessage = validation.message;
             setErrorMessage(validation.message);
@@ -142,6 +208,7 @@ const EditableCell = ({ getValue, row, column, table }) => {
             isValid = false;
           } else {
             finalValue = validation.formatted;
+
             const ageCat = tournamentData ? getAgeCategory(finalValue, tournamentData) : '';
             updateData?.(row.index, 'ageCategory', ageCat);
 
@@ -149,8 +216,8 @@ const EditableCell = ({ getValue, row, column, table }) => {
               tournamentData && row.original?.gender && ageCat && row.original?.weight
                 ? getWeightCategory(row.original.gender, ageCat, row.original.weight, tournamentData)
                 : '';
-            updateData?.(row.index, 'weightCategory', wtCat);
 
+            updateData?.(row.index, 'weightCategory', formatWeightCategory(wtCat));
             lastToastKeyRef.current = '';
           }
         } else {
@@ -161,6 +228,7 @@ const EditableCell = ({ getValue, row, column, table }) => {
       } else if (['coachContact', 'managerContact'].includes(column.id)) {
         const digits = finalValue.replace(/[^0-9]/g, '');
         const validation = validateContactNumber(digits);
+
         if (!validation.isValid) {
           validationMessage = validation.message;
           setErrorMessage(validation.message);
@@ -175,6 +243,7 @@ const EditableCell = ({ getValue, row, column, table }) => {
       } else if (column.id === 'weight') {
         if (finalValue) {
           const num = Number(finalValue);
+
           if (isNaN(num) || num <= 0) {
             validationMessage = 'Invalid weight: Must be a positive number';
             setErrorMessage(validationMessage);
@@ -185,33 +254,43 @@ const EditableCell = ({ getValue, row, column, table }) => {
               tournamentData && row.original?.gender && row.original?.ageCategory
                 ? getWeightCategory(row.original.gender, row.original.ageCategory, num, tournamentData)
                 : 'Not Eligible';
-            updateData?.(row.index, 'weightCategory', wtCat);
+
+            updateData?.(row.index, 'weightCategory', formatWeightCategory(wtCat));
             lastToastKeyRef.current = '';
           }
         } else {
           updateData?.(row.index, 'weightCategory', '');
           lastToastKeyRef.current = '';
         }
+      } else if (column.id === 'weightCategory') {
+        finalValue = formatWeightCategory(finalValue);
+        lastToastKeyRef.current = '';
       } else {
         lastToastKeyRef.current = '';
       }
 
       if (isValid) {
-        console.log('[COMMIT] Row:', row.index, 'Column:', column.id, 'New Value:', finalValue);
-        console.log('[COMMIT] Before update - current data value:', row.original[column.id]);
         updateData?.(row.index, column.id, finalValue);
         updateColumnWidth?.(column.getIndex(), finalValue, row.index);
-        console.log('[COMMIT] updateData called successfully');
         return true;
       }
 
-      console.log('[COMMIT FAIL] Validation failed for', column.id, validationMessage);
       return false;
     },
-    [value, column.id, updateData, updateColumnWidth, tournamentData, row, showValidationToast]
+    [
+      value,
+      column.id,
+      column,
+      updateData,
+      updateColumnWidth,
+      tournamentData,
+      row,
+      showValidationToast,
+      isTieSheetMedalLocked,
+      showTieSheetLockToast,
+    ]
   );
 
-  // Global click-outside commit
   useEffect(() => {
     if (!isEditing) return;
 
@@ -229,10 +308,10 @@ const EditableCell = ({ getValue, row, column, table }) => {
           table.options.meta?.editingCell?.colIndex === column.getIndex();
 
         if (!stillEditing) return;
-
         if (commitLockRef.current) return;
 
         const commitKey = `${row.index}:${column.id}:${String(value ?? '').trim()}`;
+
         if (lastCommitKeyRef.current === commitKey) {
           commitLockRef.current = true;
           setEditingCell?.(null);
@@ -246,10 +325,12 @@ const EditableCell = ({ getValue, row, column, table }) => {
 
         if (!ok) {
           commitLockRef.current = false;
+
           if (inputRef.current) {
             inputRef.current.focus();
             inputRef.current.select?.();
           }
+
           return;
         }
 
@@ -257,6 +338,7 @@ const EditableCell = ({ getValue, row, column, table }) => {
         setEditingCell?.(null);
 
         const needsFlush = ['dob', 'weight', 'gender'].includes(column.id);
+
         if (needsFlush && window.debouncedSaveInstance && typeof window.debouncedSaveInstance.flush === 'function') {
           window.debouncedSaveInstance.flush();
         }
@@ -266,16 +348,17 @@ const EditableCell = ({ getValue, row, column, table }) => {
     };
 
     document.addEventListener('pointerdown', handlePointerDownCapture, true);
+
     return () => {
       document.removeEventListener('pointerdown', handlePointerDownCapture, true);
     };
   }, [isEditing, table, row.index, column, column.id, value, validateAndCommit, setEditingCell]);
 
-  // Focus helper for navigation
   const focusInputIfExists = useCallback((nextRow, nextCol) => {
     const tryFocus = (attempt = 0) => {
       const selector = `input[data-row="${nextRow}"][data-col="${nextCol}"]`;
       const el = document.querySelector(selector);
+
       if (el && typeof el.focus === 'function') {
         el.focus();
         el.select?.();
@@ -286,15 +369,16 @@ const EditableCell = ({ getValue, row, column, table }) => {
         isNavigatingRef.current = false;
       }
     };
+
     tryFocus();
   }, []);
 
-  // Navigation logic
   const navigateToNextCell = useCallback(
     (e) => {
       const colIndex = column.getIndex();
       const rowIndex = row.index;
       const totalColumns = table.getAllColumns().length;
+
       let nextRow = rowIndex;
       let nextCol = colIndex;
 
@@ -309,12 +393,14 @@ const EditableCell = ({ getValue, row, column, table }) => {
       } else if (e.key === 'Tab') {
         if (e.shiftKey) {
           nextCol--;
+
           if (nextCol < 0) {
             nextRow--;
             nextCol = totalColumns - 1;
           }
         } else {
           nextCol++;
+
           if (nextCol >= totalColumns) {
             nextRow++;
             nextCol = 0;
@@ -334,13 +420,52 @@ const EditableCell = ({ getValue, row, column, table }) => {
     [column, row, table, addNewRow, setEditingCell, focusInputIfExists]
   );
 
-  // Keydown handler
   const handleKeyDown = useCallback(
     (e) => {
+
+      const copyFromAboveColumns = ['team', 'coach', 'coachContact', 'manager', 'managerContact'];
+
+if (e.altKey && e.key.toLowerCase() === 'd') {
+  if (copyFromAboveColumns.includes(column.id)) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    const aboveRow = data[row.index - 1];
+    const aboveValue = aboveRow?.[column.id] || '';
+
+    if (aboveValue) {
+      setValue(aboveValue);
+      updateData?.(row.index, column.id, aboveValue);
+      updateColumnWidth?.(column.getIndex(), aboveValue, row.index);
+    }
+  }
+
+  return;
+}
+
+      if (isTieSheetMedalLocked) {
+        e.preventDefault();
+        showTieSheetLockToast();
+        return;
+      }
+
       if (['Enter', 'Tab'].includes(e.key)) {
+
+        // 🔹 Autofill accept (Excel style)
+if (autofillSuggestion && autofillColumns.includes(column.id)) {
+  e.preventDefault();
+
+  setValue(autofillSuggestion);
+  updateData?.(row.index, column.id, autofillSuggestion);
+  updateColumnWidth?.(column.getIndex(), autofillSuggestion, row.index);
+
+  return;
+}
+
         e.preventDefault();
 
         if (isNavigatingRef.current) return;
+
         isNavigatingRef.current = true;
 
         const commitSuccess = validateAndCommit();
@@ -350,6 +475,7 @@ const EditableCell = ({ getValue, row, column, table }) => {
         } else {
           isNavigatingRef.current = false;
         }
+
         return;
       }
 
@@ -366,10 +492,12 @@ const EditableCell = ({ getValue, row, column, table }) => {
           setValue('');
           validateAndCommit('');
         }
+
         return;
       }
 
       const allowedInputKeys = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '-', 'Backspace', 'Delete'];
+
       if (!allowedInputKeys.includes(e.key)) {
         if (column.id === 'gender' && !/^[MmFf]$/.test(e.key)) e.preventDefault();
         if (column.id === 'dob' && !/[0-9-]/.test(e.key)) e.preventDefault();
@@ -380,15 +508,28 @@ const EditableCell = ({ getValue, row, column, table }) => {
         if (column.id === 'medal' && !/^[gGsSbBxX]$/.test(e.key)) e.preventDefault();
       }
     },
-    [validateAndCommit, navigateToNextCell, initialValue, column.id, setEditingCell]
+    [
+      validateAndCommit,
+      navigateToNextCell,
+      initialValue,
+      column.id,
+      setEditingCell,
+      isTieSheetMedalLocked,
+      showTieSheetLockToast,
+    ]
   );
 
-  // Change handler
   const handleChange = useCallback(
     (e) => {
+      if (isTieSheetMedalLocked) {
+        showTieSheetLockToast();
+        return;
+      }
+
       let newValue = e.target.value || '';
 
       const dynamicWidthColumns = ['name', 'team', 'fathersName', 'school', 'coach', 'manager'];
+
       if (dynamicWidthColumns.includes(column.id)) {
         updateColumnWidth?.(column.getIndex(), newValue);
       }
@@ -405,6 +546,7 @@ const EditableCell = ({ getValue, row, column, table }) => {
       if (column.id === 'event') {
         const currentEvent = row.original?.event || '';
         const trimmedNew = newValue.trim();
+
         if (trimmedNew && trimmedNew !== currentEvent) {
           updateData?.(row.index, 'subEvent', '');
         }
@@ -457,98 +599,98 @@ const EditableCell = ({ getValue, row, column, table }) => {
         }
       }
 
+      if (column.id === 'weightCategory') {
+        newValue = formatWeightCategory(newValue);
+      }
+
       if (['coachContact', 'managerContact'].includes(column.id)) {
         const digits = newValue.replace(/[^0-9]/g, '');
         const result = formatContactNumberRealTime(digits);
+
         newValue = result.formatted;
         setIsContactValid(result.digitCount === 0 || result.digitCount >= 10);
       }
 
       setValue(newValue);
-      console.log('[CHANGE] Local value updated to:', newValue);
-    },
-    [column.id, value, row.original, updateData, updateColumnWidth, column, row.index]
-  );
-
-  // Blur handler
-  const handleBlur = useCallback(
-    (e) => {
-      console.log('[BLUR START] Editing cell:', isEditing, 'Current local value:', value);
-
-      if (commitLockRef.current) {
-        console.log('[BLUR SKIP] Commit already handled by outside click handler');
-        return;
-      }
-
-      const currentValue = String(value ?? '').trim();
-
-      if (!isEditing) {
-        console.log('[BLUR SKIP] Not editing anymore');
-        return;
-      }
-
-      console.log('[BLUR COMMIT] Attempting commit with value:', currentValue);
-      const commitSuccess = validateAndCommit(currentValue);
-
-      if (!commitSuccess) {
-        console.log('[BLUR COMMIT FAILED] Validation failed');
-        if (inputRef.current) inputRef.current.focus();
-        return;
-      }
-
-      console.log('[BLUR COMMIT SUCCESS] Committed:', currentValue);
-
-      if (column.id === 'event') {
-        if (!currentValue) updateData?.(row.index, 'subEvent', '');
-        updateData?.(row.index, 'event', currentValue);
-      } else if (column.id === 'gender') {
-        let finalGender = '';
-        let finalTitle = '';
-        const lower = currentValue.toLowerCase();
-
-        if (['m', 'male'].includes(lower)) {
-          finalGender = 'Male';
-          finalTitle = 'Mr.';
-        } else if (['f', 'female'].includes(lower)) {
-          finalGender = 'Female';
-          finalTitle = 'Miss';
-        }
-
-        updateData?.(row.index, 'gender', finalGender);
-        updateData?.(row.index, 'title', finalTitle);
-
-        const wtCat =
-          tournamentData && finalGender && row.original?.ageCategory && row.original?.weight
-            ? getWeightCategory(finalGender, row.original.ageCategory, row.original.weight, tournamentData)
-            : '';
-        updateData?.(row.index, 'weightCategory', wtCat);
-      }
-
-      updateColumnWidth?.(column.getIndex(), currentValue, row.index);
-
-      const needsFlush = ['dob', 'weight', 'gender'].includes(column.id);
-      if (needsFlush && window.debouncedSaveInstance && typeof window.debouncedSaveInstance.flush === 'function') {
-        window.debouncedSaveInstance.flush();
-      }
-
-      setEditingCell?.(null);
     },
     [
-      value,
-      isEditing,
-      validateAndCommit,
       column.id,
-      updateData,
-      updateColumnWidth,
-      tournamentData,
+      column,
+      value,
       row.original,
       row.index,
-      column,
-      setEditingCell,
+      updateData,
+      updateColumnWidth,
+      isTieSheetMedalLocked,
+      showTieSheetLockToast,
     ]
   );
 
-  // Render
+  const handleBlur = useCallback(() => {
+    if (commitLockRef.current) return;
+
+    const currentValue = String(value ?? '').trim();
+
+    if (!isEditing) return;
+
+    const commitSuccess = validateAndCommit(currentValue);
+
+    if (!commitSuccess) {
+      if (inputRef.current) inputRef.current.focus();
+      return;
+    }
+
+    if (column.id === 'event') {
+      if (!currentValue) updateData?.(row.index, 'subEvent', '');
+      updateData?.(row.index, 'event', currentValue);
+    } else if (column.id === 'gender') {
+      let finalGender = '';
+      let finalTitle = '';
+
+      const lower = currentValue.toLowerCase();
+
+      if (['m', 'male'].includes(lower)) {
+        finalGender = 'Male';
+        finalTitle = 'Mr.';
+      } else if (['f', 'female'].includes(lower)) {
+        finalGender = 'Female';
+        finalTitle = 'Miss';
+      }
+
+      updateData?.(row.index, 'gender', finalGender);
+      updateData?.(row.index, 'title', finalTitle);
+
+      const wtCat =
+        tournamentData && finalGender && row.original?.ageCategory && row.original?.weight
+          ? getWeightCategory(finalGender, row.original.ageCategory, row.original.weight, tournamentData)
+          : '';
+
+      updateData?.(row.index, 'weightCategory', formatWeightCategory(wtCat));
+    }
+
+    updateColumnWidth?.(column.getIndex(), currentValue, row.index);
+
+    const needsFlush = ['dob', 'weight', 'gender'].includes(column.id);
+
+    if (needsFlush && window.debouncedSaveInstance && typeof window.debouncedSaveInstance.flush === 'function') {
+      window.debouncedSaveInstance.flush();
+    }
+
+    setEditingCell?.(null);
+  }, [
+    value,
+    isEditing,
+    validateAndCommit,
+    column.id,
+    column,
+    updateData,
+    updateColumnWidth,
+    tournamentData,
+    row.original,
+    row.index,
+    setEditingCell,
+  ]);
+
   if (column.id === 'actions') {
     return <ActionsCell row={row} table={table} />;
   }
@@ -569,6 +711,7 @@ const EditableCell = ({ getValue, row, column, table }) => {
         onPointerDown={startEditing}
         data-row={row.index}
         data-col={column.getIndex()}
+        title={isTieSheetMedalLocked ? 'TieSheet result locked' : undefined}
         className={`${styles.editableCell} ${highlightRow ? styles.highlightRow : ''} ${
           ['name', 'team', 'coach', 'manager', 'fathersName', 'school', 'class'].includes(column.id)
             ? styles.alignLeft
@@ -586,6 +729,7 @@ const EditableCell = ({ getValue, row, column, table }) => {
   return (
     <div style={{ position: 'relative' }}>
       <input
+      
         ref={inputRef}
         value={value}
         onChange={handleChange}
@@ -599,6 +743,26 @@ const EditableCell = ({ getValue, row, column, table }) => {
         role="textbox"
         aria-invalid={!!errorMessage || (!isContactValid && ['coachContact', 'managerContact'].includes(column.id))}
       />
+
+{autofillSuggestion && autofillColumns.includes(column.id) && (
+  <div
+    style={{
+      position: 'absolute',
+      left: '8px',
+      top: '50%',
+      transform: 'translateY(-50%)',
+      pointerEvents: 'none',
+      color: '#cf0006',
+      fontSize: '14px',
+      whiteSpace: 'nowrap',
+      zIndex: 1,
+    }}
+  >
+    <span style={{ color: 'transparent' }}>{value}</span>
+    <span>{autofillSuggestion.slice(String(value || '').length)}</span>
+  </div>
+)}
+
       {errorMessage && !['dob', 'coachContact', 'managerContact', 'weight'].includes(column.id) && (
         <div className={styles.cellErrorTooltip}>{errorMessage}</div>
       )}

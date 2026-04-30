@@ -1243,3 +1243,162 @@
 .sheetSection select:hover {
   border-color: #b30008;
 }
+
+.clearSearchBtn {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: #666;
+  font-size: 16px;
+  padding: 6px;
+
+  border-radius: 4px;   /* 👈 square feel (not circle) */
+  transition: all 0.2s ease;
+}
+
+/* Hover effect */
+.clearSearchBtn:hover {
+  background: rgba(133, 20, 20, 0.08);
+  color: #cf0006;
+  transform: translateY(-50%) scale(1.05);
+}
+
+/* Click effect */
+.clearSearchBtn:active {
+  transform: translateY(-50%) scale(0.95);
+}
+
+.autofillSuggestion {
+  position: fixed;
+  background: #ffffff;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: #111827;
+  z-index: 99999;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.18);
+  min-width: 160px;
+  pointer-events: none;
+}
+
+.teamEntryActions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin: 14px 0;
+}
+
+.copyMessage {
+  text-align: right;
+  color: #16a34a;
+  font-weight: 800;
+  margin: 4px 0 10px;
+}
+
+.topHeaderRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.left {
+  display: flex;
+  align-items: center;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 800;
+  color: #111827;
+}
+
+.rightActions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.actionBtn {
+  background: #111827;
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.actionBtn:hover {
+  background: #cf0006;
+}
+
+.entryTitleRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: nowrap;
+}
+
+.entryTitleRow h2 {
+  margin: 0;
+  flex: 1;
+  white-space: nowrap;
+}
+
+.entryTitleActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.teamEntryActionButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  border: none;
+  background: #cf0006;
+  color: #ffffff;
+  padding: 9px 13px;
+  border-radius: 9px;
+  font-size: 14px;
+  cursor: pointer;
+  box-shadow: 0 8px 18px rgba(207, 0, 6, 0.18);
+  white-space: nowrap;
+}
+
+.teamEntryActionButton:hover:not(:disabled) {
+  background: linear-gradient(135deg, #a00005, #870034);
+  transform: translateY(-1px);
+}
+
+.teamEntryActionButton:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+@media (max-width: 900px) {
+  .entryTitleRow {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .entryTitleActions {
+    justify-content: flex-start;
+  }
+}

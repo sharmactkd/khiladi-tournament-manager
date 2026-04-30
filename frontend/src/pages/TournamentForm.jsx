@@ -4,11 +4,9 @@ import { useAuth } from "../context/AuthContext";
 import { createTournament, updateTournament } from "../api";
 import { Country, State, City } from "country-state-city";
 
-// Formik
-import { Formik, Form, ErrorMessage } from "formik";
+import { Formik, Form } from "formik";
 import validationSchema from "../components/TournamentForm/validationSchema";
 
-// Components
 import BasicInfo from "../components/TournamentForm/BasicInfo";
 import TournamentLevel from "../components/TournamentForm/TournamentLevel";
 import AgeCategories from "../components/TournamentForm/AgeCategories";
@@ -21,7 +19,6 @@ import TournamentDescription from "../components/TournamentForm/TournamentDescri
 import Upload from "../components/TournamentForm/Upload";
 import Submit from "../components/TournamentForm/Submit";
 
-// Constants
 import { MAIN_AGE_CATEGORIES } from "../components/TournamentForm/constants";
 
 import styles from "./TournamentForm.module.css";
@@ -52,14 +49,17 @@ const getInitialValues = (initialTournament) => ({
     official: initialTournament?.ageGender?.official || {},
   },
   eventCategories: {
-    kyorugi: {
-      selected: initialTournament?.eventCategories?.kyorugi?.selected || false,
-      sub: initialTournament?.eventCategories?.kyorugi?.sub || {
-        Kyorugi: false,
-        Fresher: false,
-        TagTeam: false,
-      },
+  kyorugi: {
+    selected: initialTournament
+      ? initialTournament?.eventCategories?.kyorugi?.selected
+      : true, // ✅ default ON for new form
+
+    sub: initialTournament?.eventCategories?.kyorugi?.sub || {
+      Kyorugi: true,   // ✅ main sub-event ON
+      Fresher: false,
+      TagTeam: false,
     },
+  },
     poomsae: {
       selected: initialTournament?.eventCategories?.poomsae?.selected || false,
       categories: initialTournament?.eventCategories?.poomsae?.categories || [],
@@ -85,7 +85,7 @@ const getInitialValues = (initialTournament) => ({
     paymentMethod: initialTournament?.foodAndLodging?.paymentMethod || "",
     amount: initialTournament?.foodAndLodging?.amount || "",
   },
-  medalPoints: initialTournament?.medalPoints || { gold: 12, silver: 7, bronze: 5 },
+  medalPoints: initialTournament?.medalPoints || { gold: 5, silver: 3, bronze: 1 },
   description: initialTournament?.description || "",
   matchSchedule: initialTournament?.matchSchedule || "",
   poster: initialTournament?.poster || null,
@@ -93,11 +93,31 @@ const getInitialValues = (initialTournament) => ({
   tournamentType: [],
 });
 
+const flattenErrors = (errors, prefix = "") => {
+  let result = {};
+
+  Object.keys(errors || {}).forEach((key) => {
+    const value = errors[key];
+    const path = prefix ? `${prefix}.${key}` : key;
+
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      result = { ...result, ...flattenErrors(value, path) };
+    } else {
+      result[path] = value;
+    }
+  });
+
+  return result;
+};
+
 const TournamentForm = () => {
   const { user, token, logout } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
   const initialTournament = location.state?.tournament || null;
+
+  const [showErrors, setShowErrors] = useState(false);
 
   const startDatePickerRef = useRef(null);
   const endDatePickerRef = useRef(null);
@@ -107,7 +127,6 @@ const TournamentForm = () => {
   const [cities, setCities] = useState([]);
   const [currencyOptions, setCurrencyOptions] = useState([]);
   const [serverError, setServerError] = useState("");
-  const [presetName, setPresetName] = useState("");
 
   useEffect(() => {
     if (!token || !user) {
@@ -116,8 +135,7 @@ const TournamentForm = () => {
   }, [token, user, navigate]);
 
   useEffect(() => {
-    const allCountries = Country.getAllCountries();
-    setCountries(allCountries);
+    setCountries(Country.getAllCountries());
   }, []);
 
   useEffect(() => {
@@ -131,80 +149,92 @@ const TournamentForm = () => {
               currency: code,
               minimumFractionDigits: 0,
             }).formatToParts(0);
+
             const symbol = parts.find((part) => part.type === "currency")?.value || code;
-            return { value: code, label: `${code} (${symbol}) – ${name}`, symbol };
+
+            return {
+              value: code,
+              label: `${code} (${symbol}) – ${name}`,
+              symbol,
+            };
           })
           .sort((a, b) => a.value.localeCompare(b.value));
+
         setCurrencyOptions(opts);
       })
       .catch(() => setCurrencyOptions([]));
   }, []);
 
   const scrollToFirstError = (errors) => {
-    if (Object.keys(errors).length === 0) return;
+    const flatErrors = flattenErrors(errors);
+    const firstErrorKey = Object.keys(flatErrors)[0];
 
-    const firstErrorKey = Object.keys(errors)[0];
+    if (!firstErrorKey) return;
 
-    let selector;
-    if (firstErrorKey.includes(".")) {
-      selector = `[name="${firstErrorKey.replace(".", "\\.")}"]`;
-    } else {
-      selector = `[name="${firstErrorKey}"]`;
-    }
+    setTimeout(() => {
+      let element =
+        document.querySelector(`[data-field="${firstErrorKey}"]`) ||
+        document.querySelector(`[name="${firstErrorKey}"]`) ||
+        document.querySelector(`[id="${firstErrorKey}"]`);
 
-    if (firstErrorKey.startsWith("venue.")) {
-      const fieldMap = {
-        "venue.country": "country",
-        "venue.state": "state",
-        "venue.district": "district",
-      };
-      const className = fieldMap[firstErrorKey];
-      if (className) {
-        const element = document.querySelector(`.react-select__${className} .react-select__control`);
-        if (element) {
-          element.scrollIntoView({ behavior: "smooth", block: "center" });
-          element.focus();
-          element.style.borderColor = "#cf0006";
-          element.style.boxShadow = "0 0 0 3px rgba(207, 0, 6, 0.2)";
-          return;
-        }
+      if (!element) {
+        const rootKey = firstErrorKey.split(".")[0];
+
+        element =
+          document.querySelector(`[data-field="${rootKey}"]`) ||
+          document.querySelector(`[name="${rootKey}"]`) ||
+          document.querySelector(`[id="${rootKey}"]`);
       }
-    }
 
-    const element = document.querySelector(selector);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth", block: "center" });
-      element.focus();
-      element.style.borderColor = "#cf0006";
-      element.style.boxShadow = "0 0 0 3px rgba(207, 0, 6, 0.2)";
+      if (!element) {
+        console.warn("Scroll target not found:", firstErrorKey);
+        return;
+      }
+
+      const scrollContainer = document.querySelector(`.${styles.container}`);
+
+      if (scrollContainer) {
+        const containerRect = scrollContainer.getBoundingClientRect();
+        const elementRect = element.getBoundingClientRect();
+
+        const scrollTop =
+          scrollContainer.scrollTop +
+          elementRect.top -
+          containerRect.top -
+          scrollContainer.clientHeight / 2 +
+          elementRect.height / 2;
+
+        scrollContainer.scrollTo({
+          top: Math.max(0, scrollTop),
+          behavior: "smooth",
+        });
+      } else {
+        element.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      }
+
+     const isGroupError = ["ageCategories", "eventCategories"].includes(
+  firstErrorKey.split(".")[0]
+);
+
+const highlightTarget = isGroupError
+  ? element
+  : element.querySelector(".react-select__control") ||
+    element.querySelector("input") ||
+    element;
+
+      highlightTarget.classList.add(styles.errorHighlight);
 
       setTimeout(() => {
-        element.style.borderColor = "#ccc";
-        element.style.boxShadow = "none";
+        highlightTarget.classList.remove(styles.errorHighlight);
       }, 3000);
-    } else {
-      const errorContainer = document.querySelector(`.${styles.generalError}`);
-      if (errorContainer) {
-        errorContainer.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }
-  };
 
-  // Preset functions
-  const savePreset = (name, customData) => {
-    if (!name.trim()) return;
-    localStorage.setItem(`customPreset_${name}`, JSON.stringify(customData));
-  };
-
-  const loadPreset = (name) => {
-    const data = localStorage.getItem(`customPreset_${name}`);
-    return data ? JSON.parse(data) : {};
-  };
-
-  const getPresetNames = () => {
-    return Object.keys(localStorage)
-      .filter((key) => key.startsWith("customPreset_"))
-      .map((key) => key.replace("customPreset_", ""));
+      setTimeout(() => {
+        highlightTarget.focus?.();
+      }, 400);
+    }, 150);
   };
 
   return (
@@ -212,8 +242,9 @@ const TournamentForm = () => {
       <Formik
         initialValues={getInitialValues(initialTournament)}
         validationSchema={validationSchema}
-        validateOnChange={false}
-        validateOnBlur={false}
+        validateOnChange={true}
+        validateOnBlur={true}
+        validateOnMount={false}
         onSubmit={async (values, { setSubmitting }) => {
           setServerError("");
           setSubmitting(true);
@@ -237,7 +268,11 @@ const TournamentForm = () => {
             data.append("contact", cleanedValues.contact);
             data.append("visibility", cleanedValues.visibility);
             data.append("tournamentLevel", cleanedValues.tournamentLevel);
-            if (cleanedValues.playerLimit) data.append("playerLimit", cleanedValues.playerLimit);
+
+            if (cleanedValues.playerLimit) {
+              data.append("playerLimit", cleanedValues.playerLimit);
+            }
+
             data.append("description", cleanedValues.description);
             data.append("matchSchedule", cleanedValues.matchSchedule);
             data.append("tournamentType", cleanedValues.tournamentType.join(","));
@@ -255,6 +290,7 @@ const TournamentForm = () => {
             if (values.poster && values.poster instanceof File) {
               data.append("poster", values.poster);
             }
+
             values.logos.forEach((logo) => {
               if (logo && logo instanceof File) {
                 data.append("logos", logo);
@@ -262,6 +298,7 @@ const TournamentForm = () => {
             });
 
             let response;
+
             if (initialTournament) {
               response = await updateTournament(initialTournament._id, data);
             } else {
@@ -271,6 +308,7 @@ const TournamentForm = () => {
             navigate(`/tournaments/${initialTournament?._id || response._id}`);
           } catch (err) {
             console.error("Submit error:", err);
+
             if (err.response?.status === 401) {
               logout();
               navigate("/login");
@@ -282,29 +320,68 @@ const TournamentForm = () => {
           }
         }}
       >
-        {({ values, setFieldValue, errors, touched, isSubmitting, handleSubmit, validateForm, setTouched }) => {
-          useEffect(() => {
-            if (isSubmitting && Object.keys(errors).length > 0) {
-              scrollToFirstError(errors);
-            }
-          }, [isSubmitting, errors]);
-
+        {({
+          values,
+          setFieldValue,
+          errors,
+          touched,
+          isSubmitting,
+          handleSubmit,
+          validateForm,
+          setTouched,
+        }) => {
           const onFormSubmit = async (e) => {
             e.preventDefault();
+
+            setShowErrors(true);
+
             const validationErrors = await validateForm();
-            setTouched(true);
+
+            setTouched({
+              organizer: true,
+              federation: true,
+              tournamentName: true,
+              email: true,
+              contact: true,
+              dateFrom: true,
+              dateTo: true,
+              venue: {
+                name: true,
+                country: true,
+                state: true,
+                district: true,
+              },
+              ageCategories: {
+                open: true,
+                official: true,
+              },
+              eventCategories: {
+                kyorugi: {
+                  selected: true,
+                  sub: true,
+                },
+                poomsae: {
+                  selected: true,
+                  categories: true,
+                },
+              },
+              weightCategories: true,
+            });
 
             if (Object.keys(validationErrors).length > 0) {
               scrollToFirstError(validationErrors);
-            } else {
-              handleSubmit(e);
+              return;
             }
+
+            setShowErrors(false);
+            handleSubmit(e);
           };
 
           const handleCountryChange = (countryCode) => {
             const stateList = State.getStatesOfCountry(countryCode);
             setStates(stateList);
             setCities([]);
+
             setFieldValue("venue.country", countryCode);
             setFieldValue("venue.state", "");
             setFieldValue("venue.district", "");
@@ -313,18 +390,22 @@ const TournamentForm = () => {
           const handleStateChange = (stateCode) => {
             const cityList = City.getCitiesOfState(values.venue.country, stateCode);
             setCities(cityList);
+
             setFieldValue("venue.state", stateCode);
             setFieldValue("venue.district", "");
           };
 
           const handleAgeChange = (e, age, type) => {
             e.preventDefault();
+
             const isSelected = values.ageCategories[type].includes(age);
+
             const newAges = isSelected
               ? values.ageCategories[type].filter((a) => a !== age)
               : [...values.ageCategories[type], age];
 
             const newGender = { ...values.ageGender[type] };
+
             if (isSelected) {
               delete newGender[age];
             } else {
@@ -337,7 +418,9 @@ const TournamentForm = () => {
 
           const handleAgeGenderChange = (e, age, gender, type) => {
             e.preventDefault();
+
             const current = values.ageGender[type][age] || [];
+
             const newGenders = current.includes(gender)
               ? current.filter((g) => g !== gender)
               : [...current, gender];
@@ -355,6 +438,7 @@ const TournamentForm = () => {
               : [...new Set([...values.ageCategories[type], ...MAIN_AGE_CATEGORIES])];
 
             const newGender = { ...values.ageGender[type] };
+
             MAIN_AGE_CATEGORIES.forEach((age) => {
               if (newAges.includes(age)) {
                 newGender[age] = ["Male", "Female"];
@@ -377,10 +461,14 @@ const TournamentForm = () => {
               ...currentSub,
               [subKey]: newSubValue,
             }).some((v) => v);
+
             setFieldValue("eventCategories.kyorugi.selected", anySubSelected);
 
             if (newSubValue) {
-              setFieldValue(`entryFees.amounts.kyorugi.${subKey}`, { type: "Free", amount: undefined });
+              setFieldValue(`entryFees.amounts.kyorugi.${subKey}`, {
+                type: "Free",
+                amount: undefined,
+              });
             } else {
               setFieldValue(`entryFees.amounts.kyorugi.${subKey}`, undefined);
             }
@@ -389,6 +477,7 @@ const TournamentForm = () => {
           const handlePoomsaeCategoryToggle = (category) => {
             const currentCategories = values.eventCategories.poomsae.categories;
             const isSelected = currentCategories.includes(category);
+
             const newCategories = isSelected
               ? currentCategories.filter((c) => c !== category)
               : [...currentCategories, category];
@@ -397,7 +486,10 @@ const TournamentForm = () => {
             setFieldValue("eventCategories.poomsae.selected", newCategories.length > 0);
 
             if (!isSelected) {
-              setFieldValue(`entryFees.amounts.poomsae.${category}`, { type: "Free", amount: undefined });
+              setFieldValue(`entryFees.amounts.poomsae.${category}`, {
+                type: "Free",
+                amount: undefined,
+              });
             } else {
               setFieldValue(`entryFees.amounts.poomsae.${category}`, undefined);
             }
@@ -405,6 +497,7 @@ const TournamentForm = () => {
 
           const handleFeeTypeChange = (category, sub, type) => {
             setFieldValue(`entryFees.amounts.${category}.${sub}.type`, type);
+
             if (type === "Free") {
               setFieldValue(`entryFees.amounts.${category}.${sub}.amount`, undefined);
             } else {
@@ -413,79 +506,77 @@ const TournamentForm = () => {
           };
 
           const handleAmountChange = (category, sub, value) => {
-            setFieldValue(`entryFees.amounts.${category}.${sub}.amount`, value ? Number(value) : 0);
+            setFieldValue(
+              `entryFees.amounts.${category}.${sub}.amount`,
+              value ? Number(value) : 0
+            );
           };
 
-          useEffect(() => {
-            const hasOpen = values.ageCategories.open.length > 0;
-            const hasOfficial = values.ageCategories.official.length > 0;
+          const selectedAges = [
+            ...(values.ageCategories?.open || []),
+            ...(values.ageCategories?.official || []),
+          ];
 
-            const newType = [];
-            if (hasOpen) newType.push("Open");
-            if (hasOfficial) newType.push("Official");
-            if (newType.length === 0) newType.push("Open");
+          const hasOpen = values.ageCategories.open.length > 0;
+          const hasOfficial = values.ageCategories.official.length > 0;
 
-            if (JSON.stringify(values.tournamentType || []) !== JSON.stringify(newType)) {
+          const newType = [];
+          if (hasOpen) newType.push("Open");
+          if (hasOfficial) newType.push("Official");
+          if (newType.length === 0) newType.push("Open");
+
+          if (JSON.stringify(values.tournamentType || []) !== JSON.stringify(newType)) {
+            setTimeout(() => {
               setFieldValue("tournamentType", newType);
-            }
-          }, [values.ageCategories.open, values.ageCategories.official, setFieldValue]);
+            }, 0);
+          }
 
-          useEffect(() => {
-            if (!initialTournament?.venue || countries.length === 0) return;
+          const wtAges = ["Sub-Junior", "Cadet", "Junior", "Senior"];
+          const sgfiAges = ["Under - 14", "Under - 17", "Under - 19"];
 
-            const countryCode = initialTournament.venue.country;
-            if (countryCode) {
-              const stateList = State.getStatesOfCountry(countryCode);
-              setStates(stateList);
-              setFieldValue("venue.country", countryCode);
-
-              const stateCode = initialTournament.venue.state;
-              if (stateCode) {
-                const cityList = City.getCitiesOfState(countryCode, stateCode);
-                setCities(cityList);
-                setFieldValue("venue.state", stateCode);
-                setFieldValue("venue.district", initialTournament.venue.district || "");
-              }
-            }
-          }, [countries.length, initialTournament?.venue]);
-
-          useEffect(() => {
-            const selectedAges = [
-              ...(values.ageCategories?.open || []),
-              ...(values.ageCategories?.official || []),
-            ];
-
-            const wtAges = ["Sub-Junior", "Cadet", "Junior", "Senior"];
-            const sgfiAges = ["Under - 14", "Under - 17", "Under - 19"];
-
-            const currentType = values.weightCategories?.type;
+          if (selectedAges.length > 0 && values.weightCategories?.type !== "custom") {
+            const hasOnlySGFI = selectedAges.every((age) => sgfiAges.includes(age));
+            const hasOnlyWT = selectedAges.every((age) => wtAges.includes(age));
 
             let suggestedType = "WT";
 
-            if (selectedAges.length > 0) {
-              const hasOnlySGFI = selectedAges.every((age) => sgfiAges.includes(age));
-              const hasOnlyWT = selectedAges.every((age) => wtAges.includes(age));
+            if (hasOnlySGFI) suggestedType = "SGFI";
+            else if (hasOnlyWT) suggestedType = "WT";
 
-              if (hasOnlySGFI) suggestedType = "SGFI";
-              else if (hasOnlyWT) suggestedType = "WT";
+            if (values.weightCategories?.type !== suggestedType) {
+              setTimeout(() => {
+                setFieldValue("weightCategories.type", suggestedType);
+                setFieldValue("weightCategories.selected", { male: [], female: [] });
+                setFieldValue("weightCategories.custom", {});
+              }, 0);
             }
+          }
 
-            if (currentType !== suggestedType && currentType !== "custom") {
-              setFieldValue("weightCategories.type", suggestedType);
-              setFieldValue("weightCategories.selected", { male: [], female: [] });
-              setFieldValue("weightCategories.custom", {});
+          if (initialTournament?.venue && countries.length > 0) {
+            const countryCode = initialTournament.venue.country;
+
+            if (countryCode && states.length === 0) {
+              setTimeout(() => {
+                const stateList = State.getStatesOfCountry(countryCode);
+                setStates(stateList);
+
+                const stateCode = initialTournament.venue.state;
+
+                if (stateCode && cities.length === 0) {
+                  const cityList = City.getCitiesOfState(countryCode, stateCode);
+                  setCities(cityList);
+                }
+              }, 0);
             }
-          }, [
-            values.ageCategories?.open,
-            values.ageCategories?.official,
-            values.weightCategories?.type,
-            setFieldValue
-          ]);
+          }
+
+          const flatErrors = flattenErrors(errors);
 
           return (
             <Form className={styles.form} onSubmit={onFormSubmit}>
               <div className={styles.headerRow}>
                 <h1>{initialTournament ? "Edit Tournament" : "Create New Tournament"}</h1>
+
                 <label className={styles.visibilityToggle}>
                   <input
                     type="checkbox"
@@ -501,78 +592,115 @@ const TournamentForm = () => {
 
               {serverError && <div className={styles.error}>{serverError}</div>}
 
-              {Object.keys(errors).length > 0 && (
+              {showErrors && Object.keys(flatErrors).length > 0 && (
                 <div className={styles.generalError}>
                   <strong>Please fix the following errors:</strong>
-                  <ul style={{ margin: "8px 0 0 20px", color: "#cf0006" }}>
-                    {Object.keys(errors).map((key) => {
-                      const errorMsg = errors[key];
-                      const displayMsg = typeof errorMsg === "object"
-                        ? JSON.stringify(errorMsg, null, 2)
-                        : errorMsg;
 
-                      return (
-                        <li key={key}>
-                          {key.replace(/([A-Z])/g, " $1").replace(/^./, str => str.toUpperCase())}: {displayMsg}
-                        </li>
-                      );
-                    })}
+                  <ul style={{ margin: "8px 0 0 20px", color: "#cf0006" }}>
+                    {Object.entries(flatErrors).map(([key, message]) => (
+                      <li key={key}>
+                        {key.replace(/\./g, " → ").replace(/([A-Z])/g, " $1")}: {message}
+                      </li>
+                    ))}
                   </ul>
                 </div>
               )}
 
-              <BasicInfo
-                values={values}
-                setFieldValue={setFieldValue}
-                errors={errors}
-                touched={touched}
-                startDatePickerRef={startDatePickerRef}
-                endDatePickerRef={endDatePickerRef}
-                countries={countries}
-                states={states}
-                cities={cities}
-                handleCountryChange={handleCountryChange}
-                handleStateChange={handleStateChange}
-              />
+              <div data-field="basicInfo">
+                <BasicInfo
+                  values={values}
+                  setFieldValue={setFieldValue}
+                  errors={errors}
+                  touched={touched}
+                  startDatePickerRef={startDatePickerRef}
+                  endDatePickerRef={endDatePickerRef}
+                  countries={countries}
+                  states={states}
+                  cities={cities}
+                  handleCountryChange={handleCountryChange}
+                  handleStateChange={handleStateChange}
+                />
+              </div>
 
-              <TournamentLevel values={values} setFieldValue={setFieldValue} />
+              <div data-field="tournamentLevel">
+                <TournamentLevel values={values} setFieldValue={setFieldValue} />
+              </div>
 
-              <AgeCategories
-                values={values}
-                setFieldValue={setFieldValue}
-                errors={errors}
-                touched={touched}
-                handleAgeChange={handleAgeChange}
-                handleAgeGenderChange={handleAgeGenderChange}
-                handleSelectAllAges={handleSelectAllAges}
-              />
+              <div data-field="ageCategories">
+                <AgeCategories
+                  values={values}
+                  setFieldValue={setFieldValue}
+                  errors={errors}
+                  touched={touched}
+                  handleAgeChange={handleAgeChange}
+                  handleAgeGenderChange={handleAgeGenderChange}
+                  handleSelectAllAges={handleSelectAllAges}
+                />
+              </div>
 
-              <EventCategories
-                values={values}
-                setFieldValue={setFieldValue}
-                errors={errors}
-                touched={touched}
-                currencyOptions={currencyOptions}
-                handleKyorugiSubEventToggle={handleKyorugiSubEventToggle}
-                handlePoomsaeCategoryToggle={handlePoomsaeCategoryToggle}
-                handleFeeTypeChange={handleFeeTypeChange}
-                handleAmountChange={handleAmountChange}
-              />
+              <div data-field="eventCategories">
+                <EventCategories
+                  values={values}
+                  setFieldValue={setFieldValue}
+                  errors={errors}
+                  touched={touched}
+                  currencyOptions={currencyOptions}
+                  handleKyorugiSubEventToggle={handleKyorugiSubEventToggle}
+                  handlePoomsaeCategoryToggle={handlePoomsaeCategoryToggle}
+                  handleFeeTypeChange={handleFeeTypeChange}
+                  handleAmountChange={handleAmountChange}
+                />
+              </div>
 
-              <div className={styles.section}>
+              <div className={styles.section} data-field="weightCategories">
                 <h2>Weight Categories</h2>
                 <Weights values={values} setFieldValue={setFieldValue} />
               </div>
 
-              <FoodLodging values={values} setFieldValue={setFieldValue} errors={errors} touched={touched} />
+              <div data-field="foodAndLodging">
+                <FoodLodging
+                  values={values}
+                  setFieldValue={setFieldValue}
+                  errors={errors}
+                  touched={touched}
+                />
+              </div>
 
-              <MedalPoints values={values} setFieldValue={setFieldValue} errors={errors} touched={touched} />
+              <div data-field="medalPoints">
+                <MedalPoints
+                  values={values}
+                  setFieldValue={setFieldValue}
+                  errors={errors}
+                  touched={touched}
+                />
+              </div>
 
-              <MatchSchedule values={values} setFieldValue={setFieldValue} errors={errors} touched={touched} />
+              <div data-field="matchSchedule">
+                <MatchSchedule
+                  values={values}
+                  setFieldValue={setFieldValue}
+                  errors={errors}
+                  touched={touched}
+                />
+              </div>
 
-              <TournamentDescription values={values} setFieldValue={setFieldValue} errors={errors} touched={touched} />
+              <div data-field="description">
+                <TournamentDescription
+                  values={values}
+                  setFieldValue={setFieldValue}
+                  errors={errors}
+                  touched={touched}
+                />
+              </div>
 
-              <Upload values={values} setFieldValue={setFieldValue} errors={errors} touched={touched} />
+              <div data-field="upload">
+                <Upload
+                  values={values}
+                  setFieldValue={setFieldValue}
+                  errors={errors}
+                  touched={touched}
+                />
+              </div>
 
               <Submit initialTournament={initialTournament} isSubmitting={isSubmitting} />
             </Form>
