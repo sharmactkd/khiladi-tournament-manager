@@ -13,11 +13,11 @@ const Contact = () => {
         <h1 className={styles.title}>Contact KHILADI</h1>
 
         <p className={styles.subtitle}>
-          We’re here to help you manage your tournaments better, faster, and more professionally.
+          We’re here to help you manage your tournaments better, faster, and more professionally
         </p>
 
         <p className={styles.tagline}>
-          Smart. Fast. Professional Tournament Management.
+          Smart. Fast. Professional Tournament Management
         </p>
       </section>
 
@@ -28,13 +28,10 @@ const Contact = () => {
         <div className={styles.infoGrid}>
           <div className={styles.card}>
             <h4>Email</h4>
-            <p>support@khiladi.com</p>
+            <p>admin@ataindia.in</p>
           </div>
 
-          <div className={styles.card}>
-            <h4>Phone</h4>
-            <p>+91 98765 43210</p>
-          </div>
+        
 
           <div className={styles.card}>
             <h4>Location</h4>
