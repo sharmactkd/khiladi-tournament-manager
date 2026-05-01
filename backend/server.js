@@ -7,6 +7,7 @@ import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
 
+import passport from "./config/passport.js";
 import authRoutes from "./routes/authRoutes.js";
 import tournamentRoutes from "./routes/tournamentRoutes.js";
 import entryRoutes from "./routes/entryRoutes.js";
@@ -72,6 +73,7 @@ app.use(
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
+app.use(passport.initialize());
 
 console.log("STATIC UPLOADS PATH:", path.join(__dirname, "uploads"));
 
