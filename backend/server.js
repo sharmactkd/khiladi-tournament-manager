@@ -6,16 +6,15 @@ import cors from "cors";
 import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
-import passport from "./config/passport.js";
 
 import authRoutes from "./routes/authRoutes.js";
 import tournamentRoutes from "./routes/tournamentRoutes.js";
-import paymentRoutes from "./routes/paymentRoutes.js";
 import entryRoutes from "./routes/entryRoutes.js";
 import weightPresetRoutes from "./routes/weightPresetRoutes.js";
 import visitorRoutes from "./routes/visitorRoutes.js";
 import importRoutes from "./routes/importRoutes.js";
 import teamSubmissionRoutes from "./routes/teamSubmissionRoutes.js";
+import adminRoutes from "./routes/adminRoutes.js";
 
 import logger, { logMiddleware } from "./utils/logger.js";
 import { generalRateLimiter, authRateLimiter } from "./middleware/rateLimiter.js";
@@ -74,8 +73,6 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 app.use(cookieParser());
 
-app.use(passport.initialize());
-
 console.log("STATIC UPLOADS PATH:", path.join(__dirname, "uploads"));
 
 app.use("/uploads", (req, res, next) => {
@@ -94,6 +91,7 @@ if (process.env.NODE_ENV === "production") {
   app.use("/api/visitor", generalRateLimiter);
   app.use("/api/import", generalRateLimiter);
   app.use("/api/team-submissions", generalRateLimiter);
+  app.use("/api/admin", generalRateLimiter);
   app.use(generalRateLimiter);
 }
 
@@ -118,12 +116,12 @@ mongoose
 
 app.use("/api/auth", authRoutes);
 app.use("/api/tournament", tournamentRoutes);
-app.use("/api/payment", paymentRoutes);
 app.use("/api/tournaments", entryRoutes);
 app.use("/api/weight-presets", weightPresetRoutes);
 app.use("/api/visitor", visitorRoutes);
 app.use("/api/import", importRoutes);
 app.use("/api/team-submissions", teamSubmissionRoutes);
+app.use("/api/admin", adminRoutes);
 
 app.get("/health", (req, res) => {
   res.status(200).json({

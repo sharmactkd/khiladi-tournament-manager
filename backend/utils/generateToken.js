@@ -16,7 +16,9 @@ const commonOptions = {
 };
 
 const normalizeRole = (role) => {
-  return ["organizer", "coach", "player"].includes(role) ? role : "player";
+  return ["organizer", "coach", "player", "admin", "superadmin"].includes(role)
+    ? role
+    : "player";
 };
 
 export const generateToken = (user) => {

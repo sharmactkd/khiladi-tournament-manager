@@ -134,6 +134,19 @@ const apiCall = async (method, url, data = null, config = {}) => {
   }
 };
 
+const toQueryString = (params = {}) => {
+  const query = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      query.set(key, value);
+    }
+  });
+
+  const value = query.toString();
+  return value ? `?${value}` : "";
+};
+
 export const registerUser = (userData) => apiCall("post", "/auth/register", userData);
 export const loginUser = (credentials) => apiCall("post", "/auth/login", credentials);
 
@@ -158,7 +171,6 @@ export const deleteWeightPreset = (id) => apiCall("delete", `/weight-presets/${i
 
 export const getEntries = (tournamentId) =>
   apiCall("get", `/tournaments/${tournamentId}/entries`);
-
 export const saveEntries = (tournamentId, payload) =>
   apiCall("post", `/tournaments/${tournamentId}/entries`, payload);
 
@@ -186,5 +198,18 @@ export const confirmImageImport = (payload) =>
   apiCall("post", "/import/image/confirm", payload);
 
 export const getVisitorCount = () => apiCall("get", "/visitor");
+
+export const getAdminDashboard = () => apiCall("get", "/admin/dashboard");
+export const getAdminUsers = (params = {}) =>
+  apiCall("get", `/admin/users${toQueryString(params)}`);
+export const getAdminUserDetails = (userId) => apiCall("get", `/admin/users/${userId}`);
+export const getAdminTournaments = (params = {}) =>
+  apiCall("get", `/admin/tournaments${toQueryString(params)}`);
+export const getAdminTournamentDetails = (tournamentId) =>
+  apiCall("get", `/admin/tournaments/${tournamentId}`);
+export const getAdminPayments = (params = {}) =>
+  apiCall("get", `/admin/payments${toQueryString(params)}`);
+export const getAdminEntries = (params = {}) =>
+  apiCall("get", `/admin/entries${toQueryString(params)}`);
 
 export default api;

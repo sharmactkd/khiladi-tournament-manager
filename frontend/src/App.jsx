@@ -21,7 +21,14 @@ import Team from "./pages/Team";
 import TeamEntryForm from "./pages/TeamEntryForm";
 import TeamSubmissions from "./pages/TeamSubmissions";
 import TournamentLayout from "./components/TournamentLayout";
-import SocialAuthSuccess from "./pages/SocialAuthSuccess";
+import AdminLayout from "./pages/admin/AdminLayout";
+import AdminDashboard from "./pages/admin/AdminDashboard";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminUserDetails from "./pages/admin/AdminUserDetails";
+import AdminTournaments from "./pages/admin/AdminTournaments";
+import AdminTournamentDetails from "./pages/admin/AdminTournamentDetails";
+import AdminPayments from "./pages/admin/AdminPayments";
+import AdminEntries from "./pages/admin/AdminEntries";
 import "./App.css";
 
 function App() {
@@ -83,7 +90,17 @@ function App() {
               )
             }
           />
-<Route path="/auth/social-success" element={<SocialAuthSuccess />} />
+
+          <Route path="/admin" element={<AdminLayout />}>
+            <Route index element={<AdminDashboard />} />
+            <Route path="users" element={<AdminUsers />} />
+            <Route path="users/:userId" element={<AdminUserDetails />} />
+            <Route path="tournaments" element={<AdminTournaments />} />
+            <Route path="tournaments/:tournamentId" element={<AdminTournamentDetails />} />
+            <Route path="payments" element={<AdminPayments />} />
+            <Route path="entries" element={<AdminEntries />} />
+          </Route>
+
           <Route path="/tournaments/:id" element={<TournamentLayout />}>
             <Route index element={<TournamentDetails />} />
             <Route path="entry" element={<Entry />} />

@@ -3,7 +3,8 @@ import User from "../models/user.js";
 import logger from "../utils/logger.js";
 
 const normalizeRole = (role) => {
-  return ["organizer", "coach", "player"].includes(role) ? role : "player";
+  const allowedRoles = ["organizer", "coach", "player", "admin", "superadmin"];
+  return allowedRoles.includes(role) ? role : "player";
 };
 
 const authMiddleware = async (req, res, next) => {
@@ -31,7 +32,7 @@ const authMiddleware = async (req, res, next) => {
       decoded = jwt.verify(token, process.env.JWT_SECRET);
     }
 
-    const user = await User.findById(decoded.id).select("-password");
+    const user = await User.findById(decoded.id).select("-password -refreshTokens");
 
     if (!user) {
       logger.warn("User not found for valid token", {
@@ -41,7 +42,6 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ message: "User not found" });
     }
 
-    // Keep normalized role available everywhere
     req.user = user;
     req.user.role = normalizeRole(user.role);
 

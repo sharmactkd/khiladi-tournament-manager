@@ -14,7 +14,9 @@ if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
 }
 
 const normalizeRole = (role) => {
-  return ["organizer", "coach", "player"].includes(role) ? role : "player";
+  return ["organizer", "coach", "player", "admin", "superadmin"].includes(role)
+    ? role
+    : "player";
 };
 
 passport.use(
@@ -58,7 +60,10 @@ passport.use(
           user.googleId = user.googleId || googleId;
           user.isVerified = true;
           user.loginProvider = user.loginProvider || "google";
+
+          // Preserve existing roles, including admin/superadmin.
           user.role = normalizeRole(user.role);
+
           user.lastLogin = new Date();
 
           if (!user.profilePicture && profilePicture) {

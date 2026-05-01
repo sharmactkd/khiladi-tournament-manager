@@ -4,7 +4,8 @@ import { generateToken, generateRefreshToken } from "../utils/generateToken.js";
 import logger from "../utils/logger.js";
 
 const normalizeRole = (role) => {
-  return ["organizer", "coach", "player"].includes(role) ? role : "player";
+  const allowedRoles = ["organizer", "coach", "player", "admin", "superadmin"];
+  return allowedRoles.includes(role) ? role : "player";
 };
 
 const isStrongPassword = (password) => {
@@ -14,8 +15,8 @@ const isStrongPassword = (password) => {
 };
 
 const isProd = process.env.NODE_ENV === "production";
-const REFRESH_COOKIE_MAX_AGE = 180 * 24 * 60 * 60 * 1000; // 180 days
-const ACCESS_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+const REFRESH_COOKIE_MAX_AGE = 180 * 24 * 60 * 60 * 1000;
+const ACCESS_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
 const refreshCookieOptions = {
   httpOnly: true,
@@ -33,9 +34,6 @@ const accessCookieOptions = {
   maxAge: ACCESS_COOKIE_MAX_AGE,
 };
 
-/**
- * Get current logged-in user details (Protected route)
- */
 export const getMe = async (req, res) => {
   try {
     const user = req.user;
@@ -63,9 +61,6 @@ export const getMe = async (req, res) => {
   }
 };
 
-/**
- * Register new user (email + password + role)
- */
 export const registerUser = async (req, res) => {
   try {
     const { name, email, password, role } = req.body;
@@ -85,6 +80,9 @@ export const registerUser = async (req, res) => {
       });
     }
 
+    // SECURITY:
+    // Only normal application roles are allowed from the public register API.
+    // admin/superadmin cannot be created from frontend registration.
     if (!["organizer", "coach", "player"].includes(role)) {
       return res.status(400).json({ message: "Invalid role selected" });
     }
@@ -150,9 +148,6 @@ const normalizePhone = (value) => {
 const looksLikePhone = (value) =>
   typeof value === "string" && /^\d{10,15}$/.test(normalizePhone(value));
 
-/**
- * Login user (email OR phone + password)
- */
 export const loginUser = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -222,9 +217,6 @@ export const loginUser = async (req, res) => {
   }
 };
 
-/**
- * Logout user
- */
 export const logoutUser = async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken;
@@ -257,10 +249,7 @@ export const logoutUser = async (req, res) => {
   }
 };
 
-/**
- * Social auth success
- */
-export const socialAuthSuccess = async (req, res) => {
+export const socialAuthSuccess = (req, res) => {
   try {
     if (!req.user) {
       logger.warn("Social auth failed - no user", { path: req.path, ip: req.ip });
@@ -273,26 +262,27 @@ export const socialAuthSuccess = async (req, res) => {
     const refreshToken = generateRefreshToken(req.user);
 
     req.user.refreshTokens.push(refreshToken);
-    req.user.lastLogin = new Date();
-    await req.user.save({ validateBeforeSave: false });
+    req.user.save({ validateBeforeSave: false }).catch((err) =>
+      logger.error("Refresh token save failed", { error: err.message })
+    );
 
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
+    res.cookie("accessToken", accessToken, accessCookieOptions);
 
-    const frontendUrl = process.env.FRONTEND_URL || "http://localhost:5173";
+    logger.info("Social auth successful", {
+      userId: req.user._id,
+      provider: req.user.loginProvider,
+      role: normalizeRole(req.user.role),
+    });
 
-    return res.redirect(
-      `${frontendUrl}/auth/social-success?accessToken=${encodeURIComponent(
-        accessToken
-      )}`
-    );
+    res.redirect(process.env.FRONTEND_URL || "http://localhost:5173");
   } catch (error) {
     logger.error("Social auth success failed", {
       error: error.message,
       stack: error.stack,
     });
-
-    return res.redirect(
+    res.redirect(
       `${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=server_error`
     );
   }
-}; 
+};

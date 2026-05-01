@@ -1,30 +1,29 @@
 import { Link, useNavigate } from "react-router-dom";
-import { useAuth } from "../context/AuthContext"; // Verify this path
+import { useAuth } from "../context/AuthContext";
 import styles from "./Header.module.css";
 
 const Header = () => {
   const { isAuthenticated, user, logout } = useAuth();
   const navigate = useNavigate();
 
-  
   const handleLogout = () => {
-    logout(); // Calls the logout function from AuthContext
+    logout();
   };
 
-  // Fallback to email if name is unavailable
   const displayName = user?.name || user?.email || "User";
+  const isAdmin = ["admin", "superadmin"].includes(user?.role);
 
   return (
     <header className={styles.header}>
       <div className={styles.topBar}>
         <div className={styles.left}>
-        <img 
-  src="/khiladi-logo.png" 
-  alt="KHILADI Logo" 
-  className={styles.logo}
-/>
+          <img
+            src="/khiladi-logo.png"
+            alt="KHILADI Logo"
+            className={styles.logo}
+          />
         </div>
-        
+
         <nav className={styles.navBar}>
           <ul className={styles.navList}>
             <li>
@@ -39,9 +38,15 @@ const Header = () => {
             <li>
               <Link to="/contact" className={styles.navLink}>Contact</Link>
             </li>
+
+            {isAuthenticated && isAdmin && (
+              <li>
+                <Link to="/admin" className={styles.navLink}>Admin</Link>
+              </li>
+            )}
           </ul>
         </nav>
-        
+
         <div className={styles.right}>
           {isAuthenticated ? (
             <div className={styles.userSection}>

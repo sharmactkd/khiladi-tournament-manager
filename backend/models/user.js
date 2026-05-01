@@ -3,7 +3,8 @@ import bcrypt from "bcryptjs";
 import logger from "../utils/logger.js";
 
 const ACTIVE_ROLES = ["organizer", "coach", "player"];
-const LEGACY_ROLES = ["user", "admin"];
+const ADMIN_ROLES = ["admin", "superadmin"];
+const LEGACY_ROLES = ["user"];
 
 const userSchema = new mongoose.Schema(
   {
@@ -45,13 +46,19 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
-    // NOTE:
-    // To avoid breaking existing users already saved with role "user" / "admin",
-    // we keep legacy values allowed internally.
-    // New registrations/UI only use: organizer, coach, player.
+    // Existing app roles are preserved:
+    // organizer, coach, player
+    //
+    // Admin panel roles are added:
+    // admin, superadmin
+    //
+    // IMPORTANT:
+    // Register/login code does not allow users to create themselves as admin/superadmin.
+    // Promote an account manually in MongoDB:
+    // db.users.updateOne({ email: "your@email.com" }, { $set: { role: "superadmin" } })
     role: {
       type: String,
-      enum: [...ACTIVE_ROLES, ...LEGACY_ROLES],
+      enum: [...ACTIVE_ROLES, ...ADMIN_ROLES, ...LEGACY_ROLES],
       default: "player",
     },
 
@@ -121,6 +128,7 @@ userSchema.methods.comparePassword = async function (candidatePassword) {
 
 userSchema.methods.getNormalizedRole = function () {
   if (ACTIVE_ROLES.includes(this.role)) return this.role;
+  if (ADMIN_ROLES.includes(this.role)) return this.role;
   return "player";
 };
 
