@@ -1,5 +1,5 @@
 import dotenv from "dotenv";
-dotenv.config({ path: "D:/Khiladi/backend/.env" });
+dotenv.config();
 
 import jwt from "jsonwebtoken";
 

@@ -1,1 +1,7 @@
 ek strong prompt genrate krke do jo mujhe ek hi prompt me in sabhi files k poore code mile, full complete updated code, na snippet, na structure, complete code, or mere code me koi or changes na ho, mere code k sabhi feature, function, behavior, UI, style, format etc sb exact same rahe,
+
+
+
+
+BACKEND_URL=https://khiladi-tournament-manager.onrender.com
+FRONTEND_URL=https://khiladi-khoj.com

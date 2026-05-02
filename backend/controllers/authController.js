@@ -275,14 +275,17 @@ export const socialAuthSuccess = (req, res) => {
       role: normalizeRole(req.user.role),
     });
 
-    res.redirect(process.env.FRONTEND_URL || "http://localhost:5173");
+    return res.redirect(
+      `${process.env.FRONTEND_URL || "http://localhost:5173"}/social-login?token=${encodeURIComponent(accessToken)}`
+    );
   } catch (error) {
     logger.error("Social auth success failed", {
       error: error.message,
       stack: error.stack,
     });
-    res.redirect(
+
+    return res.redirect(
       `${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=server_error`
     );
   }
-};
+}; 
