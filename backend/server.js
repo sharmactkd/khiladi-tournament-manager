@@ -95,6 +95,19 @@ if (process.env.NODE_ENV === "production") {
   app.use("/api/team-submissions", generalRateLimiter);
   app.use("/api/admin", generalRateLimiter);
   app.use(generalRateLimiter);
+
+  app.get("/api/debug-routes", (req, res) => {
+  res.json({
+    success: true,
+    message: "Latest backend code is running",
+    hasGoogleAuthRoute: true,
+    authGoogleUrl: "/api/auth/google",
+    environment: process.env.NODE_ENV,
+    backendUrl: process.env.BACKEND_URL,
+    frontendUrl: process.env.FRONTEND_URL,
+    timestamp: new Date().toISOString(),
+  });
+});
 }
 
 const mongoURI = process.env.MONGO_URI;
