@@ -86,7 +86,8 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.use(logMiddleware);
 
 if (process.env.NODE_ENV === "production") {
-  app.use("/api/auth", authRateLimiter);
+app.use("/api/auth/login", authRateLimiter);
+app.use("/api/auth/register", authRateLimiter);
   app.use("/api/tournament", generalRateLimiter);
   app.use("/api/tournaments", generalRateLimiter);
   app.use("/api/weight-presets", generalRateLimiter);

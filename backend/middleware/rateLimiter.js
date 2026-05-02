@@ -28,10 +28,14 @@ export const generalRateLimiter = createRateLimiter({
 });
 
 // 2. Strict Limiter – For auth routes (login, register, password reset)
-export const authRateLimiter = createRateLimiter({
-  windowMs: 10 * 60 * 1000, // 10 minutes
-  max: 8,                   // Only 8 attempts (strong brute-force protection)
-  message: "Too many login/register attempts. Please wait 10 minutes before trying again.",
+export const authRateLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 30,
+  message: {
+    error: "Too many login/register attempts. Please wait 10 minutes before trying again.",
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
 });
 
 // 3. Sensitive Actions Limiter – For create/update/delete tournament, entries, etc.
