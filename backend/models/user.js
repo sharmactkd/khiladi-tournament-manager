@@ -1,3 +1,5 @@
+// FILE: backend/models/user.js
+
 import mongoose from "mongoose";
 import bcrypt from "bcryptjs";
 import logger from "../utils/logger.js";
@@ -97,7 +99,12 @@ const userSchema = new mongoose.Schema(
     deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 
     lastLogin: Date,
-    refreshTokens: [String],
+
+    refreshTokens: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: [],
+      select: false,
+    },
 
     resetPasswordToken: {
       type: String,
@@ -122,6 +129,8 @@ userSchema.index({ isSuspended: 1 });
 userSchema.index({ isDeleted: 1 });
 userSchema.index({ resetPasswordToken: 1 });
 userSchema.index({ resetPasswordExpire: 1 });
+userSchema.index({ "refreshTokens.tokenHash": 1 });
+userSchema.index({ "refreshTokens.expiresAt": 1 });
 
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) return next();

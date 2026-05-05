@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import User from "../models/user.js";
 import Tournament from "../models/tournament.js";
+import Entry from "../models/entry.js";
 import logger from "../utils/logger.js";
 
 const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
@@ -35,7 +36,7 @@ const sanitizeUser = (user) => {
 
 const getEntryCount = (tournament) => {
   if (!tournament) return 0;
-  return Array.isArray(tournament.entries) ? tournament.entries.length : 0;
+  return Number(tournament.entriesCount || 0);
 };
 
 const getTeamPaymentRevenue = (tournament) => {
@@ -235,10 +236,25 @@ export const getAdminDashboard = async (req, res) => {
           .lean(),
       ]);
 
-    const totalEntries = tournamentsForStats.reduce(
-      (sum, tournament) => sum + getEntryCount(tournament),
-      0
-    );
+   const entryStats = await Entry.aggregate([
+  {
+    $project: {
+      count: {
+        $size: {
+          $ifNull: ["$entries", []],
+        },
+      },
+    },
+  },
+  {
+    $group: {
+      _id: null,
+      totalEntries: { $sum: "$count" },
+    },
+  },
+]);
+
+const totalEntries = entryStats?.[0]?.totalEntries || 0;
 
     const paymentRows = tournamentsForStats.flatMap((tournament) => getTeamPaymentRows(tournament));
     const paidPaymentRows = paymentRows.filter((payment) => Number(payment.amount || 0) > 0);

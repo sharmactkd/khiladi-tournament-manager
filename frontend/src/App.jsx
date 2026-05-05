@@ -43,6 +43,8 @@ function App() {
     user?.loginProvider === "google" &&
     user?.isProfileComplete === false;
 
+  const isAdminUser = user?.role === "admin" || user?.role === "superadmin";
+
   const requireAuth = (element) => {
     if (!isAuthenticated) {
       return (
@@ -55,6 +57,27 @@ function App() {
 
     if (needsProfileCompletion) {
       return <Navigate to="/complete-profile" replace />;
+    }
+
+    return element;
+  };
+
+  const requireAdmin = (element) => {
+    if (!isAuthenticated) {
+      return (
+        <Navigate
+          to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
+          replace
+        />
+      );
+    }
+
+    if (needsProfileCompletion) {
+      return <Navigate to="/complete-profile" replace />;
+    }
+
+    if (!isAdminUser) {
+      return <Navigate to="/" replace />;
     }
 
     return element;
@@ -161,18 +184,7 @@ function App() {
             element={requireAuth(<TeamEntryForm />)}
           />
 
-          <Route
-            path="/admin"
-            element={
-              isAuthenticated && !needsProfileCompletion ? (
-                <AdminLayout />
-              ) : isAuthenticated && needsProfileCompletion ? (
-                <Navigate to="/complete-profile" replace />
-              ) : (
-                <Navigate to="/login" replace />
-              )
-            }
-          >
+          <Route path="/admin" element={requireAdmin(<AdminLayout />)}>
             <Route index element={<AdminDashboard />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="users/:userId" element={<AdminUserDetails />} />

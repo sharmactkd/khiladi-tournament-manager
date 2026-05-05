@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import axios from "axios";
+import api from "../api";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { Medal as MedalIcon } from "lucide-react";
@@ -175,7 +175,7 @@ const PageFooter = ({ pageIdx, totalPages }) => (
 const Winner = () => {
   const { id: rawId } = useParams();
   const id = rawId?.trim();
-  const { token, isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth();
 
   const [tournament, setTournament] = useState(null);
   const [players, setPlayers] = useState([]);
@@ -194,13 +194,10 @@ const Winner = () => {
         setIsLoading(true);
         setError(null);
 
-        const baseUrl = normalizeBaseUrl();
-        const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-
-        const [tournamentRes, entriesRes] = await Promise.all([
-          axios.get(`${baseUrl}/tournament/${id}`, config),
-          axios.get(`${baseUrl}/tournaments/${id}/entries?ts=${Date.now()}`, config),
-        ]);
+       const [tournamentRes, entriesRes] = await Promise.all([
+  api.get(`/tournament/${id}`),
+  api.get(`/tournaments/${id}/entries?ts=${Date.now()}`),
+]);
 
         const td = tournamentRes.data;
 
@@ -243,7 +240,7 @@ const Winner = () => {
     };
 
     if (id) fetchData();
-  }, [id, token]);
+  }, [id]);
 
   const availableEvents = useMemo(() => {
     const foundEvents = [...new Set(players.map((p) => p.eventType).filter(Boolean))].sort(

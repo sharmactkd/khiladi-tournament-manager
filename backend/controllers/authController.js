@@ -23,8 +23,9 @@ const isStrongPassword = (password) => {
 };
 
 const isProd = process.env.NODE_ENV === "production";
-const REFRESH_COOKIE_MAX_AGE = 180 * 24 * 60 * 60 * 1000;
+export const REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_EXPIRE_MINUTES = 15;
+const MAX_ACTIVE_REFRESH_SESSIONS = 5;
 
 const refreshCookieOptions = {
   httpOnly: true,
@@ -43,6 +44,70 @@ const getFrontendUrl = () => {
 
 const hashResetToken = (token) => {
   return crypto.createHash("sha256").update(token).digest("hex");
+};
+
+export const hashRefreshToken = (token) => {
+  return crypto.createHash("sha256").update(String(token || "")).digest("hex");
+};
+
+const getRequestIp = (req) => {
+  const forwardedFor = req.headers?.["x-forwarded-for"];
+
+  if (typeof forwardedFor === "string" && forwardedFor.trim()) {
+    return forwardedFor.split(",")[0].trim();
+  }
+
+  return req.ip || req.socket?.remoteAddress || "";
+};
+
+export const normalizeRefreshTokenSessions = (sessions = []) => {
+  const now = Date.now();
+
+  return (Array.isArray(sessions) ? sessions : [])
+    .filter((session) => {
+      if (!session || typeof session !== "object" || Array.isArray(session)) return false;
+      if (!session.tokenHash || typeof session.tokenHash !== "string") return false;
+
+      const expiresAt = session.expiresAt ? new Date(session.expiresAt).getTime() : 0;
+      return expiresAt > now;
+    })
+    .map((session) => ({
+      tokenHash: String(session.tokenHash),
+      createdAt: session.createdAt ? new Date(session.createdAt) : new Date(),
+      expiresAt: session.expiresAt
+        ? new Date(session.expiresAt)
+        : new Date(Date.now() + REFRESH_COOKIE_MAX_AGE),
+      userAgent: String(session.userAgent || ""),
+      ip: String(session.ip || ""),
+      lastUsedAt: session.lastUsedAt ? new Date(session.lastUsedAt) : null,
+    }));
+};
+
+export const addRefreshTokenSession = ({ user, rawRefreshToken, req }) => {
+  const now = new Date();
+
+  const sessions = normalizeRefreshTokenSessions(user.refreshTokens);
+
+  sessions.push({
+    tokenHash: hashRefreshToken(rawRefreshToken),
+    createdAt: now,
+    expiresAt: new Date(now.getTime() + REFRESH_COOKIE_MAX_AGE),
+    userAgent: String(req?.headers?.["user-agent"] || ""),
+    ip: getRequestIp(req || {}),
+    lastUsedAt: now,
+  });
+
+  user.refreshTokens = sessions
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .slice(0, MAX_ACTIVE_REFRESH_SESSIONS);
+};
+
+export const removeRefreshTokenSession = ({ user, rawRefreshToken }) => {
+  const tokenHash = hashRefreshToken(rawRefreshToken);
+
+  user.refreshTokens = normalizeRefreshTokenSessions(user.refreshTokens).filter(
+    (session) => session.tokenHash !== tokenHash
+  );
 };
 
 const isProfileCompleteForResponse = (user) => {
@@ -165,7 +230,7 @@ export const registerUser = async (req, res) => {
     const accessToken = generateToken(user);
     const refreshToken = generateRefreshToken(user);
 
-    user.refreshTokens.push(refreshToken);
+    addRefreshTokenSession({ user, rawRefreshToken: refreshToken, req });
     await user.save({ validateBeforeSave: false });
 
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
@@ -263,7 +328,7 @@ export const loginUser = async (req, res) => {
     const accessToken = generateToken(user);
     const refreshToken = generateRefreshToken(user);
 
-    user.refreshTokens.push(refreshToken);
+    addRefreshTokenSession({ user, rawRefreshToken: refreshToken, req });
     await user.save({ validateBeforeSave: false });
 
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
@@ -518,12 +583,13 @@ export const logoutUser = async (req, res) => {
     const refreshToken = req.cookies.refreshToken;
 
     if (refreshToken) {
+      const tokenHash = hashRefreshToken(refreshToken);
       const user = req.user
         ? await User.findById(req.user._id).select("+refreshTokens")
-        : await User.findOne({ refreshTokens: refreshToken }).select("+refreshTokens");
+        : await User.findOne({ "refreshTokens.tokenHash": tokenHash }).select("+refreshTokens");
 
       if (user) {
-        user.refreshTokens = user.refreshTokens.filter((t) => t !== refreshToken);
+        removeRefreshTokenSession({ user, rawRefreshToken: refreshToken });
         await user.save({ validateBeforeSave: false });
       }
     }
@@ -555,9 +621,7 @@ export const socialAuthSuccess = (req, res) => {
   try {
     if (!req.user) {
       logger.warn("Social auth failed - no user", { path: req.path, ip: req.ip });
-      return res.redirect(
-        `${getFrontendUrl()}/login?error=auth_failed`
-      );
+      return res.redirect(`${getFrontendUrl()}/login?error=auth_failed`);
     }
 
     if (req.user.isDeleted || req.user.isSuspended) {
@@ -568,16 +632,15 @@ export const socialAuthSuccess = (req, res) => {
         isSuspended: Boolean(req.user.isSuspended),
       });
 
-      return res.redirect(
-        `${getFrontendUrl()}/login?error=account_blocked`
-      );
+      return res.redirect(`${getFrontendUrl()}/login?error=account_blocked`);
     }
 
     const refreshToken = generateRefreshToken(req.user);
 
-    req.user.refreshTokens.push(refreshToken);
+    addRefreshTokenSession({ user: req.user, rawRefreshToken: refreshToken, req });
+
     req.user.save({ validateBeforeSave: false }).catch((err) =>
-      logger.error("Refresh token save failed", { error: err.message })
+      logger.error("Refresh token session save failed", { error: err.message })
     );
 
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
@@ -596,8 +659,6 @@ export const socialAuthSuccess = (req, res) => {
       stack: error.stack,
     });
 
-    return res.redirect(
-      `${getFrontendUrl()}/login?error=server_error`
-    );
+    return res.redirect(`${getFrontendUrl()}/login?error=server_error`);
   }
 };

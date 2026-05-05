@@ -27,6 +27,12 @@ const toTitleCase = (value = "") =>
     .toLowerCase()
     .replace(/\b\w/g, (char) => char.toUpperCase());
 
+const normalizeTextForKey = (value = "") =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+
 const normalizeGender = (value = "") => {
   const v = String(value || "").trim().toLowerCase();
 
@@ -74,6 +80,22 @@ const parseDob = (value) => {
   const parsed = new Date(str);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
+
+const normalizeDobForKey = (value) => {
+  const dob = parseDob(value);
+  return dob ? dob.toISOString().slice(0, 10) : "";
+};
+
+const buildStrictDuplicateKey = (row = {}) =>
+  [
+    normalizeTextForKey(row.name),
+    normalizeTextForKey(row.team),
+    normalizeTextForKey(normalizeGender(row.gender)),
+    normalizeDobForKey(row.dob),
+    normalizeTextForKey(row.event),
+    normalizeTextForKey(row.ageCategory),
+    normalizeTextForKey(row.weightCategory),
+  ].join("|||");
 
 const normalizePlayers = (players = [], teamName = "") => {
   return (Array.isArray(players) ? players : [])
@@ -233,10 +255,10 @@ export const getTournamentTeamSubmissions = async (req, res) => {
 
     const isAdminUser = ["admin", "superadmin"].includes(req.user?.role);
 
-const ownerId = getTournamentOwnerId(tournament);
-if (!isAdminUser && (!ownerId || String(ownerId) !== String(req.user._id))) {
-  return res.status(403).json({ message: "You do not own this tournament" });
-}
+    const ownerId = getTournamentOwnerId(tournament);
+    if (!isAdminUser && (!ownerId || String(ownerId) !== String(req.user._id))) {
+      return res.status(403).json({ message: "You do not own this tournament" });
+    }
 
     const submissions = await TeamEntrySubmission.find({ tournamentId })
       .sort({ createdAt: -1 })
@@ -286,7 +308,33 @@ export const approveTeamSubmission = async (req, res) => {
     const existingEntries = Array.isArray(entryDoc?.entries) ? entryDoc.entries : [];
     const approvedPlayers = normalizePlayers(submission.players, submission.teamName);
 
-    const mergedEntries = [...existingEntries, ...approvedPlayers]
+    const existingNormalizedEntries = existingEntries
+      .filter(isMeaningfulRow)
+      .map((row, index) => normalizeEntryRowForEntryModel(row, index));
+
+    const existingKeys = new Set(
+      existingNormalizedEntries.map((entry) => buildStrictDuplicateKey(entry)).filter(Boolean)
+    );
+
+    const uniqueApprovedPlayers = [];
+    const skippedDuplicatePlayers = [];
+
+    approvedPlayers.forEach((player) => {
+      const duplicateKey = buildStrictDuplicateKey(player);
+
+      if (duplicateKey && existingKeys.has(duplicateKey)) {
+        skippedDuplicatePlayers.push(player);
+        return;
+      }
+
+      if (duplicateKey) {
+        existingKeys.add(duplicateKey);
+      }
+
+      uniqueApprovedPlayers.push(player);
+    });
+
+    const mergedEntries = [...existingNormalizedEntries, ...uniqueApprovedPlayers]
       .filter(isMeaningfulRow)
       .map((row, index) => normalizeEntryRowForEntryModel(row, index));
 
@@ -324,7 +372,9 @@ export const approveTeamSubmission = async (req, res) => {
       submissionId,
       tournamentId: submission.tournamentId,
       approvedBy: req.user._id,
-      mergedPlayers: approvedPlayers.length,
+      submittedPlayers: approvedPlayers.length,
+      mergedPlayers: uniqueApprovedPlayers.length,
+      skippedDuplicates: skippedDuplicatePlayers.length,
       totalEntriesAfterMerge: mergedEntries.length,
     });
 
@@ -344,17 +394,23 @@ export const approveTeamSubmission = async (req, res) => {
         teamName: submission.teamName || "",
         coachId: submission.coachId || null,
         reviewedBy: req.user._id,
-        mergedPlayers: approvedPlayers.length,
+        submittedPlayers: approvedPlayers.length,
+        mergedPlayers: uniqueApprovedPlayers.length,
+        skippedDuplicates: skippedDuplicatePlayers.length,
         totalEntriesAfterMerge: mergedEntries.length,
         status: submission.status,
       },
     });
 
     res.json({
-      message: "Submission approved and merged into tournament entries",
+      message:
+        skippedDuplicatePlayers.length > 0
+          ? "Submission approved. Duplicate players were skipped."
+          : "Submission approved and merged into tournament entries",
       submission,
       tournamentId: String(submission.tournamentId),
-      mergedCount: approvedPlayers.length,
+      mergedCount: uniqueApprovedPlayers.length,
+      skippedDuplicateCount: skippedDuplicatePlayers.length,
       totalEntries: mergedEntries.length,
       entries: mergedEntries,
       userState: updatedEntryDoc.userState,

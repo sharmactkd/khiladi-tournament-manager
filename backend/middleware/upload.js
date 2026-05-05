@@ -1,4 +1,4 @@
-// backend/middleware/upload.js
+// FILE: backend/middleware/upload.js
 
 import multer from "multer";
 import path from "path";
@@ -46,7 +46,7 @@ if (hasCloudinaryKeys) {
       cloudinary: cloudinary.v2,
       params: {
         folder: "khiladi-khoj/tournaments",
-        allowed_formats: ["jpg", "jpeg", "png", "webp", "svg"],
+        allowed_formats: ["jpg", "jpeg", "png", "webp"],
         public_id: (req, file) => `${Date.now()}-${Math.round(Math.random() * 1e9)}`,
         transformation: [
           { width: 1200, height: 1600, crop: "limit" },
@@ -79,14 +79,15 @@ if (!storage) {
 
 // File filter
 const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|webp|svg/;
+  const allowedTypes = /jpeg|jpg|png|webp/;
   const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
   const mimetype = allowedTypes.test(file.mimetype);
 
   if (mimetype && extname) {
     return cb(null, true);
   }
-  cb(new Error("Only JPG, PNG, WebP, SVG images are allowed!"));
+
+  cb(new Error("Only JPG, PNG, and WebP images are allowed!"));
 };
 
 export const upload = multer({

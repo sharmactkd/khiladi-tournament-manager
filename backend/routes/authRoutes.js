@@ -13,6 +13,10 @@ import {
   resetPassword,
   completeProfile,
   buildSafeUserResponse,
+  REFRESH_COOKIE_MAX_AGE,
+  hashRefreshToken,
+  normalizeRefreshTokenSessions,
+  addRefreshTokenSession,
 } from "../controllers/authController.js";
 import {
   validateRegister,
@@ -26,7 +30,6 @@ import logger from "../utils/logger.js";
 const router = express.Router();
 
 const isProd = process.env.NODE_ENV === "production";
-const REFRESH_COOKIE_MAX_AGE = 180 * 24 * 60 * 60 * 1000;
 
 const cookieOptions = {
   httpOnly: true,
@@ -58,15 +61,28 @@ router.post("/refresh", async (req, res) => {
     }
 
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    const tokenHash = hashRefreshToken(refreshToken);
 
     const user = await User.findById(decoded.id).select("+refreshTokens");
 
-    if (!user || !user.refreshTokens?.includes(refreshToken)) {
+    if (!user) {
+      res.clearCookie("refreshToken", cookieOptions);
+      return res.status(401).json({ message: "Invalid or revoked refresh token" });
+    }
+
+    const sessions = normalizeRefreshTokenSessions(user.refreshTokens);
+    const matchedSession = sessions.find((session) => session.tokenHash === tokenHash);
+
+    if (!matchedSession) {
+      user.refreshTokens = sessions;
+      await user.save({ validateBeforeSave: false });
+
+      res.clearCookie("refreshToken", cookieOptions);
       return res.status(401).json({ message: "Invalid or revoked refresh token" });
     }
 
     if (user.isDeleted) {
-      user.refreshTokens = user.refreshTokens.filter((t) => t !== refreshToken);
+      user.refreshTokens = [];
       await user.save({ validateBeforeSave: false });
 
       res.clearCookie("refreshToken", cookieOptions);
@@ -74,7 +90,7 @@ router.post("/refresh", async (req, res) => {
     }
 
     if (user.isSuspended) {
-      user.refreshTokens = user.refreshTokens.filter((t) => t !== refreshToken);
+      user.refreshTokens = [];
       await user.save({ validateBeforeSave: false });
 
       res.clearCookie("refreshToken", cookieOptions);
@@ -84,8 +100,9 @@ router.post("/refresh", async (req, res) => {
     const newAccessToken = generateToken(user);
     const newRefreshToken = generateRefreshToken(user);
 
-    user.refreshTokens = user.refreshTokens.filter((t) => t !== refreshToken);
-    user.refreshTokens.push(newRefreshToken);
+    user.refreshTokens = sessions.filter((session) => session.tokenHash !== tokenHash);
+    addRefreshTokenSession({ user, rawRefreshToken: newRefreshToken, req });
+
     await user.save({ validateBeforeSave: false });
 
     res.cookie("refreshToken", newRefreshToken, {

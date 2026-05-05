@@ -46,14 +46,14 @@ const validateFile = (file, fieldName) => {
   if (!file) return;
 
   const maxSize = 10 * 1024 * 1024;
-  const allowedTypes = ["image/jpeg", "image/png", "image/webp", "image/svg+xml"];
+  const allowedTypes = ["image/jpeg", "image/png", "image/webp"];
 
   if (file.size > maxSize) {
     throw new Error(`${fieldName} file size must be under 10MB`);
   }
 
   if (!allowedTypes.includes(file.mimetype)) {
-    throw new Error(`${fieldName} must be JPG, PNG, WebP, or SVG`);
+    throw new Error(`${fieldName} must be JPG, PNG, or WebP`);
   }
 };
 

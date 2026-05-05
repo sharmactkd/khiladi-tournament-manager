@@ -34,8 +34,8 @@ const Footer = () => {
         <div className={styles.footerGrid}>
           {/* Left */}
           <div>
-            <div className={styles.footerTitle}>KHILADI</div>
-            <div className={styles.footerMuted}>EVOLVE Tournament Manager for Taekwondo</div>
+            <div className={styles.footerTitle}>KHILADI-KHOJ</div>
+            <div className={styles.footerMuted}>KHILADI Tournament Manager for Taekwondo</div>
 
             <div className={styles.footerVisitor}>
               Visitors:{" "}

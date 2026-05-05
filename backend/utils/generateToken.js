@@ -1,3 +1,5 @@
+// FILE: backend/utils/generateToken.js
+
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -53,7 +55,7 @@ export const generateRefreshToken = (user) => {
     },
     JWT_REFRESH_SECRET,
     {
-      expiresIn: "180d",
+      expiresIn: "30d",
       ...commonOptions,
     }
   );

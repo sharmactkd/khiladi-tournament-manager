@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import axios from "axios";
+import api from "../api";
 import { Trophy } from "lucide-react";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
@@ -72,14 +72,14 @@ const TeamChampionship = () => {
   const { id: rawId } = useParams();
   const id = rawId?.trim();
   const navigate = useNavigate();
-  const { token, isAuthenticated } = useAuth();
+ const { isAuthenticated } = useAuth();
 
   const [tournament, setTournament] = useState(null);
   const [players, setPlayers] = useState([]);
   const [medalPoints, setMedalPoints] = useState({
-    gold: 12,
-    silver: 7,
-    bronze: 5,
+    gold: 5,
+    silver: 3,
+    bronze: 1,
   });
 
   const [isLoading, setIsLoading] = useState(true);
@@ -170,13 +170,10 @@ const TeamChampionship = () => {
         setIsLoading(true);
         setError(null);
 
-        const baseUrl = normalizeBaseUrl();
-        const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-
         const [tournamentRes, entriesRes] = await Promise.all([
-          axios.get(`${baseUrl}/tournament/${id}`, config),
-          axios.get(`${baseUrl}/tournaments/${id}/entries?ts=${Date.now()}`, config),
-        ]);
+  api.get(`/tournament/${id}`),
+  api.get(`/tournaments/${id}/entries?ts=${Date.now()}`),
+]);
 
         const tournamentData = tournamentRes.data;
 
@@ -187,9 +184,9 @@ const TeamChampionship = () => {
         });
 
         setMedalPoints({
-          gold: Number(tournamentData?.medalPoints?.gold) || 12,
-          silver: Number(tournamentData?.medalPoints?.silver) || 7,
-          bronze: Number(tournamentData?.medalPoints?.bronze) || 5,
+          gold: Number(tournamentData?.medalPoints?.gold) || 5,
+          silver: Number(tournamentData?.medalPoints?.silver) || 3,
+          bronze: Number(tournamentData?.medalPoints?.bronze) || 1,
         });
 
         const rows = Array.isArray(entriesRes?.data?.entries) ? entriesRes.data.entries : [];
@@ -205,7 +202,7 @@ const TeamChampionship = () => {
     };
 
     if (id && isAuthenticated) fetchData();
-  }, [id, token, isAuthenticated, normalizeEntryRows, updateAvailableFilters]);
+  }, [id, isAuthenticated, normalizeEntryRows, updateAvailableFilters]);
 
   const filteredPlayers = useMemo(() => {
     return players.filter((player) => {
@@ -262,10 +259,7 @@ const TeamChampionship = () => {
     setIsLoading(true);
 
     try {
-      const baseUrl = normalizeBaseUrl();
-      const config = token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-
-      const entriesRes = await axios.get(`${baseUrl}/tournaments/${id}/entries?ts=${Date.now()}`, config);
+     const entriesRes = await api.get(`/tournaments/${id}/entries?ts=${Date.now()}`);
       const rows = Array.isArray(entriesRes?.data?.entries) ? entriesRes.data.entries : [];
       const normalizedPlayers = normalizeEntryRows(rows);
 
