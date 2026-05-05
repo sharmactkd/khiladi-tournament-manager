@@ -2,16 +2,3 @@ ek strong prompt genrate krke do jo mujhe ek hi prompt me in sabhi files k poore
 
 
 
-
-
-
-backend/server.js
-
-Phir:
-
-
-
-backend/utils/emailSender.js
-frontend/src/pages/ForgotPassword.jsx
-frontend/src/pages/ResetPassword.jsx
-

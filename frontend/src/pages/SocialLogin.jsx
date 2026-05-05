@@ -1,33 +1,20 @@
+// FILE: frontend/src/pages/SocialLogin.jsx
+
 import React, { useEffect, useState } from "react";
 import { useAuth } from "../context/AuthContext";
-import api from "../api";
 
 const SocialLogin = () => {
-  const { login } = useAuth();
+  const { refreshToken } = useAuth();
   const [error, setError] = useState("");
 
   useEffect(() => {
     const handleSocialLogin = async () => {
       try {
-        const queryParams = new URLSearchParams(window.location.search);
-        const token = queryParams.get("token");
+        localStorage.removeItem("authToken");
 
-        if (!token) {
-          setError("Social login token missing");
-          return;
-        }
+        await refreshToken();
 
-        localStorage.setItem("authToken", token);
-
-        const userRes = await api.get("/auth/me");
-
-        login(
-          {
-            ...userRes.data,
-            accessToken: token,
-          },
-          "/"
-        );
+        window.location.href = "/";
       } catch (err) {
         console.error("Social login failed:", err);
         localStorage.removeItem("authToken");
@@ -37,7 +24,7 @@ const SocialLogin = () => {
     };
 
     handleSocialLogin();
-  }, [login]);
+  }, [refreshToken]);
 
   if (error) {
     return (

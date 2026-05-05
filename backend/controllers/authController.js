@@ -1,3 +1,5 @@
+// FILE: backend/controllers/authController.js
+
 import crypto from "crypto";
 import User from "../models/user.js";
 import bcrypt from "bcryptjs";
@@ -22,7 +24,6 @@ const isStrongPassword = (password) => {
 
 const isProd = process.env.NODE_ENV === "production";
 const REFRESH_COOKIE_MAX_AGE = 180 * 24 * 60 * 60 * 1000;
-const ACCESS_COOKIE_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_EXPIRE_MINUTES = 15;
 
 const refreshCookieOptions = {
@@ -31,14 +32,6 @@ const refreshCookieOptions = {
   sameSite: isProd ? "none" : "lax",
   path: "/",
   maxAge: REFRESH_COOKIE_MAX_AGE,
-};
-
-const accessCookieOptions = {
-  httpOnly: false,
-  secure: isProd,
-  sameSite: isProd ? "none" : "lax",
-  path: "/",
-  maxAge: ACCESS_COOKIE_MAX_AGE,
 };
 
 const getFrontendUrl = () => {
@@ -64,7 +57,7 @@ const isProfileCompleteForResponse = (user) => {
   return false;
 };
 
-const buildSafeUserResponse = (user) => ({
+export const buildSafeUserResponse = (user) => ({
   _id: user._id,
   name: user.name,
   email: user.email || null,
@@ -524,9 +517,15 @@ export const logoutUser = async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken;
 
-    if (refreshToken && req.user) {
-      req.user.refreshTokens = req.user.refreshTokens.filter((t) => t !== refreshToken);
-      await req.user.save({ validateBeforeSave: false });
+    if (refreshToken) {
+      const user = req.user
+        ? await User.findById(req.user._id).select("+refreshTokens")
+        : await User.findOne({ refreshTokens: refreshToken }).select("+refreshTokens");
+
+      if (user) {
+        user.refreshTokens = user.refreshTokens.filter((t) => t !== refreshToken);
+        await user.save({ validateBeforeSave: false });
+      }
     }
 
     res.clearCookie("refreshToken", {
@@ -537,7 +536,7 @@ export const logoutUser = async (req, res) => {
     });
 
     res.clearCookie("accessToken", {
-      httpOnly: false,
+      httpOnly: true,
       secure: isProd,
       sameSite: isProd ? "none" : "lax",
       path: "/",
@@ -557,7 +556,7 @@ export const socialAuthSuccess = (req, res) => {
     if (!req.user) {
       logger.warn("Social auth failed - no user", { path: req.path, ip: req.ip });
       return res.redirect(
-        `${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=auth_failed`
+        `${getFrontendUrl()}/login?error=auth_failed`
       );
     }
 
@@ -570,11 +569,10 @@ export const socialAuthSuccess = (req, res) => {
       });
 
       return res.redirect(
-        `${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=account_blocked`
+        `${getFrontendUrl()}/login?error=account_blocked`
       );
     }
 
-    const accessToken = generateToken(req.user);
     const refreshToken = generateRefreshToken(req.user);
 
     req.user.refreshTokens.push(refreshToken);
@@ -583,7 +581,6 @@ export const socialAuthSuccess = (req, res) => {
     );
 
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
-    res.cookie("accessToken", accessToken, accessCookieOptions);
 
     logger.info("Social auth successful", {
       userId: req.user._id,
@@ -592,9 +589,7 @@ export const socialAuthSuccess = (req, res) => {
       isProfileComplete: isProfileCompleteForResponse(req.user),
     });
 
-    return res.redirect(
-      `${process.env.FRONTEND_URL || "http://localhost:5173"}/social-login?token=${encodeURIComponent(accessToken)}`
-    );
+    return res.redirect(`${getFrontendUrl()}/social-login`);
   } catch (error) {
     logger.error("Social auth success failed", {
       error: error.message,
@@ -602,7 +597,7 @@ export const socialAuthSuccess = (req, res) => {
     });
 
     return res.redirect(
-      `${process.env.FRONTEND_URL || "http://localhost:5173"}/login?error=server_error`
+      `${getFrontendUrl()}/login?error=server_error`
     );
   }
 };

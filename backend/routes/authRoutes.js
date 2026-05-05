@@ -1,3 +1,5 @@
+// FILE: backend/routes/authRoutes.js
+
 import express from "express";
 import passport from "passport";
 import { generateToken, generateRefreshToken } from "../utils/generateToken.js";
@@ -10,6 +12,7 @@ import {
   forgotPassword,
   resetPassword,
   completeProfile,
+  buildSafeUserResponse,
 } from "../controllers/authController.js";
 import {
   validateRegister,
@@ -55,10 +58,27 @@ router.post("/refresh", async (req, res) => {
     }
 
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
-    const user = await User.findById(decoded.id);
+
+    const user = await User.findById(decoded.id).select("+refreshTokens");
 
     if (!user || !user.refreshTokens?.includes(refreshToken)) {
       return res.status(401).json({ message: "Invalid or revoked refresh token" });
+    }
+
+    if (user.isDeleted) {
+      user.refreshTokens = user.refreshTokens.filter((t) => t !== refreshToken);
+      await user.save({ validateBeforeSave: false });
+
+      res.clearCookie("refreshToken", cookieOptions);
+      return res.status(403).json({ message: "This account has been deleted" });
+    }
+
+    if (user.isSuspended) {
+      user.refreshTokens = user.refreshTokens.filter((t) => t !== refreshToken);
+      await user.save({ validateBeforeSave: false });
+
+      res.clearCookie("refreshToken", cookieOptions);
+      return res.status(403).json({ message: "This account has been suspended" });
     }
 
     const newAccessToken = generateToken(user);
@@ -73,9 +93,14 @@ router.post("/refresh", async (req, res) => {
       maxAge: REFRESH_COOKIE_MAX_AGE,
     });
 
-    res.json({ accessToken: newAccessToken });
+    res.json({
+      accessToken: newAccessToken,
+      user: buildSafeUserResponse(user),
+    });
   } catch (error) {
     logger.error("Refresh token error:", error.message);
+
+    res.clearCookie("refreshToken", cookieOptions);
     res.status(401).json({ message: "Invalid refresh token" });
   }
 });

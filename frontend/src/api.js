@@ -1,3 +1,5 @@
+// FILE: frontend/src/api.js
+
 import axios from "axios";
 
 const normalizeBase = (v) => String(v || "").trim().replace(/\/+$/, "");
@@ -26,11 +28,37 @@ const resolveApiBaseUrl = () => {
 
 const API_URL = resolveApiBaseUrl();
 
+let memoryAccessToken = null;
+
+export const setAccessToken = (token) => {
+  memoryAccessToken = token || null;
+};
+
+export const getAccessToken = () => memoryAccessToken;
+
+export const clearAccessToken = () => {
+  memoryAccessToken = null;
+};
+
 const isImageAnalyzeRequest = (configOrUrl) => {
   const value =
     typeof configOrUrl === "string" ? configOrUrl : configOrUrl?.url || "";
 
   return String(value).includes("/import/image/analyze");
+};
+
+const isAuthPublicPage = () => {
+  if (typeof window === "undefined") return false;
+
+  const pathname = window.location.pathname || "";
+
+  return (
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname === "/forgot-password" ||
+    pathname.startsWith("/reset-password") ||
+    pathname === "/social-login"
+  );
 };
 
 const api = axios.create({
@@ -42,11 +70,13 @@ const api = axios.create({
 let refreshPromise = null;
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("authToken");
+  const token = getAccessToken();
+
   if (token) {
     config.headers = config.headers || {};
     config.headers.Authorization = `Bearer ${token}`;
   }
+
   return config;
 });
 
@@ -68,8 +98,12 @@ api.interceptors.response.use(
             .post(`${API_URL}/auth/refresh`, {}, { withCredentials: true })
             .then((refreshRes) => {
               const { accessToken } = refreshRes.data || {};
-              if (!accessToken) throw new Error("Refresh did not return accessToken");
-              localStorage.setItem("authToken", accessToken);
+
+              if (!accessToken) {
+                throw new Error("Refresh did not return accessToken");
+              }
+
+              setAccessToken(accessToken);
               return accessToken;
             })
             .finally(() => {
@@ -81,13 +115,19 @@ api.interceptors.response.use(
 
         originalRequest.headers = originalRequest.headers || {};
         originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+
         return api(originalRequest);
       } catch (refreshError) {
         console.error("Token refresh failed:", refreshError);
 
-        localStorage.removeItem("authToken");
+        clearAccessToken();
         localStorage.removeItem("user");
-        window.location.href = "/login";
+        localStorage.removeItem("authToken");
+
+        if (typeof window !== "undefined" && !isAuthPublicPage()) {
+          window.location.href = "/login";
+        }
+
         return Promise.reject(refreshError);
       }
     }
@@ -126,12 +166,13 @@ const apiCall = async (method, url, data = null, config = {}) => {
     const msg = serverMsg || error.message || "Request failed";
 
     const shouldSuppressLog =
-  status === 403 && String(url || "").includes("/team-submissions/") &&
-  String(url || "").includes("/pending-count");
+      status === 403 &&
+      String(url || "").includes("/team-submissions/") &&
+      String(url || "").includes("/pending-count");
 
-if (!shouldSuppressLog) {
-  console.error(`API ${method.toUpperCase()} ${url} error:`, { status, msg });
-}
+    if (!shouldSuppressLog) {
+      console.error(`API ${method.toUpperCase()} ${url} error:`, { status, msg });
+    }
 
     const err = new Error(msg);
     err.status = status;

@@ -1,3 +1,5 @@
+// FILE: frontend/src/context/AuthContext.jsx
+
 import React, {
   createContext,
   useState,
@@ -7,14 +9,14 @@ import React, {
   useRef,
   useCallback,
 } from "react";
-import api from "../api";
+import api, { setAccessToken, getAccessToken, clearAccessToken } from "../api";
 
 const AuthContext = createContext();
 
 const normalizeUserData = (data) => {
   if (!data) return null;
 
-  const { _id, id, ...rest } = data;
+  const { _id, id, accessToken, ...rest } = data;
 
   return {
     id: id || _id,
@@ -35,7 +37,7 @@ export const AuthProvider = ({ children }) => {
     }
   });
 
-  const [token, setToken] = useState(localStorage.getItem("authToken"));
+  const [token, setToken] = useState(getAccessToken());
   const [loading, setLoading] = useState(true);
   const refreshInFlightRef = useRef(null);
 
@@ -52,6 +54,15 @@ export const AuthProvider = ({ children }) => {
     return normalizedUser;
   }, []);
 
+  const clearAuthState = useCallback(() => {
+    clearAccessToken();
+    localStorage.removeItem("authToken");
+    localStorage.removeItem("user");
+
+    setUser(null);
+    setToken(null);
+  }, []);
+
   const login = useCallback(
     (responseData, redirectTo = "/") => {
       const { accessToken, ...userPayload } = responseData || {};
@@ -61,7 +72,8 @@ export const AuthProvider = ({ children }) => {
         throw new Error("Invalid login response");
       }
 
-      localStorage.setItem("authToken", accessToken);
+      setAccessToken(accessToken);
+      localStorage.removeItem("authToken");
       localStorage.setItem("user", JSON.stringify(normalizedUser));
 
       setUser(normalizedUser);
@@ -89,14 +101,19 @@ export const AuthProvider = ({ children }) => {
   }, [persistUser]);
 
   const logout = useCallback((redirectTo = "/login") => {
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
+    const performLogout = async () => {
+      try {
+        await api.post("/auth/logout", {}, { withCredentials: true });
+      } catch (error) {
+        console.error("Logout API failed:", error);
+      } finally {
+        clearAuthState();
+        window.location.href = redirectTo;
+      }
+    };
 
-    setUser(null);
-    setToken(null);
-
-    window.location.href = redirectTo;
-  }, []);
+    performLogout();
+  }, [clearAuthState]);
 
   const refreshToken = useCallback(async () => {
     if (refreshInFlightRef.current) return refreshInFlightRef.current;
@@ -104,19 +121,26 @@ export const AuthProvider = ({ children }) => {
     refreshInFlightRef.current = (async () => {
       try {
         const response = await api.post("/auth/refresh", {}, { withCredentials: true });
-        const { accessToken } = response.data || {};
+        const { accessToken, user: refreshedUser } = response.data || {};
+
         if (!accessToken) throw new Error("Refresh did not return accessToken");
 
-        localStorage.setItem("authToken", accessToken);
+        setAccessToken(accessToken);
         setToken(accessToken);
 
-        const userRes = await api.get("/auth/me");
-        persistUser(userRes.data);
+        let finalUser = refreshedUser ? normalizeUserData(refreshedUser) : null;
+
+        if (!finalUser?.id) {
+          const userRes = await api.get("/auth/me");
+          finalUser = normalizeUserData(userRes.data);
+        }
+
+        persistUser(finalUser);
 
         return accessToken;
       } catch (error) {
         console.error("Token refresh failed:", error);
-        logout();
+        clearAuthState();
         throw error;
       } finally {
         refreshInFlightRef.current = null;
@@ -124,40 +148,41 @@ export const AuthProvider = ({ children }) => {
     })();
 
     return refreshInFlightRef.current;
-  }, [logout, persistUser]);
+  }, [clearAuthState, persistUser]);
 
   useEffect(() => {
     const restoreAuth = async () => {
-      const storedToken = localStorage.getItem("authToken");
-
-      if (!storedToken) {
-        setLoading(false);
-        return;
-      }
+      localStorage.removeItem("authToken");
 
       try {
-        const res = await api.get("/auth/me");
-        const userData = normalizeUserData(res.data);
+        const response = await api.post("/auth/refresh", {}, { withCredentials: true });
+        const { accessToken, user: refreshedUser } = response.data || {};
+
+        if (!accessToken) {
+          throw new Error("Refresh did not return accessToken");
+        }
+
+        setAccessToken(accessToken);
+        setToken(accessToken);
+
+        let userData = refreshedUser ? normalizeUserData(refreshedUser) : null;
+
+        if (!userData?.id) {
+          const res = await api.get("/auth/me");
+          userData = normalizeUserData(res.data);
+        }
 
         setUser(userData);
-        setToken(storedToken);
         localStorage.setItem("user", JSON.stringify(userData));
       } catch (error) {
-        console.error("Session restore failed:", error);
-
-        if (error?.response?.status === 401) {
-          localStorage.removeItem("authToken");
-          localStorage.removeItem("user");
-          setToken(null);
-          setUser(null);
-        }
+        clearAuthState();
       } finally {
         setLoading(false);
       }
     };
 
     restoreAuth();
-  }, []);
+  }, [clearAuthState]);
 
   useEffect(() => {
     if (!token) return;
@@ -175,7 +200,7 @@ export const AuthProvider = ({ children }) => {
 
     const checkAndRefreshToken = async () => {
       try {
-        const latestToken = localStorage.getItem("authToken") || token;
+        const latestToken = getAccessToken() || token;
         const expiryTime = safeParseJwtExp(latestToken);
 
         if (!expiryTime) return;
