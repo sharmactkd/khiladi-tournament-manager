@@ -231,10 +231,12 @@ export const getTournamentTeamSubmissions = async (req, res) => {
       return res.status(404).json({ message: "Tournament not found" });
     }
 
-    const ownerId = getTournamentOwnerId(tournament);
-    if (!ownerId || String(ownerId) !== String(req.user._id)) {
-      return res.status(403).json({ message: "You do not own this tournament" });
-    }
+    const isAdminUser = ["admin", "superadmin"].includes(req.user?.role);
+
+const ownerId = getTournamentOwnerId(tournament);
+if (!isAdminUser && (!ownerId || String(ownerId) !== String(req.user._id))) {
+  return res.status(403).json({ message: "You do not own this tournament" });
+}
 
     const submissions = await TeamEntrySubmission.find({ tournamentId })
       .sort({ createdAt: -1 })

@@ -20,7 +20,7 @@ router.post(
 router.get(
   "/:tournamentId/pending-count",
   authMiddleware,
-  authorizeRoles("organizer"),
+  authorizeRoles("organizer", "admin", "superadmin"),
   getPendingTeamSubmissionCount
 );
 

@@ -34,21 +34,23 @@ const SubNavBar = ({
 
   const canReviewTeamSubmissions = isOrganizer || isAdminUser;
 
-  const loadPendingCount = useCallback(async () => {
-    try {
-      if (!id || !canReviewTeamSubmissions) {
-        setPendingCount(0);
-        return;
-      }
-
-      const response = await getPendingTeamSubmissionCount(id);
-      setPendingCount(Number(response?.pendingCount || 0));
-    } catch (error) {
-      console.error("Failed to load pending team submission count:", error);
+ const loadPendingCount = useCallback(async () => {
+  try {
+    if (!id || !canReviewTeamSubmissions) {
       setPendingCount(0);
+      return;
     }
-  }, [id, canReviewTeamSubmissions]);
 
+    const response = await getPendingTeamSubmissionCount(id);
+    setPendingCount(Number(response?.pendingCount || 0));
+  } catch (error) {
+    if (error?.status !== 403) {
+      console.error("Failed to load pending team submission count:", error);
+    }
+
+    setPendingCount(0);
+  }
+}, [id, canReviewTeamSubmissions]);
   useEffect(() => {
     if (!user || (!isActive && !isAdminUser) || !canReviewTeamSubmissions) return;
 

@@ -2,29 +2,16 @@ ek strong prompt genrate krke do jo mujhe ek hi prompt me in sabhi files k poore
 
 
 
-Best Next Roadmap
-Phase 1: Must fix before production
-Remove /api/debug-routes.
-Stop token in Google redirect URL.
-Move access token away from localStorage.
-Add forgot/reset password.
-Add backend ownership check to Entry APIs.
-Apply visibility filter to all public tournament listings.
-Phase 2: Improve reliability
-Add stable entryId to every player.
-Use entryId for tiesheet winner/medal sync.
-Prevent duplicate team submission approvals.
-Add audit logs for admin, results, payments.
-Add tests for auth, entry save, tiesheet sync, team submission approve.
-Phase 3: Improve UX and scalability
-Lazy-load heavy frontend pages.
-Add mobile responsive checks for Entry/TieSheet.
-Add skeleton loaders and better error screens.
-Split large schemas into separate collections.
-Add aggregation-based admin stats.
-Phase 4: Advanced/pro features
-Razorpay subscription plans.
-Webhook verified payment status.
-Premium feature guard.
-Tournament result finalization/lock.
-Superadmin role management UI.
+
+
+
+backend/server.js
+
+Phir:
+
+
+
+backend/utils/emailSender.js
+frontend/src/pages/ForgotPassword.jsx
+frontend/src/pages/ResetPassword.jsx
+

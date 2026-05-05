@@ -125,7 +125,13 @@ const apiCall = async (method, url, data = null, config = {}) => {
 
     const msg = serverMsg || error.message || "Request failed";
 
-    console.error(`API ${method.toUpperCase()} ${url} error:`, { status, msg });
+    const shouldSuppressLog =
+  status === 403 && String(url || "").includes("/team-submissions/") &&
+  String(url || "").includes("/pending-count");
+
+if (!shouldSuppressLog) {
+  console.error(`API ${method.toUpperCase()} ${url} error:`, { status, msg });
+}
 
     const err = new Error(msg);
     err.status = status;
@@ -191,8 +197,17 @@ export const submitTeamSubmission = (tournamentId, payload) =>
 export const getTournamentTeamSubmissions = (tournamentId) =>
   apiCall("get", `/team-submissions/${tournamentId}`);
 
-export const getPendingTeamSubmissionCount = (tournamentId) =>
-  apiCall("get", `/team-submissions/${tournamentId}/pending-count`);
+export const getPendingTeamSubmissionCount = async (tournamentId) => {
+  try {
+    return await apiCall("get", `/team-submissions/${tournamentId}/pending-count`);
+  } catch (error) {
+    if (error?.status === 403) {
+      return { pendingCount: 0 };
+    }
+
+    throw error;
+  }
+};
 
 export const approveTeamSubmission = (submissionId) =>
   apiCall("patch", `/team-submissions/${submissionId}/approve`, {});
