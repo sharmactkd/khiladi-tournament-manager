@@ -25,19 +25,14 @@ import FilterDropdown from "./FilterDropdown";
 import { baseColumnsDef } from "./constants";
 import styles from "../../pages/Entry.module.css";
 
-// ✅ Use existing axios instance so Authorization Bearer attaches automatically
-import api from "../../api";
-
 const isDev = typeof import.meta !== "undefined" && !!import.meta.env?.DEV;
 
-// Multi-select include filter
 const multiSelectIncludeFilter = (row, columnId, filterValue) => {
   if (!filterValue || filterValue.length === 0) return true;
   const cellValue = row.getValue(columnId)?.toString()?.trim() || "";
   return filterValue.includes(cellValue);
 };
 
-// Sorting helpers (kept)
 const alphanumericSortWithEmpty = (rowA, rowB, columnId) => {
   const a = rowA.getValue(columnId) || "";
   const b = rowB.getValue(columnId) || "";
@@ -91,7 +86,6 @@ const medalSort = (rowA, rowB, columnId) => {
   return (order[rowA.getValue(columnId)] || 5) - (order[rowB.getValue(columnId)] || 5);
 };
 
-// Stable stringify + small hash (prevents false positives/negatives)
 const stableStringify = (obj) => {
   const seen = new WeakSet();
   const sort = (v) => {
@@ -140,22 +134,23 @@ const EntryTable = forwardRef(
       updateColumnWidth,
       recalculateColumnWidths,
       columnWidths = [],
-      // token prop optional - NOT required anymore
       token,
       tournamentId,
+      readOnly = false,
+      disabled = false,
     },
     ref
   ) => {
+    const isReadOnly = Boolean(readOnly || disabled);
+
     const [saveStatus, setSaveStatus] = useState("idle");
-const [jumpHighlightedSr, setJumpHighlightedSr] = useState("");
+    const [jumpHighlightedSr, setJumpHighlightedSr] = useState("");
     const parentRef = useRef(null);
 
     const debouncedSaveRef = useRef(null);
     const lastSavedHashRef = useRef(null);
     const isSavingRef = useRef(false);
     const mountedRef = useRef(false);
-
-    // Tracks the promise of the most recent save attempt (for safe flushing on navigation)
     const lastSavePromiseRef = useRef(Promise.resolve());
 
     const latestUiStateRef = useRef({
@@ -168,6 +163,12 @@ const [jumpHighlightedSr, setJumpHighlightedSr] = useState("");
     useEffect(() => {
       latestUiStateRef.current = { sorting, filters, columnWidths, searchTerm };
     }, [sorting, filters, columnWidths, searchTerm]);
+
+    const warnReadOnly = useCallback(() => {
+      if (!isReadOnly) return false;
+      alert("Admin read-only mode is active. Click Edit first to make changes.");
+      return true;
+    }, [isReadOnly]);
 
     const buildProcessedEntries = useCallback((rows) => {
       const baseRows = Array.isArray(rows) ? rows : [];
@@ -205,6 +206,11 @@ const [jumpHighlightedSr, setJumpHighlightedSr] = useState("");
 
     const performSave = useCallback(
       async (rows, reason = "unknown") => {
+        if (isReadOnly) {
+          if (isDev) console.warn("[EntryTable][SAVE] SKIP: read-only mode");
+          return { ok: false, skipped: true, reason: "read-only" };
+        }
+
         const tid = tournamentId || tournamentData?._id;
 
         if (!tid) {
@@ -212,7 +218,6 @@ const [jumpHighlightedSr, setJumpHighlightedSr] = useState("");
           return { ok: false, skipped: true, reason: "missing-tournamentId" };
         }
 
-        // token prop is OPTIONAL now because api interceptor attaches token automatically.
         if (!token && isDev) {
           console.warn("[EntryTable][SAVE] token prop missing (OK) - using axios interceptor token");
         }
@@ -254,80 +259,105 @@ const [jumpHighlightedSr, setJumpHighlightedSr] = useState("");
         }
 
         try {
-         const resp = await saveEntriesApi(tid, payload);
-         
-         lastSavedHashRef.current = hash;
+          const resp = await saveEntriesApi(tid, payload);
 
-if (isDev) {
-  console.log("[EntryTable][SAVE] SUCCESS", {
-    lastUpdated: resp?.lastUpdated,
-    count: resp?.count,
-  });
-}
+          lastSavedHashRef.current = hash;
 
-setSaveStatus("saved");
-setTimeout(() => setSaveStatus("idle"), 1500);
+          if (isDev) {
+            console.log("[EntryTable][SAVE] SUCCESS", {
+              lastUpdated: resp?.lastUpdated,
+              count: resp?.count,
+            });
+          }
 
-return { ok: true, skipped: false, count: resp?.count, lastUpdated: resp?.lastUpdated };
+          setSaveStatus("saved");
+          setTimeout(() => setSaveStatus("idle"), 1500);
 
-} catch (err) {
-  const status = err?.response?.status;
-  const serverMsg =
-    err?.response?.data?.message ||
-    err?.response?.data?.error ||
-    err?.response?.data?.details;
+          return {
+            ok: true,
+            skipped: false,
+            count: resp?.count,
+            lastUpdated: resp?.lastUpdated,
+          };
+        } catch (err) {
+          const status = err?.response?.status;
+          const serverMsg =
+            err?.response?.data?.message ||
+            err?.response?.data?.error ||
+            err?.response?.data?.details;
 
-  console.error("[EntryTable][SAVE] FAILED FULL", {
-    status,
-    serverMsg,
-    responseData: err?.response?.data,
-    rawMessage: err?.message,
-  });
+          console.error("[EntryTable][SAVE] FAILED FULL", {
+            status,
+            serverMsg,
+            responseData: err?.response?.data,
+            rawMessage: err?.message,
+          });
 
-  setSaveStatus("error");
-  setTimeout(() => setSaveStatus("idle"), 3500);
+          setSaveStatus("error");
+          setTimeout(() => setSaveStatus("idle"), 3500);
 
-  return { ok: false, skipped: false, status, message: serverMsg || err?.message };
-} finally {
+          return {
+            ok: false,
+            skipped: false,
+            status,
+            message: serverMsg || err?.message,
+          };
+        } finally {
           isSavingRef.current = false;
         }
       },
-      [tournamentId, tournamentData?._id, token, computeSaveHash, buildProcessedEntries]
+      [
+        tournamentId,
+        tournamentData?._id,
+        token,
+        computeSaveHash,
+        buildProcessedEntries,
+        isReadOnly,
+      ]
     );
 
     useEffect(() => {
       if (debouncedSaveRef.current?.cancel) debouncedSaveRef.current.cancel();
 
       debouncedSaveRef.current = lodashDebounce((rows, reason) => {
-        // Store the promise so navigation can await the *latest* pending save
+        if (isReadOnly) return;
         lastSavePromiseRef.current = performSave(rows, reason);
       }, 2000);
 
       return () => {
         debouncedSaveRef.current?.cancel?.();
       };
-    }, [performSave]);
+    }, [performSave, isReadOnly]);
 
     const flushSaveNow = useCallback(
       (rows, reason = "flush") => {
         debouncedSaveRef.current?.cancel?.();
+
+        if (isReadOnly) {
+          return Promise.resolve({ ok: false, skipped: true, reason: "read-only" });
+        }
+
         lastSavePromiseRef.current = performSave(rows, reason);
         return lastSavePromiseRef.current;
       },
-      [performSave]
+      [performSave, isReadOnly]
     );
 
-    // Autosave on data change (NOT first mount)
     useEffect(() => {
       if (!mountedRef.current) {
         mountedRef.current = true;
         return;
       }
+
+      if (isReadOnly) {
+        if (isDev) console.log("[EntryTable] data changed -> save blocked in read-only");
+        return;
+      }
+
       if (isDev) console.log("[EntryTable] data changed -> schedule save");
       debouncedSaveRef.current?.(data, "data-change");
-    }, [data]);
+    }, [data, isReadOnly]);
 
-    // Dynamic Columns (kept)
     const columnsDef = useMemo(() => {
       const optional = [
         { header: "Father's Name", accessorKey: "fathersName", id: "fathersName", className: "col-fathersName" },
@@ -369,18 +399,20 @@ return { ok: true, skipped: false, count: resp?.count, lastUpdated: resp?.lastUp
           size: columnWidths[index] ?? (custom.size ?? col.size ?? defaultConfig.size),
           minSize: custom.minSize ?? col.minSize ?? defaultConfig.minSize,
           maxSize: custom.maxSize ?? col.maxSize ?? defaultConfig.maxSize,
-          enableResizing: custom.enableResizing ?? col.enableColumnResizing !== false,
+          enableResizing: isReadOnly
+            ? false
+            : custom.enableResizing ?? col.enableColumnResizing !== false,
           enableSorting: isSortable,
           sortingFn:
             col.id === "gender"
               ? genderSort
               : col.id === "subEvent"
-              ? subEventSort
-              : col.id === "ageCategory"
-              ? ageCategorySort
-              : col.id === "medal"
-              ? medalSort
-              : alphanumericSortWithEmpty,
+                ? subEventSort
+                : col.id === "ageCategory"
+                  ? ageCategorySort
+                  : col.id === "medal"
+                    ? medalSort
+                    : alphanumericSortWithEmpty,
           filterFn: [
             "team",
             "school",
@@ -394,9 +426,13 @@ return { ok: true, skipped: false, count: resp?.count, lastUpdated: resp?.lastUp
           ].includes(col.id)
             ? multiSelectIncludeFilter
             : undefined,
+          meta: {
+            ...(col.meta || {}),
+            readOnly: isReadOnly,
+          },
         };
       });
-    }, [columnsDef, columnWidths]);
+    }, [columnsDef, columnWidths, isReadOnly]);
 
     const columnFiltersArray = useMemo(() => {
       const arr = Object.entries(filters || {})
@@ -439,18 +475,41 @@ return { ok: true, skipped: false, count: resp?.count, lastUpdated: resp?.lastUp
       globalFilterFn: "includesString",
       filterFromLeafRows: true,
       meta: {
-        updateData,
-        updateColumnWidth,
-        addNewRow,
-        addRowBelow,
-        deleteRow,
+        updateData: (...args) => {
+          if (warnReadOnly()) return;
+          return updateData?.(...args);
+        },
+        updateColumnWidth: (...args) => {
+          if (isReadOnly) return;
+          return updateColumnWidth?.(...args);
+        },
+        addNewRow: (...args) => {
+          if (warnReadOnly()) return;
+          return addNewRow?.(...args);
+        },
+        addRowBelow: (...args) => {
+          if (warnReadOnly()) return;
+          return addRowBelow?.(...args);
+        },
+        deleteRow: (...args) => {
+          if (warnReadOnly()) return;
+          return deleteRow?.(...args);
+        },
         recalculateColumnWidths,
         tournamentData,
-        setEditingCell,
-        editingCell,
-        requestSave: (reason) => debouncedSaveRef.current?.(data, reason),
+        setEditingCell: (...args) => {
+          if (isReadOnly) return;
+          return setEditingCell?.(...args);
+        },
+        editingCell: isReadOnly ? null : editingCell,
+        requestSave: (reason) => {
+          if (isReadOnly) return;
+          debouncedSaveRef.current?.(data, reason);
+        },
         flushSaveNow: (reason) => flushSaveNow(data, reason),
         saveStatusSetter: setSaveStatus,
+        readOnly: isReadOnly,
+        disabled: isReadOnly,
       },
       debugTable: false,
     });
@@ -469,29 +528,26 @@ return { ok: true, skipped: false, count: resp?.count, lastUpdated: resp?.lastUp
     useImperativeHandle(
       ref,
       () => ({
-       scrollToRow: (sr) => {
-  if (!parentRef.current || !data.length) return;
+        scrollToRow: (sr) => {
+          if (!parentRef.current || !data.length) return;
 
-  const srStr = String(sr);
-  const index = data.findIndex((r) => String(r.sr) === srStr);
-  if (index < 0) return;
+          const srStr = String(sr);
+          const index = data.findIndex((r) => String(r.sr) === srStr);
+          if (index < 0) return;
 
-  const rowHeight = 48;
-  const container = parentRef.current;
-  const containerHeight = container.clientHeight;
-  const targetScrollTop = Math.max(0, index * rowHeight - containerHeight * 0.4);
+          const rowHeight = 48;
+          const container = parentRef.current;
+          const containerHeight = container.clientHeight;
+          const targetScrollTop = Math.max(0, index * rowHeight - containerHeight * 0.4);
 
-  setJumpHighlightedSr(srStr);
-  container.scrollTo({ top: targetScrollTop, behavior: "smooth" });
+          setJumpHighlightedSr(srStr);
+          container.scrollTo({ top: targetScrollTop, behavior: "smooth" });
 
-  // remove highlight after some time
-  setTimeout(() => {
-    setJumpHighlightedSr((prev) => (prev === srStr ? "" : prev));
-  }, 2200);
-},
-        // ✅ New: force immediate server save and await it (used before TieSheet navigation)
+          setTimeout(() => {
+            setJumpHighlightedSr((prev) => (prev === srStr ? "" : prev));
+          }, 2200);
+        },
         flushSaveNow: (reason = "flush") => flushSaveNow(data, reason),
-        // Optional helpers (non-breaking)
         getSaveStatus: () => saveStatus,
         isSaving: () => !!isSavingRef.current,
       }),
@@ -500,8 +556,13 @@ return { ok: true, skipped: false, count: resp?.count, lastUpdated: resp?.lastUp
 
     return (
       <div className={styles.tableContainer}>
-        <div ref={parentRef} className={styles.scrollableWrapper} style={{ overflow: "auto", height: "100%" }}>
-          {/* Header */}
+        
+
+        <div
+          ref={parentRef}
+          className={styles.scrollableWrapper}
+          style={{ overflow: "auto", height: "100%" }}
+        >
           <div className={styles.headerWrapper}>
             <table
               className={styles.headerTable}
@@ -614,7 +675,7 @@ return { ok: true, skipped: false, count: resp?.count, lastUpdated: resp?.lastUp
                             )}
                           </div>
 
-                          {header.column.getCanResize() && (
+                          {header.column.getCanResize() && !isReadOnly && (
                             <div
                               className={`${styles.resizer} ${header.column.getIsResizing() ? styles.isResizing : ""}`}
                               onMouseDown={header.getResizeHandler()}
@@ -655,7 +716,6 @@ return { ok: true, skipped: false, count: resp?.count, lastUpdated: resp?.lastUp
             </table>
           </div>
 
-          {/* Body */}
           <div
             style={{
               height: `${rowVirtualizer.getTotalSize()}px`,
@@ -671,28 +731,27 @@ return { ok: true, skipped: false, count: resp?.count, lastUpdated: resp?.lastUp
 
               const rowData = row.original;
               const sr = rowData?.sr || "";
-const isJumpHighlighted = String(sr) === String(jumpHighlightedSr);
+              const isJumpHighlighted = String(sr) === String(jumpHighlightedSr);
 
               return (
-              <div
-  key={virtualRow.key}
-  className={`${styles.virtualRow} ${isJumpHighlighted ? styles.jumpHighlightRow : ""}`}
-  style={{
-    position: "absolute",
-    top: 0,
-    left: 0,
-    width: "100%",
-    height: `${virtualRow.size}px`,
-    transform: `translateY(${virtualRow.start}px)`,
-    display: "flex",
-    background: isJumpHighlighted ? "rgba(255, 59, 59, 0.35)" : undefined,
-  
-    transition: "background 0.25s ease, box-shadow 0.25s ease",
-    zIndex: isJumpHighlighted ? 2 : 1,
-  }}
-  data-row-index={virtualRow.index}
-  data-row-id={sr}
->
+                <div
+                  key={virtualRow.key}
+                  className={`${styles.virtualRow} ${isJumpHighlighted ? styles.jumpHighlightRow : ""}`}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    height: `${virtualRow.size}px`,
+                    transform: `translateY(${virtualRow.start}px)`,
+                    display: "flex",
+                    background: isJumpHighlighted ? "rgba(255, 59, 59, 0.35)" : undefined,
+                    transition: "background 0.25s ease, box-shadow 0.25s ease",
+                    zIndex: isJumpHighlighted ? 2 : 1,
+                  }}
+                  data-row-index={virtualRow.index}
+                  data-row-id={sr}
+                >
                   {row.getVisibleCells().map((cell) => (
                     <div
                       key={cell.id}
@@ -708,6 +767,7 @@ const isJumpHighlighted = String(sr) === String(jumpHighlightedSr);
                         overflow: "hidden",
                         textOverflow: "ellipsis",
                         whiteSpace: "nowrap",
+                        background: isReadOnly ? "#f8fafc" : undefined,
                       }}
                     >
                       {flexRender(cell.column.columnDef.cell, cell.getContext()) ?? "—"}
@@ -725,15 +785,25 @@ const isJumpHighlighted = String(sr) === String(jumpHighlightedSr);
                 <p>
                   Click the <strong>+</strong> button in the Actions column to add a player.
                 </p>
-                <button className={styles.addFirstRowButton} onClick={() => addNewRow?.()}>
+                <button
+                  className={styles.addFirstRowButton}
+                  disabled={isReadOnly}
+                  onClick={() => {
+                    if (warnReadOnly()) return;
+                    addNewRow?.();
+                  }}
+                  style={{
+                    opacity: isReadOnly ? 0.55 : 1,
+                    cursor: isReadOnly ? "not-allowed" : "pointer",
+                  }}
+                >
                   <FontAwesomeIcon icon={faPlus} /> Add First Player
                 </button>
               </div>
             </div>
           )}
 
-          {/* Save Status (existing UX only) */}
-          {saveStatus !== "idle" && (
+          {saveStatus !== "idle" && !isReadOnly && (
             <div
               style={{
                 position: "fixed",

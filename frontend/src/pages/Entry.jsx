@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { getTournamentById, getEntries as getEntriesApi, saveEntries } from '../api';
 import * as XLSX from 'xlsx';
@@ -84,6 +84,13 @@ const Entry = () => {
 
   const navigate = useNavigate();
   const { token, user, loading: authLoading } = useAuth();
+  const outletContext = useOutletContext() || {};
+
+  const contextIsAdminUser = outletContext.isAdminUser === true;
+  const adminEditMode = outletContext.adminEditMode === true;
+  const isAdminReadOnly = outletContext.isAdminReadOnly === true;
+  const requestAdminSaveConfirmation = outletContext.requestAdminSaveConfirmation;
+  const setAdminEditMode = outletContext.setAdminEditMode;
 
   const [data, setData] = useState([]);
   const [tournamentData, setTournamentData] = useState(null);
@@ -113,12 +120,37 @@ const Entry = () => {
   const [redoHistory, setRedoHistory] = useState([]);
 
   const isOrganizer = user?.role === 'organizer';
+  const isAdminUser = contextIsAdminUser || ['admin', 'superadmin'].includes(user?.role);
+  const canManageTournament = isOrganizer || isAdminUser;
+  const canEditTournament = !isAdminUser || adminEditMode;
 
   const columnsDef = useMemo(() => {
     const activeOptional = optionalColumnsDef.filter((col) => visibleColumns[col.id]);
     const teamIndex = baseColumnsDef.findIndex((col) => col.id === 'team');
     return [...baseColumnsDef.slice(0, teamIndex + 1), ...activeOptional, ...baseColumnsDef.slice(teamIndex + 1)];
   }, [visibleColumns]);
+
+  const guardAdminReadOnly = useCallback(() => {
+    if (!isAdminReadOnly) return false;
+    alert('Admin read-only mode is active. Click Edit first to make changes.');
+    return true;
+  }, [isAdminReadOnly]);
+
+  const confirmAdminSaveIfNeeded = useCallback(() => {
+    if (!isAdminUser) return true;
+
+    if (typeof requestAdminSaveConfirmation === 'function') {
+      return requestAdminSaveConfirmation();
+    }
+
+    return window.confirm('Are you sure, you want to save these changes?');
+  }, [isAdminUser, requestAdminSaveConfirmation]);
+
+  const exitAdminEditModeIfNeeded = useCallback(() => {
+    if (isAdminUser && typeof setAdminEditMode === 'function') {
+      setAdminEditMode(false);
+    }
+  }, [isAdminUser, setAdminEditMode]);
 
   const regenerateSrNumbers = useCallback((rows) => {
     return rows.map((row, index) => ({
@@ -258,34 +290,40 @@ const Entry = () => {
   }, [data, columnsDef, debouncedRecalculate]);
 
   const saveToHistory = useCallback(() => {
+    if (isAdminReadOnly) return;
+
     setHistory((prev) => {
       const newHistory = [...prev, structuredClone(data)];
       if (newHistory.length > 5) newHistory.shift();
       return newHistory;
     });
     setRedoHistory([]);
-  }, [data]);
+  }, [data, isAdminReadOnly]);
 
   const undo = useCallback(() => {
+    if (guardAdminReadOnly()) return;
     if (history.length === 0) return;
     setRedoHistory((prev) => [...prev, structuredClone(data)]);
     const previous = history[history.length - 1];
     setData(previous);
     setHistory((prev) => prev.slice(0, -1));
     debouncedRecalculate();
-  }, [history, data, debouncedRecalculate]);
+  }, [history, data, debouncedRecalculate, guardAdminReadOnly]);
 
   const redo = useCallback(() => {
+    if (guardAdminReadOnly()) return;
     if (redoHistory.length === 0) return;
     setHistory((prev) => [...prev, structuredClone(data)]);
     const next = redoHistory[redoHistory.length - 1];
     setData(next);
     setRedoHistory((prev) => prev.slice(0, -1));
     debouncedRecalculate();
-  }, [redoHistory, data, debouncedRecalculate]);
+  }, [redoHistory, data, debouncedRecalculate, guardAdminReadOnly]);
 
   const updateData = useCallback(
     (rowIndex, columnId, value) => {
+      if (guardAdminReadOnly()) return;
+
       let finalValue = value;
 
       if (columnId === 'gender') {
@@ -305,17 +343,21 @@ const Entry = () => {
         return newData;
       });
     },
-    [saveToHistory]
+    [saveToHistory, guardAdminReadOnly]
   );
 
   const addNewRow = useCallback(() => {
+    if (guardAdminReadOnly()) return;
+
     saveToHistory();
     const emptyRow = Object.fromEntries(columnsDef.map((col) => [col.id, col.id === 'actions' ? '' : '']));
     setData((prev) => regenerateSrNumbers([...prev, emptyRow]));
-  }, [columnsDef, saveToHistory, regenerateSrNumbers]);
+  }, [columnsDef, saveToHistory, regenerateSrNumbers, guardAdminReadOnly]);
 
   const addRowBelow = useCallback(
     (index) => {
+      if (guardAdminReadOnly()) return;
+
       saveToHistory();
       const emptyRow = Object.fromEntries(columnsDef.map((col) => [col.id, col.id === 'actions' ? '' : '']));
       setData((prev) => {
@@ -323,11 +365,13 @@ const Entry = () => {
         return regenerateSrNumbers(newData);
       });
     },
-    [columnsDef, saveToHistory, regenerateSrNumbers]
+    [columnsDef, saveToHistory, regenerateSrNumbers, guardAdminReadOnly]
   );
 
   const deleteRow = useCallback(
     (index) => {
+      if (guardAdminReadOnly()) return;
+
       saveToHistory();
       setData((prev) => {
         if (prev.length === 1) {
@@ -338,10 +382,12 @@ const Entry = () => {
         return regenerateSrNumbers(newData);
       });
     },
-    [saveToHistory, columnsDef, regenerateSrNumbers]
+    [saveToHistory, columnsDef, regenerateSrNumbers, guardAdminReadOnly]
   );
 
   const updateColumnWidth = useCallback((colIndex, value) => {
+    if (isAdminReadOnly) return;
+
     setColumnWidths((prev) => {
       const currentWidth = prev[colIndex] || 120;
       const textWidth = getTextWidth(value || '') + 10;
@@ -357,28 +403,34 @@ const Entry = () => {
       }
       return prev;
     });
-  }, []);
+  }, [isAdminReadOnly]);
 
   const handleToggleColumn = useCallback(
     (columnId) => {
+      if (guardAdminReadOnly()) return;
+
       setVisibleColumns((prev) => {
         const newVisible = { ...prev, [columnId]: !prev[columnId] };
         localStorage.setItem(`visibleColumns_${id}`, JSON.stringify(newVisible));
         return newVisible;
       });
     },
-    [id]
+    [id, guardAdminReadOnly]
   );
 
   const handleClearAll = useCallback(() => {
+    if (guardAdminReadOnly()) return;
+
     if (window.confirm('Are you sure you want to delete ALL entries? This cannot be undone.')) {
       saveToHistory();
       const emptyRow = Object.fromEntries(columnsDef.map((col) => [col.id, col.id === 'actions' ? '' : '']));
       setData(regenerateSrNumbers([emptyRow]));
     }
-  }, [columnsDef, saveToHistory, regenerateSrNumbers]);
+  }, [columnsDef, saveToHistory, regenerateSrNumbers, guardAdminReadOnly]);
 
   const handleCleanEmptyRows = useCallback(() => {
+    if (guardAdminReadOnly()) return;
+
     saveToHistory();
     setData((prev) => {
       const filtered = prev.filter((row) =>
@@ -390,18 +442,22 @@ const Entry = () => {
           : [Object.fromEntries(columnsDef.map((col) => [col.id, col.id === 'actions' ? '' : '']))];
       return regenerateSrNumbers(final);
     });
-  }, [columnsDef, saveToHistory, regenerateSrNumbers]);
+  }, [columnsDef, saveToHistory, regenerateSrNumbers, guardAdminReadOnly]);
 
   const handleFileUpload = useCallback((e) => {
+    if (guardAdminReadOnly()) return;
+
     const file = e.target?.files?.[0];
     if (!file) return;
 
     setShowImportModal(true);
     setSelectedImportFile(file);
-  }, []);
+  }, [guardAdminReadOnly]);
 
   const handleImportedRows = useCallback(
     (importedRows) => {
+      if (guardAdminReadOnly()) return;
+
       saveToHistory();
 
       const cleanedRows = importedRows.map((row) => {
@@ -469,7 +525,7 @@ const Entry = () => {
       debouncedRecalculate();
       setSelectedImportFile(null);
     },
-    [data, columnsDef, saveToHistory, regenerateSrNumbers, debouncedRecalculate]
+    [data, columnsDef, saveToHistory, regenerateSrNumbers, debouncedRecalculate, guardAdminReadOnly]
   );
 
   const handleCopyShareLink = async () => {
@@ -484,6 +540,8 @@ const Entry = () => {
   };
 
   const handleTeamEntriesSubmit = async (preparedRows) => {
+    if (guardAdminReadOnly()) return;
+
     const cleanRows = Array.isArray(preparedRows)
       ? preparedRows.filter((row) =>
           Object.entries(row || {}).some(
@@ -499,6 +557,10 @@ const Entry = () => {
 
     if (cleanRows.length === 0) {
       throw new Error('No valid player rows to submit.');
+    }
+
+    if (isAdminUser && !confirmAdminSaveIfNeeded()) {
+      return;
     }
 
     let existingEntries = [];
@@ -548,6 +610,7 @@ const Entry = () => {
     setData(regenerateSrNumbers(mergedEntries));
     window.dispatchEvent(new Event(`entryDataUpdated_${id}`));
     setShowAddTeamEntriesModal(false);
+    exitAdminEditModeIfNeeded();
   };
 
   const handleExport = useCallback(() => {
@@ -572,7 +635,7 @@ const Entry = () => {
   const handleGenerateTieSheets = useCallback(async () => {
     try {
       const flush = entryTableRef.current?.flushSaveNow;
-      if (typeof flush === 'function') {
+      if (typeof flush === 'function' && !isAdminReadOnly) {
         if (isDev) console.log('[Entry.jsx] Flushing save before TieSheet navigation...');
         await flush('generate-tiesheets');
       }
@@ -582,7 +645,7 @@ const Entry = () => {
 
     localStorage.setItem(`entryData_${id}`, JSON.stringify(data));
     navigate(`/tournaments/${id}/tie-sheet`, { state: { players: data } });
-  }, [data, id, navigate]);
+  }, [data, id, navigate, isAdminReadOnly]);
 
   return (
     <div className={styles.entryContainer}>
@@ -600,14 +663,35 @@ const Entry = () => {
         </div>
       )}
 
+      {isAdminReadOnly && (
+        <div
+          style={{
+            background: '#f8fafc',
+            border: '1px solid #cbd5e1',
+            color: '#334155',
+            padding: '12px',
+            borderRadius: '8px',
+            marginBottom: '16px',
+            fontWeight: 700,
+          }}
+        >
+          Admin read-only mode is active. Click Edit in the tournament navbar to make changes.
+        </div>
+      )}
+
       <EntryHeader
         tournamentData={tournamentData}
         isLoading={isLoading}
         visibleColumns={visibleColumns}
-        onAddTeamEntries={() => setShowAddTeamEntriesModal(true)}
-onShareEntryForm={handleCopyShareLink}
-onViewTeamSubmissions={() => navigate(`/tournaments/${id}/team-submissions`)}
-showOrganizerActions={isOrganizer}
+        onAddTeamEntries={() => {
+          if (guardAdminReadOnly()) return;
+          setShowAddTeamEntriesModal(true);
+        }}
+        onShareEntryForm={handleCopyShareLink}
+        onViewTeamSubmissions={() => navigate(`/tournaments/${id}/team-submissions`)}
+        showOrganizerActions={canManageTournament}
+        actionsDisabled={isAdminReadOnly}
+        readOnly={isAdminReadOnly}
         onToggleColumn={handleToggleColumn}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
@@ -627,8 +711,6 @@ showOrganizerActions={isOrganizer}
         showImportModal={showImportModal}
       />
 
-    
-
       {copyMessage ? <p className={styles.copyMessage}>{copyMessage}</p> : null}
 
       {ENABLE_IMAGE_IMPORT && (
@@ -641,7 +723,11 @@ showOrganizerActions={isOrganizer}
         >
           <button
             type="button"
-            onClick={() => setShowImageImportModal(true)}
+            disabled={isAdminReadOnly}
+            onClick={() => {
+              if (guardAdminReadOnly()) return;
+              setShowImageImportModal(true);
+            }}
             style={{
               background: '#111827',
               color: '#ffffff',
@@ -650,7 +736,8 @@ showOrganizerActions={isOrganizer}
               padding: '10px 16px',
               fontSize: '14px',
               fontWeight: 600,
-              cursor: 'pointer',
+              cursor: isAdminReadOnly ? 'not-allowed' : 'pointer',
+              opacity: isAdminReadOnly ? 0.55 : 1,
               boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
             }}
           >
@@ -696,8 +783,8 @@ showOrganizerActions={isOrganizer}
         data={data}
         tournamentData={tournamentData}
         visibleColumns={visibleColumns}
-        editingCell={editingCell}
-        setEditingCell={setEditingCell}
+        editingCell={isAdminReadOnly ? null : editingCell}
+        setEditingCell={isAdminReadOnly ? () => {} : setEditingCell}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
         sorting={sorting}
@@ -713,13 +800,15 @@ showOrganizerActions={isOrganizer}
         updateColumnWidth={updateColumnWidth}
         recalculateColumnWidths={debouncedRecalculate}
         columnWidths={columnWidths}
-        token={token}
+       token={token}
         tournamentId={id}
         apiBaseUrl={resolveApiBaseUrl()}
+        readOnly={isAdminReadOnly}
+        disabled={isAdminReadOnly}
       />
 
       <AddTeamEntriesModal
-        show={showAddTeamEntriesModal}
+        show={showAddTeamEntriesModal && !isAdminReadOnly}
         onClose={() => setShowAddTeamEntriesModal(false)}
         onSubmit={handleTeamEntriesSubmit}
         tournamentData={tournamentData}
@@ -727,7 +816,7 @@ showOrganizerActions={isOrganizer}
       />
 
       <ImportModal
-        show={showImportModal}
+        show={showImportModal && !isAdminReadOnly}
         onClose={() => {
           if (isLoading) return;
           setShowImportModal(false);
@@ -744,7 +833,7 @@ showOrganizerActions={isOrganizer}
 
       {ENABLE_IMAGE_IMPORT && (
         <ImageImport
-          show={showImageImportModal}
+          show={showImageImportModal && !isAdminReadOnly}
           onClose={() => setShowImageImportModal(false)}
           onImportSuccess={handleImportedRows}
           columnsDef={columnsDef}

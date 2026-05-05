@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
-import { getAdminTournamentDetails } from "../../api";
+import { useNavigate, useParams } from "react-router-dom";
+import { deleteAdminTournament, getAdminTournamentDetails } from "../../api";
+import { useAuth } from "../../context/AuthContext";
 import styles from "./Admin.module.css";
 
 const formatDate = (value) => {
@@ -26,34 +27,57 @@ const pickEntryValue = (entry, keys) => {
 
 const AdminTournamentDetails = () => {
   const { tournamentId } = useParams();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const isSuperadmin = user?.role === "superadmin";
   const entries = useMemo(() => details?.entries || [], [details]);
 
+  const loadDetails = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const res = await getAdminTournamentDetails(tournamentId);
+      setDetails(res.data || null);
+    } catch (err) {
+      setError(err.message || "Failed to load tournament details");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let mounted = true;
-
-    const loadDetails = async () => {
-      try {
-        setLoading(true);
-        setError("");
-        const res = await getAdminTournamentDetails(tournamentId);
-        if (mounted) setDetails(res.data || null);
-      } catch (err) {
-        if (mounted) setError(err.message || "Failed to load tournament details");
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
     loadDetails();
-
-    return () => {
-      mounted = false;
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tournamentId]);
+
+  const handleDeleteTournament = async () => {
+    const tournament = details?.tournament;
+
+    if (!isSuperadmin || !tournament?._id) return;
+
+    if (
+      !window.confirm(
+        `Delete tournament "${tournament.tournamentName || "this tournament"}"? It will be hidden from normal users.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      await deleteAdminTournament(tournament._id);
+      navigate("/admin/tournaments", { replace: true });
+    } catch (err) {
+      alert(err.message || "Failed to delete tournament");
+      setActionLoading(false);
+    }
+  };
 
   if (loading) return <div className={styles.stateBox}>Loading tournament details...</div>;
   if (error) return <div className={styles.errorBox}>{error}</div>;
@@ -67,9 +91,33 @@ const AdminTournamentDetails = () => {
         <div>
           <span className={styles.kicker}>Tournament</span>
           <h2>{tournament?.tournamentName || "-"}</h2>
-          <p>{tournament?.venue?.name || "-"} • {tournament?.venue?.district || ""}</p>
+          <p>
+            {tournament?.venue?.name || "-"} • {tournament?.venue?.district || ""}
+          </p>
+          {tournament?.isDeleted && (
+            <p style={{ color: "#b91c1c", marginTop: 8 }}>
+              This tournament has been deleted.
+            </p>
+          )}
         </div>
-        <span className={styles.roleBadge}>{tournament?.tournamentLevel || "Tournament"}</span>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span className={styles.roleBadge}>
+            {tournament?.tournamentLevel || "Tournament"}
+          </span>
+
+          {isSuperadmin && !tournament?.isDeleted && (
+            <button
+              type="button"
+              className={styles.dangerBtn || styles.secondaryBtn}
+              disabled={actionLoading}
+              onClick={handleDeleteTournament}
+              style={{ color: "#b91c1c" }}
+            >
+              {actionLoading ? "Deleting..." : "Delete Tournament"}
+            </button>
+          )}
+        </div>
       </section>
 
       <div className={styles.statsGrid}>
@@ -96,10 +144,22 @@ const AdminTournamentDetails = () => {
           <h2>Owner Details</h2>
         </div>
         <div className={styles.detailGrid}>
-          <div><span>Name</span><strong>{details.owner?.name || "-"}</strong></div>
-          <div><span>Email</span><strong>{details.owner?.email || "-"}</strong></div>
-          <div><span>Phone</span><strong>{details.owner?.phone || "-"}</strong></div>
-          <div><span>Role</span><strong>{details.owner?.role || "-"}</strong></div>
+          <div>
+            <span>Name</span>
+            <strong>{details.owner?.name || "-"}</strong>
+          </div>
+          <div>
+            <span>Email</span>
+            <strong>{details.owner?.email || "-"}</strong>
+          </div>
+          <div>
+            <span>Phone</span>
+            <strong>{details.owner?.phone || "-"}</strong>
+          </div>
+          <div>
+            <span>Role</span>
+            <strong>{details.owner?.role || "-"}</strong>
+          </div>
         </div>
       </section>
 
@@ -127,14 +187,23 @@ const AdminTournamentDetails = () => {
                   <td>{pickEntryValue(entry, ["name", "Name", "playerName", "Player Name"])}</td>
                   <td>{pickEntryValue(entry, ["team", "Team", "teamName", "Team Name"])}</td>
                   <td>{pickEntryValue(entry, ["gender", "Gender"])}</td>
-                  <td>{pickEntryValue(entry, ["ageCategory", "Age Category", "ageGroup", "Age Group"])}</td>
+                  <td>
+                    {pickEntryValue(entry, [
+                      "ageCategory",
+                      "Age Category",
+                      "ageGroup",
+                      "Age Group",
+                    ])}
+                  </td>
                   <td>{pickEntryValue(entry, ["weight", "Weight", "wt", "WT"])}</td>
                   <td>{pickEntryValue(entry, ["medal", "Medal"])}</td>
                 </tr>
               ))}
               {entries.length === 0 && (
                 <tr>
-                  <td colSpan="7" className={styles.emptyCell}>No entries found.</td>
+                  <td colSpan="7" className={styles.emptyCell}>
+                    No entries found.
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -176,7 +245,9 @@ const AdminTournamentDetails = () => {
               ))}
               {(!details.payments || details.payments.length === 0) && (
                 <tr>
-                  <td colSpan="7" className={styles.emptyCell}>No payment records found.</td>
+                  <td colSpan="7" className={styles.emptyCell}>
+                    No payment records found.
+                  </td>
                 </tr>
               )}
             </tbody>

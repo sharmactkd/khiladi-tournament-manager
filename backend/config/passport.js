@@ -49,6 +49,7 @@ passport.use(
             email,
             googleId,
             isVerified: true,
+            isProfileComplete: false,
             profilePicture,
             loginProvider: "google",
             role: "player",
@@ -57,14 +58,23 @@ passport.use(
 
           await user.save({ validateBeforeSave: false });
         } else {
+          if (user.isDeleted) {
+            return done(new Error("This account has been deleted"));
+          }
+
+          if (user.isSuspended) {
+            return done(new Error("This account has been suspended"));
+          }
+
           user.googleId = user.googleId || googleId;
           user.isVerified = true;
           user.loginProvider = user.loginProvider || "google";
-
-          // Preserve existing roles, including admin/superadmin.
           user.role = normalizeRole(user.role);
-
           user.lastLogin = new Date();
+
+          if (user.loginProvider === "google" && user.isProfileComplete === undefined) {
+            user.isProfileComplete = false;
+          }
 
           if (!user.profilePicture && profilePicture) {
             user.profilePicture = profilePicture;

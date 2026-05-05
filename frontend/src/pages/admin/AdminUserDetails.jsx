@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { getAdminUserDetails } from "../../api";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  deleteAdminUser,
+  getAdminUserDetails,
+  suspendAdminUser,
+  unsuspendAdminUser,
+} from "../../api";
+import { useAuth } from "../../context/AuthContext";
 import styles from "./Admin.module.css";
 
 const formatDate = (value) => {
@@ -15,34 +21,124 @@ const formatCurrency = (value) =>
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 
+const getStatusLabel = (user) => {
+  if (user?.isDeleted) return "Deleted";
+  if (user?.isSuspended) return "Suspended";
+  return "Active";
+};
+
 const AdminUserDetails = () => {
   const { userId } = useParams();
+  const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
+
   const [details, setDetails] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const isSuperadmin = currentUser?.role === "superadmin";
+
+  const loadDetails = async () => {
+    try {
+      setLoading(true);
+      setError("");
+      const res = await getAdminUserDetails(userId);
+      setDetails(res.data || null);
+    } catch (err) {
+      setError(err.message || "Failed to load user details");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    let mounted = true;
-
-    const loadDetails = async () => {
-      try {
-        setLoading(true);
-        setError("");
-        const res = await getAdminUserDetails(userId);
-        if (mounted) setDetails(res.data || null);
-      } catch (err) {
-        if (mounted) setError(err.message || "Failed to load user details");
-      } finally {
-        if (mounted) setLoading(false);
-      }
-    };
-
     loadDetails();
-
-    return () => {
-      mounted = false;
-    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userId]);
+
+  const targetUser = details?.user;
+
+  const canManageUser = () => {
+    if (!isSuperadmin) return false;
+    if (!targetUser?._id) return false;
+    if (String(targetUser._id) === String(currentUser?.id || currentUser?._id)) {
+      return false;
+    }
+    if (targetUser.role === "superadmin") return false;
+    if (targetUser.isDeleted) return false;
+    return true;
+  };
+
+  const openTournament = (tournament) => {
+    if (tournament?._id) navigate(`/tournaments/${tournament._id}`);
+  };
+
+  const handleSuspend = async () => {
+    if (!canManageUser()) return;
+
+    const reason = window.prompt(
+      `Reason for suspending ${targetUser.name || targetUser.email || "this user"}?`,
+      targetUser.suspensionReason || ""
+    );
+
+    if (reason === null) return;
+
+    try {
+      setActionLoading(true);
+      await suspendAdminUser(targetUser._id, reason);
+      await loadDetails();
+    } catch (err) {
+      alert(err.message || "Failed to suspend user");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleUnsuspend = async () => {
+    if (!canManageUser()) return;
+
+    if (
+      !window.confirm(
+        `Unsuspend ${targetUser.name || targetUser.email || "this user"}?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      await unsuspendAdminUser(targetUser._id);
+      await loadDetails();
+    } catch (err) {
+      alert(err.message || "Failed to unsuspend user");
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!canManageUser()) return;
+
+    const label = targetUser.name || targetUser.email || "this user";
+
+    if (
+      !window.confirm(
+        `Delete ${label}? This will soft-delete the account and revoke all active sessions.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      await deleteAdminUser(targetUser._id);
+      navigate("/admin/users", { replace: true });
+    } catch (err) {
+      alert(err.message || "Failed to delete user");
+      setActionLoading(false);
+    }
+  };
 
   if (loading) return <div className={styles.stateBox}>Loading user details...</div>;
   if (error) return <div className={styles.errorBox}>{error}</div>;
@@ -55,8 +151,75 @@ const AdminUserDetails = () => {
           <span className={styles.kicker}>User Profile</span>
           <h2>{details.user?.name || "-"}</h2>
           <p>{details.user?.email || details.user?.phone || "-"}</p>
+          {details.user?.isSuspended && (
+            <p style={{ color: "#b45309", marginTop: 8 }}>
+              Suspended: {details.user?.suspensionReason || "No reason provided"}
+            </p>
+          )}
         </div>
-        <span className={styles.roleBadge}>{details.user?.role}</span>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <span className={styles.roleBadge}>{details.user?.role}</span>
+          <span className={details.user?.isSuspended ? styles.mutedBadge : styles.successBadge}>
+            {getStatusLabel(details.user)}
+          </span>
+
+          {canManageUser() && details.user?.isSuspended ? (
+            <button
+              type="button"
+              className={styles.secondaryBtn}
+              disabled={actionLoading}
+              onClick={handleUnsuspend}
+            >
+              {actionLoading ? "Working..." : "Unsuspend"}
+            </button>
+          ) : canManageUser() ? (
+            <button
+              type="button"
+              className={styles.secondaryBtn}
+              disabled={actionLoading}
+              onClick={handleSuspend}
+            >
+              {actionLoading ? "Working..." : "Suspend"}
+            </button>
+          ) : null}
+
+          {canManageUser() && (
+            <button
+              type="button"
+              className={styles.dangerBtn || styles.secondaryBtn}
+              disabled={actionLoading}
+              onClick={handleDelete}
+              style={{ color: "#b91c1c" }}
+            >
+              Delete
+            </button>
+          )}
+        </div>
+      </section>
+
+      <section className={styles.panel}>
+        <div className={styles.panelHeader}>
+          <h2>Account Status</h2>
+        </div>
+        <div className={styles.detailGrid}>
+          <div>
+            <span>Status</span>
+            <strong>{getStatusLabel(details.user)}</strong>
+          </div>
+          <div>
+            <span>Login Provider</span>
+            <strong>{details.user?.loginProvider || "-"}</strong>
+          </div>
+          <div>
+            <span>Suspended At</span>
+            <strong>{formatDate(details.user?.suspendedAt)}</strong>
+          </div>
+          <div>
+            <span>Deleted At</span>
+            <strong>{formatDate(details.user?.deletedAt)}</strong>
+          </div>
+        </div>
       </section>
 
       <div className={styles.statsGrid}>
@@ -91,27 +254,35 @@ const AdminUserDetails = () => {
                 <th>Entries</th>
                 <th>Collected</th>
                 <th>Created</th>
-                <th>Action</th>
               </tr>
             </thead>
             <tbody>
               {(details.tournaments || []).map((tournament) => (
-                <tr key={tournament._id}>
+                <tr
+                  key={tournament._id}
+                  className={styles.clickableRow}
+                  onClick={() => openTournament(tournament)}
+                  tabIndex={0}
+                  role="button"
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      openTournament(tournament);
+                    }
+                  }}
+                >
                   <td>{tournament.tournamentName || "-"}</td>
                   <td>{tournament.organizer || "-"}</td>
                   <td>{tournament.entriesCount || 0}</td>
                   <td>{formatCurrency(tournament.totalCollected)}</td>
                   <td>{formatDate(tournament.createdAt)}</td>
-                  <td>
-                    <Link to={`/admin/tournaments/${tournament._id}`} className={styles.tableLink}>
-                      View
-                    </Link>
-                  </td>
                 </tr>
               ))}
               {(!details.tournaments || details.tournaments.length === 0) && (
                 <tr>
-                  <td colSpan="6" className={styles.emptyCell}>No tournaments found.</td>
+                  <td colSpan="5" className={styles.emptyCell}>
+                    No tournaments found.
+                  </td>
                 </tr>
               )}
             </tbody>
@@ -146,7 +317,9 @@ const AdminUserDetails = () => {
               ))}
               {(!details.payments || details.payments.length === 0) && (
                 <tr>
-                  <td colSpan="5" className={styles.emptyCell}>No payment records found.</td>
+                  <td colSpan="5" className={styles.emptyCell}>
+                    No payment records found.
+                  </td>
                 </tr>
               )}
             </tbody>

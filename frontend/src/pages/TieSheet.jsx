@@ -1,6 +1,6 @@
 // src/pages/TieSheet.jsx
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { useParams, useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSelector, useDispatch } from 'react-redux';
 import axios from 'axios';
@@ -23,6 +23,7 @@ import SignatureSection from '../components/TieSheet/SignatureSection';
 import BracketActions from '../components/TieSheet/BracketActions';
 import BracketFooter from '../components/TieSheet/BracketFooter';
 import PremiumAccessGuard from "../components/payment/PremiumAccessGuard";
+import AdminReadOnlyOverlay from "./admin/AdminReadOnlyOverlay";
 import { createPDFDoc, createAndOpenPDFInNewTab, getMultipleBracketsFilename } from '../components/TieSheet/pdfUtils';
 import toast, { Toaster } from 'react-hot-toast';
 import { setInitialBrackets, setOutcomes, toggleLock } from '../store/bracketsSlice';
@@ -61,6 +62,13 @@ const TieSheet = () => {
   const navigate = useNavigate();
   const { token, isAuthenticated } = useAuth();
   const dispatch = useDispatch();
+  const {
+  isAdminUser = false,
+  adminEditMode = false,
+  isAdminReadOnly = false,
+  requestAdminSaveConfirmation,
+  setAdminEditMode,
+} = useOutletContext() || {};
 
   // Local states with safe initialization
   const [tournament, setTournament] = useState(null);

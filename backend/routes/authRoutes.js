@@ -7,6 +7,9 @@ import {
   getMe,
   logoutUser,
   socialAuthSuccess,
+  forgotPassword,
+  resetPassword,
+  completeProfile,
 } from "../controllers/authController.js";
 import {
   validateRegister,
@@ -20,7 +23,7 @@ import logger from "../utils/logger.js";
 const router = express.Router();
 
 const isProd = process.env.NODE_ENV === "production";
-const REFRESH_COOKIE_MAX_AGE = 180 * 24 * 60 * 60 * 1000; // 180 days
+const REFRESH_COOKIE_MAX_AGE = 180 * 24 * 60 * 60 * 1000;
 
 const cookieOptions = {
   httpOnly: true,
@@ -29,15 +32,20 @@ const cookieOptions = {
   path: "/",
 };
 
-// Routes
 router.post("/register", validateRegister, registerUser);
 
 router.post("/login", validateLogin, loginUser);
 
+router.post("/forgot-password", forgotPassword);
+
+router.post("/reset-password/:token", resetPassword);
+
 router.get("/me", authMiddleware, getMe);
+
+router.patch("/complete-profile", authMiddleware, completeProfile);
+
 router.post("/logout", logoutUser);
 
-// Refresh Token Route - Secure with DB check
 router.post("/refresh", async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken;
@@ -72,7 +80,6 @@ router.post("/refresh", async (req, res) => {
   }
 });
 
-// Google OAuth
 router.get(
   "/google",
   passport.authenticate("google", { scope: ["profile", "email"], session: false })

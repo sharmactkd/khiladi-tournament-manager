@@ -51,100 +51,114 @@ const Login = () => {
   return (
     <div className={styles.container}>
       <div className={styles.leftSection}>
-  <div className={styles.heroContent}>
-    <h1 className={styles.heroTitle}>
-      WELCOME TO THE <br/>
-      <span>KHILADI TOURNAMENT MANAGER</span>
-    </h1>
+        <div className={styles.heroContent}>
+          <h1 className={styles.heroTitle}>
+            WELCOME TO THE <br />
+            <span>KHILADI TOURNAMENT MANAGER</span>
+          </h1>
 
-    <p className={styles.heroSubtitle}>
-      The Most Advanced Tournament Manager for Organizers, built for speed,
-      precision, and complete championship control.
-    </p>
+          <p className={styles.heroSubtitle}>
+            The Most Advanced Tournament Manager for Organizers, built for speed,
+            precision, and complete championship control.
+          </p>
 
-    <p className={styles.heroTagline}>
-      More Features. More Control. More Power Than Any System. <br/> From entries to
-      medals — everything automated.
-    </p>
-  </div>
+          <p className={styles.heroTagline}>
+            More Features. More Control. More Power Than Any System. <br /> From
+            entries to medals — everything automated.
+          </p>
+        </div>
 
-  <div className={styles.loginContainer}>
-    <h2 className={styles.loginTitle}>Login to Your Account</h2>
-    <span className={styles.socialAccountsText}>via Social Accounts</span>
+        <div className={styles.loginContainer}>
+          <h2 className={styles.loginTitle}>Login to Your Account</h2>
+          <span className={styles.socialAccountsText}>via Social Accounts</span>
 
-    <div className={styles.socialButtons}>
-   <button
-  type="button"
-  className={styles.googleLoginBtn}
-  onClick={handleGoogleLogin}
-  aria-label="Login with Google"
-  title="Login with Google"
->
-  <FcGoogle className={styles.googleIcon} />
-  <span>Login with Google</span>
-</button>
-    </div>
+          <div className={styles.socialButtons}>
+            <button
+              type="button"
+              className={styles.googleLoginBtn}
+              onClick={handleGoogleLogin}
+              aria-label="Login with Google"
+              title="Login with Google"
+            >
+              <FcGoogle className={styles.googleIcon} />
+              <span>Login with Google</span>
+            </button>
+          </div>
 
-    <div className={styles.divider}>
-      <span className={styles.dividerText}>or</span>
-    </div>
+          <div className={styles.divider}>
+            <span className={styles.dividerText}>or</span>
+          </div>
 
-    <form onSubmit={formik.handleSubmit} className={styles.loginForm}>
-      {serverError && <div className={styles.errorMessage}>{serverError}</div>}
+          <form onSubmit={formik.handleSubmit} className={styles.loginForm}>
+            {serverError && <div className={styles.errorMessage}>{serverError}</div>}
 
-      <div className={styles.inputGroup}>
-        <FiMail className={styles.icon} />
-        <input
-          type="text"
-          placeholder="Email"
-          autoComplete="username"
-          {...formik.getFieldProps("email")}
-          className={
-            formik.touched.email && formik.errors.email ? styles.inputError : ""
-          }
-        />
-        {formik.touched.email && formik.errors.email && (
-          <span className={styles.error}>{formik.errors.email}</span>
-        )}
+            <div className={styles.inputGroup}>
+              <FiMail className={styles.icon} />
+              <input
+                type="text"
+                placeholder="Email"
+                autoComplete="username"
+                {...formik.getFieldProps("email")}
+                className={
+                  formik.touched.email && formik.errors.email ? styles.inputError : ""
+                }
+              />
+              {formik.touched.email && formik.errors.email && (
+                <span className={styles.error}>{formik.errors.email}</span>
+              )}
+            </div>
+
+            <div className={styles.inputGroup}>
+              <FiLock className={styles.icon} />
+              <input
+                type={passwordVisible ? "text" : "password"}
+                placeholder="Password"
+                autoComplete="current-password"
+                {...formik.getFieldProps("password")}
+                className={
+                  formik.touched.password && formik.errors.password
+                    ? styles.inputError
+                    : ""
+                }
+              />
+              <span
+                className={styles.eyeIcon}
+                onClick={() => setPasswordVisible(!passwordVisible)}
+                role="button"
+                tabIndex={0}
+                aria-label={passwordVisible ? "Hide password" : "Show password"}
+              >
+                {passwordVisible ? <FaEyeSlash /> : <FaEye />}
+              </span>
+              {formik.touched.password && formik.errors.password && (
+                <span className={styles.error}>{formik.errors.password}</span>
+              )}
+            </div>
+
+            <div style={{ width: "100%", textAlign: "right", marginTop: "-6px" }}>
+              <Link
+                to="/forgot-password"
+                style={{
+                  color: "#2563eb",
+                  fontSize: "0.9rem",
+                  fontWeight: 600,
+                  textDecoration: "none",
+                }}
+              >
+                Forgot Password?
+              </Link>
+            </div>
+
+            <button
+              type="submit"
+              disabled={formik.isSubmitting}
+              className={styles.loginBtn}
+            >
+              {formik.isSubmitting ? "Logging in..." : "Login"}
+            </button>
+          </form>
+        </div>
       </div>
-
-      <div className={styles.inputGroup}>
-        <FiLock className={styles.icon} />
-        <input
-          type={passwordVisible ? "text" : "password"}
-          placeholder="Password"
-          autoComplete="current-password"
-          {...formik.getFieldProps("password")}
-          className={
-            formik.touched.password && formik.errors.password
-              ? styles.inputError
-              : ""
-          }
-        />
-        <span
-          className={styles.eyeIcon}
-          onClick={() => setPasswordVisible(!passwordVisible)}
-          role="button"
-          tabIndex={0}
-          aria-label={passwordVisible ? "Hide password" : "Show password"}
-        >
-          {passwordVisible ? <FaEyeSlash /> : <FaEye />}
-        </span>
-        {formik.touched.password && formik.errors.password && (
-          <span className={styles.error}>{formik.errors.password}</span>
-        )}
-      </div>
-
-      <button
-        type="submit"
-        disabled={formik.isSubmitting}
-        className={styles.loginBtn}
-      >
-        {formik.isSubmitting ? "Logging in..." : "Login"}
-      </button>
-    </form>
-  </div>
-</div>
 
       <div className={styles.rightSection}>
         <h1 className={styles.signupText}>New Here?</h1>

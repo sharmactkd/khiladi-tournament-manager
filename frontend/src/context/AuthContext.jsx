@@ -11,11 +11,25 @@ import api from "../api";
 
 const AuthContext = createContext();
 
+const normalizeUserData = (data) => {
+  if (!data) return null;
+
+  const { _id, id, ...rest } = data;
+
+  return {
+    id: id || _id,
+    _id: _id || id,
+    ...rest,
+    isProfileComplete:
+      rest.isProfileComplete === undefined ? true : Boolean(rest.isProfileComplete),
+  };
+};
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(() => {
     try {
       const stored = localStorage.getItem("user");
-      return stored ? JSON.parse(stored) : null;
+      return stored ? normalizeUserData(JSON.parse(stored)) : null;
     } catch {
       return null;
     }
@@ -25,20 +39,54 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const refreshInFlightRef = useRef(null);
 
-  const login = (responseData, redirectTo = "/") => {
-    const { accessToken, _id, ...rest } = responseData || {};
-    if (!_id || !accessToken) throw new Error("Invalid login response");
+  const persistUser = useCallback((userData) => {
+    const normalizedUser = normalizeUserData(userData);
 
-    const userData = { id: _id, ...rest };
+    if (!normalizedUser?.id) {
+      throw new Error("Invalid user data");
+    }
 
-    localStorage.setItem("authToken", accessToken);
-    localStorage.setItem("user", JSON.stringify(userData));
+    localStorage.setItem("user", JSON.stringify(normalizedUser));
+    setUser(normalizedUser);
 
-    setUser(userData);
-    setToken(accessToken);
+    return normalizedUser;
+  }, []);
 
-    window.location.href = redirectTo || "/";
-  };
+  const login = useCallback(
+    (responseData, redirectTo = "/") => {
+      const { accessToken, ...userPayload } = responseData || {};
+      const normalizedUser = normalizeUserData(userPayload);
+
+      if (!normalizedUser?.id || !accessToken) {
+        throw new Error("Invalid login response");
+      }
+
+      localStorage.setItem("authToken", accessToken);
+      localStorage.setItem("user", JSON.stringify(normalizedUser));
+
+      setUser(normalizedUser);
+      setToken(accessToken);
+
+      const needsProfile =
+        normalizedUser.loginProvider === "google" &&
+        normalizedUser.isProfileComplete === false;
+
+      window.location.href = needsProfile ? "/complete-profile" : redirectTo || "/";
+    },
+    []
+  );
+
+  const updateAuthUser = useCallback(
+    (updatedUserData) => {
+      return persistUser(updatedUserData);
+    },
+    [persistUser]
+  );
+
+  const refreshCurrentUser = useCallback(async () => {
+    const res = await api.get("/auth/me");
+    return persistUser(res.data);
+  }, [persistUser]);
 
   const logout = useCallback((redirectTo = "/login") => {
     localStorage.removeItem("authToken");
@@ -63,9 +111,7 @@ export const AuthProvider = ({ children }) => {
         setToken(accessToken);
 
         const userRes = await api.get("/auth/me");
-        const userData = { id: userRes.data?._id, ...userRes.data };
-        localStorage.setItem("user", JSON.stringify(userData));
-        setUser(userData);
+        persistUser(userRes.data);
 
         return accessToken;
       } catch (error) {
@@ -78,7 +124,7 @@ export const AuthProvider = ({ children }) => {
     })();
 
     return refreshInFlightRef.current;
-  }, [logout]);
+  }, [logout, persistUser]);
 
   useEffect(() => {
     const restoreAuth = async () => {
@@ -91,7 +137,7 @@ export const AuthProvider = ({ children }) => {
 
       try {
         const res = await api.get("/auth/me");
-        const userData = { id: res.data?._id, ...res.data };
+        const userData = normalizeUserData(res.data);
 
         setUser(userData);
         setToken(storedToken);
@@ -156,8 +202,20 @@ export const AuthProvider = ({ children }) => {
       login,
       logout,
       refreshToken,
+      refreshCurrentUser,
+      updateAuthUser,
+      setUser: updateAuthUser,
     }),
-    [user, token, loading, logout, refreshToken]
+    [
+      user,
+      token,
+      loading,
+      login,
+      logout,
+      refreshToken,
+      refreshCurrentUser,
+      updateAuthUser,
+    ]
   );
 
   return (

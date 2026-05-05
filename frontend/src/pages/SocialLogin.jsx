@@ -1,10 +1,8 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import api from "../api";
 
 const SocialLogin = () => {
-  const navigate = useNavigate();
   const { login } = useAuth();
   const [error, setError] = useState("");
 
@@ -39,7 +37,7 @@ const SocialLogin = () => {
     };
 
     handleSocialLogin();
-  }, [login, navigate]);
+  }, [login]);
 
   if (error) {
     return (

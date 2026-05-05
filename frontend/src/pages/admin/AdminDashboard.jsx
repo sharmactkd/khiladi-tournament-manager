@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { getAdminDashboard } from "../../api";
 import styles from "./Admin.module.css";
 
@@ -20,6 +20,7 @@ const formatDate = (value) => {
 };
 
 const AdminDashboard = () => {
+  const navigate = useNavigate();
   const [dashboard, setDashboard] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -51,21 +52,55 @@ const AdminDashboard = () => {
   if (error) return <div className={styles.errorBox}>{error}</div>;
 
   const cards = [
-    { label: "Total Users", value: dashboard?.totalUsers || 0 },
-    { label: "Total Tournaments", value: dashboard?.totalTournaments || 0 },
-    { label: "Total Entries", value: dashboard?.totalEntries || 0 },
-    { label: "Paid Users", value: dashboard?.totalPaidUsers || 0 },
-    { label: "Total Revenue", value: formatCurrency(dashboard?.totalRevenue || 0) },
+    {
+      label: "Total Users",
+      value: dashboard?.totalUsers || 0,
+      to: "/admin/users",
+    },
+    {
+      label: "Total Tournaments",
+      value: dashboard?.totalTournaments || 0,
+      to: "/admin/tournaments",
+    },
+    {
+      label: "Total Entries",
+      value: dashboard?.totalEntries || 0,
+      to: "/admin/entries",
+    },
+    {
+      label: "Paid Users",
+      value: dashboard?.totalPaidUsers || 0,
+      to: "/admin/payments",
+    },
+    {
+      label: "Total Revenue",
+      value: formatCurrency(dashboard?.totalRevenue || 0),
+      to: "/admin/payments",
+    },
   ];
+
+  const openUser = (userId) => {
+    if (userId) navigate(`/admin/users/${userId}`);
+  };
+
+  const openTournament = (tournamentId) => {
+    if (tournamentId) navigate(`/tournaments/${tournamentId}`);
+  };
 
   return (
     <div className={styles.pageStack}>
       <div className={styles.statsGrid}>
         {cards.map((card) => (
-          <article key={card.label} className={styles.statCard}>
+          <button
+            key={card.label}
+            type="button"
+            className={`${styles.statCard} ${styles.clickableCard}`}
+            onClick={() => navigate(card.to)}
+            aria-label={`Open ${card.label}`}
+          >
             <span>{card.label}</span>
             <strong>{card.value}</strong>
-          </article>
+          </button>
         ))}
       </div>
 
@@ -87,13 +122,35 @@ const AdminDashboard = () => {
               </thead>
               <tbody>
                 {(dashboard?.recentUsers || []).map((user) => (
-                  <tr key={user._id}>
+                  <tr
+                    key={user._id}
+                    className={styles.clickableRow}
+                    onClick={() => openUser(user._id)}
+                    tabIndex={0}
+                    role="button"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openUser(user._id);
+                      }
+                    }}
+                  >
                     <td>{user.name || "-"}</td>
                     <td>{user.email || user.phone || "-"}</td>
-                    <td><span className={styles.badge}>{user.role}</span></td>
+                    <td>
+                      <span className={styles.badge}>{user.role}</span>
+                    </td>
                     <td>{formatDate(user.createdAt)}</td>
                   </tr>
                 ))}
+
+                {(!dashboard?.recentUsers || dashboard.recentUsers.length === 0) && (
+                  <tr>
+                    <td colSpan="4" className={styles.emptyCell}>
+                      No users found.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -116,13 +173,38 @@ const AdminDashboard = () => {
               </thead>
               <tbody>
                 {(dashboard?.recentTournaments || []).map((tournament) => (
-                  <tr key={tournament._id}>
+                  <tr
+                    key={tournament._id}
+                    className={styles.clickableRow}
+                    onClick={() => openTournament(tournament._id)}
+                    tabIndex={0}
+                    role="button"
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        openTournament(tournament._id);
+                      }
+                    }}
+                  >
                     <td>{tournament.tournamentName || "-"}</td>
-                    <td>{tournament.createdBy?.name || tournament.createdBy?.email || "-"}</td>
+                    <td>
+                      {tournament.createdBy?.name ||
+                        tournament.createdBy?.email ||
+                        "-"}
+                    </td>
                     <td>{tournament.entriesCount || 0}</td>
                     <td>{formatDate(tournament.createdAt)}</td>
                   </tr>
                 ))}
+
+                {(!dashboard?.recentTournaments ||
+                  dashboard.recentTournaments.length === 0) && (
+                  <tr>
+                    <td colSpan="4" className={styles.emptyCell}>
+                      No tournaments found.
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -159,7 +241,9 @@ const AdminDashboard = () => {
               ))}
               {(!dashboard?.recentPayments || dashboard.recentPayments.length === 0) && (
                 <tr>
-                  <td colSpan="6" className={styles.emptyCell}>No payment records found.</td>
+                  <td colSpan="6" className={styles.emptyCell}>
+                    No payment records found.
+                  </td>
                 </tr>
               )}
             </tbody>

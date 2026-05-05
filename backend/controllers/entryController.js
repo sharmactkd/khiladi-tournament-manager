@@ -1,5 +1,6 @@
 import Entry from "../models/entry.js";
 import logger from "../utils/logger.js";
+import { logActivitySafe } from "../utils/activityLogger.js";
 import mongoose from "mongoose";
 
 const isDev = process.env.NODE_ENV !== "production";
@@ -149,12 +150,7 @@ const findExistingMatch = (entry, maps) => {
   const mediumKey = buildMediumMatchKey(entry);
   const looseKey = buildLooseMatchKey(entry);
 
-  return (
-    maps.strict.get(strictKey) ||
-    maps.medium.get(mediumKey) ||
-    maps.loose.get(looseKey) ||
-    null
-  );
+  return maps.strict.get(strictKey) || maps.medium.get(mediumKey) || maps.loose.get(looseKey) || null;
 };
 
 const mapEntryForResponse = (e) => ({
@@ -164,6 +160,14 @@ const mapEntryForResponse = (e) => ({
   medalSource: normalizeMedalSource(e.medalSource),
   medalUpdatedAt: e.medalUpdatedAt || null,
 });
+
+const getTeamsFromEntries = (entries = []) => [
+  ...new Set(
+    (Array.isArray(entries) ? entries : [])
+      .map((entry) => String(entry?.team || "").trim())
+      .filter(Boolean)
+  ),
+];
 
 export const getEntries = async (req, res) => {
   try {
@@ -241,6 +245,9 @@ export const saveEntries = async (req, res) => {
     }
 
     const existingEntryDoc = await Entry.findOne({ tournamentId: id }).lean();
+    const existingEntriesCount = Array.isArray(existingEntryDoc?.entries)
+      ? existingEntryDoc.entries.length
+      : 0;
     const existingMaps = buildExistingEntryMaps(existingEntryDoc?.entries || []);
     const now = new Date();
 
@@ -344,6 +351,33 @@ export const saveEntries = async (req, res) => {
     logger.info("Entries updated real-time", {
       tournamentId: id,
       count: updated?.entries?.length || 0,
+    });
+
+    const updatedEntriesCount = updated?.entries?.length || 0;
+    const addedCount = Math.max(updatedEntriesCount - existingEntriesCount, 0);
+    const updatedCount =
+      existingEntryDoc && updatedEntriesCount >= existingEntriesCount
+        ? Math.min(existingEntriesCount, updatedEntriesCount)
+        : updatedEntriesCount;
+
+    logActivitySafe({
+      req,
+      user: req.user._id,
+      actor: req.user._id,
+      tournament: id,
+      action: "ENTRIES_SAVED",
+      module: "entry",
+      title: "Entries saved",
+      description: `${updatedEntriesCount} entries saved/updated.`,
+      metadata: {
+        tournamentId: id,
+        entriesCount: updatedEntriesCount,
+        previousEntriesCount: existingEntriesCount,
+        addedCount,
+        updatedCount,
+        teams: getTeamsFromEntries(updated?.entries || []),
+        source: "entry-page",
+      },
     });
 
     res.status(200).json({

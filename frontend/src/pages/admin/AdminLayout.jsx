@@ -7,7 +7,7 @@ const adminLinks = [
   { to: "/admin", label: "Dashboard", end: true },
   { to: "/admin/users", label: "Users" },
   { to: "/admin/tournaments", label: "Tournaments" },
-  { to: "/admin/payments", label: "Payments" },
+ 
   { to: "/admin/entries", label: "Entries" },
 ];
 

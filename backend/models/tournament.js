@@ -96,11 +96,6 @@ const tournamentSchema = new mongoose.Schema(
       },
     },
 
-    // ========== WEIGHT CATEGORIES ==========
-    // Supports:
-    // - Standard mode: selected.male / selected.female arrays
-    // - Custom mode (NEW): custom[ageGroup] = { Male: [rows], Female: [rows] }
-    //   Also supports legacy format: custom[ageGroup] = [rows]
     weightCategories: {
       type: {
         type: String,
@@ -109,9 +104,6 @@ const tournamentSchema = new mongoose.Schema(
         required: true,
       },
       custom: {
-        // Use Mixed so it can store either:
-        // - legacy: [ {min,max,category,description}, ... ]
-        // - new: { Male: [...], Female: [...] }
         type: Map,
         of: mongoose.Schema.Types.Mixed,
         default: {},
@@ -121,7 +113,6 @@ const tournamentSchema = new mongoose.Schema(
         female: { type: [String], default: [] },
       },
     },
-    // ======================================
 
     foodAndLodging: {
       option: { type: String, enum: ["No", "Only Food", "Only Stay", "Food and Stay"], default: "No" },
@@ -147,21 +138,25 @@ const tournamentSchema = new mongoose.Schema(
     poster: String,
     logos: [String],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-  
-    entries: {
-  type: [mongoose.Schema.Types.Mixed],
-  default: [],
-},
 
-userState: {
-  type: mongoose.Schema.Types.Mixed,
-  default: () => ({
-    sorting: [],
-    filters: {},
-    columnWidths: [],
-    searchTerm: "",
-  }),
-},
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date, default: null },
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+
+    entries: {
+      type: [mongoose.Schema.Types.Mixed],
+      default: [],
+    },
+
+    userState: {
+      type: mongoose.Schema.Types.Mixed,
+      default: () => ({
+        sorting: [],
+        filters: {},
+        columnWidths: [],
+        searchTerm: "",
+      }),
+    },
     outcomes: { type: Map, of: Map, of: String, default: {} },
     tiesheet: { type: mongoose.Schema.Types.Mixed, default: {} },
     officials: {
@@ -209,23 +204,27 @@ userState: {
   }
 );
 
-// Indexes for faster queries
 tournamentSchema.index({ createdBy: 1, visibility: 1 });
 tournamentSchema.index({ dateFrom: 1, dateTo: 1 });
+tournamentSchema.index({ isDeleted: 1 });
 tournamentSchema.index({ "venue.country": 1, "venue.state": 1, "venue.district": 1 });
 
-// Virtual for upcoming tournaments
 tournamentSchema.virtual("isUpcoming").get(function () {
   return this.dateFrom > new Date();
 });
 
-// Tournament type validation
 tournamentSchema.path("tournamentType").validate(function (arr) {
   if (!arr || arr.length === 0) return true;
   return arr.every((v) => ["Open", "Official"].includes(v));
 }, "Invalid tournament type");
 
-// Pre-validate hook
+tournamentSchema.pre(/^find/, function (next) {
+  if (!this.getOptions()?.includeDeleted) {
+    this.where({ isDeleted: { $ne: true } });
+  }
+  next();
+});
+
 tournamentSchema.pre("validate", function (next) {
   const fieldsToParse = [
     "ageCategories",
@@ -251,7 +250,6 @@ tournamentSchema.pre("validate", function (next) {
     }
   });
 
-  // Contact cleaning
   if (this.contact) {
     const cleaned = this.contact.replace(/[^+\d]/g, "");
     const match = cleaned.match(/^\+(\d{1,3})(\d+)$/);
@@ -262,7 +260,6 @@ tournamentSchema.pre("validate", function (next) {
     }
   }
 
-  // Entry fees cleanup
   if (this.entryFees && this.entryFees.amounts) {
     if (
       this.eventCategories &&
@@ -289,9 +286,7 @@ tournamentSchema.pre("validate", function (next) {
   next();
 });
 
-// Pre-save hook – cleanup and normalization
 tournamentSchema.pre("save", function (next) {
-  // Clean empty arrays
   if (this.ageCategories) {
     if (Array.isArray(this.ageCategories.open) && this.ageCategories.open.length === 0) {
       this.ageCategories.open = undefined;
@@ -318,13 +313,11 @@ tournamentSchema.pre("save", function (next) {
     }
   }
 
-  // ====== WEIGHT CATEGORIES FINAL CLEANUP ======
   if (this.weightCategories) {
     const wc = this.weightCategories;
 
     if (wc.type === "custom") {
       wc.selected = undefined;
-      // keep wc.custom as-is (may be legacy array per age or new gender object per age)
     } else {
       wc.custom = undefined;
       if (wc.selected) {
@@ -333,9 +326,7 @@ tournamentSchema.pre("save", function (next) {
       }
     }
   }
-  // ============================================
 
-  // Existing cleanup logic...
   if (this.weightCategories?.selected) {
     if (this.weightCategories.selected.male?.length === 0) {
       this.weightCategories.selected.male = undefined;
@@ -349,7 +340,6 @@ tournamentSchema.pre("save", function (next) {
     this.weightCategories.custom = undefined;
   }
 
-  // Entry fees amount cleanup
   if (this.entryFees?.amounts?.kyorugi) {
     for (let [key, fee] of this.entryFees.amounts.kyorugi.entries()) {
       fee.amount = Math.max(0, fee.amount || 0);
@@ -365,7 +355,6 @@ tournamentSchema.pre("save", function (next) {
     }
   }
 
-  // Currency symbol auto-generation
   if (this.entryFees?.currency && !this.entryFees.currencySymbol) {
     try {
       this.entryFees.currencySymbol = new Intl.NumberFormat("en-IN", {
@@ -380,7 +369,6 @@ tournamentSchema.pre("save", function (next) {
     }
   }
 
-  // Food & Lodging cleanup
   if (this.foodAndLodging) {
     if (this.foodAndLodging.type === "Free" || this.foodAndLodging.option === "No") {
       this.foodAndLodging.amount = undefined;
@@ -396,7 +384,6 @@ tournamentSchema.pre("save", function (next) {
     this.logos = undefined;
   }
 
-  // Kyorugi sub cleanup
   if (this.eventCategories?.kyorugi?.sub) {
     const cleanedSub = {};
     let hasTrue = false;
@@ -412,14 +399,12 @@ tournamentSchema.pre("save", function (next) {
     }
   }
 
-  // Final eventCategories cleanup
   if (this.eventCategories) {
     if (!this.eventCategories.kyorugi && !this.eventCategories.poomsae) {
       this.eventCategories = undefined;
     }
   }
 
-  // Clear currency if no paid fees
   let hasPaid = false;
   if (this.entryFees?.amounts?.kyorugi) {
     for (let fee of this.entryFees.amounts.kyorugi.values()) {
@@ -431,7 +416,7 @@ tournamentSchema.pre("save", function (next) {
       if (fee.type === "Paid" && fee.amount > 0) hasPaid = true;
     }
   }
-  if (!hasPaid) {
+  if (!hasPaid && this.entryFees) {
     this.entryFees.currency = undefined;
     this.entryFees.currencySymbol = undefined;
   }

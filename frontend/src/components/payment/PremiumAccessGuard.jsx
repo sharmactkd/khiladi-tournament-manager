@@ -2,21 +2,30 @@
 
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
+import { useAuth } from "../../context/AuthContext";
 import { getMyAccessStatus } from "../../api/paymentApi";
 import PaymentPage from "./PaymentPage";
 
 const PremiumAccessGuard = ({ children }) => {
   const { id } = useParams();
   const tournamentId = id?.trim();
+  const { user } = useAuth();
+
+  const isAdminUser = ["admin", "superadmin"].includes(user?.role);
 
   const [loading, setLoading] = useState(true);
   const [hasAccess, setHasAccess] = useState(false);
   const [accessData, setAccessData] = useState(null);
 
-  // ✅ Stable function (no unnecessary re-renders)
   const checkAccess = useCallback(async () => {
     try {
       setLoading(true);
+
+      if (isAdminUser) {
+        setHasAccess(true);
+        setAccessData({ hasAccess: true, bypass: "admin" });
+        return;
+      }
 
       const res = await getMyAccessStatus(tournamentId);
       console.log("PAYMENT ACCESS STATUS:", res);
@@ -31,16 +40,25 @@ const PremiumAccessGuard = ({ children }) => {
     } finally {
       setLoading(false);
     }
-  }, [tournamentId]);
+  }, [tournamentId, isAdminUser]);
 
-  // ✅ Run only when tournament changes
   useEffect(() => {
+    if (isAdminUser) {
+      setLoading(false);
+      setHasAccess(true);
+      setAccessData({ hasAccess: true, bypass: "admin" });
+      return;
+    }
+
     if (tournamentId) {
       checkAccess();
     }
-  }, [tournamentId, checkAccess]);
+  }, [tournamentId, checkAccess, isAdminUser]);
 
-  // ✅ Loading state
+  if (isAdminUser) {
+    return children;
+  }
+
   if (loading) {
     return (
       <div
@@ -56,27 +74,18 @@ const PremiumAccessGuard = ({ children }) => {
     );
   }
 
-  // ✅ If NO ACCESS → show blurred content + payment overlay
   if (!hasAccess) {
     return (
       <div className="premiumAccessPreviewWrapper">
-        {/* 🔹 CONTENT (blurred but visible) */}
-        <div className="premiumBlurBackground">
-          {children}
-        </div>
+        <div className="premiumBlurBackground">{children}</div>
 
-        {/* 🔹 PAYMENT OVERLAY (does NOT block navbar) */}
         <div className="premiumPaymentOverlay">
-          <PaymentPage
-            tournamentId={tournamentId}
-            onPaymentSuccess={checkAccess}
-          />
+          <PaymentPage tournamentId={tournamentId} onPaymentSuccess={checkAccess} />
         </div>
       </div>
     );
   }
 
-  // ✅ If access granted → normal render
   return children;
 };
 

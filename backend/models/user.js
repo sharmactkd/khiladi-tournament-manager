@@ -46,16 +46,6 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
-    // Existing app roles are preserved:
-    // organizer, coach, player
-    //
-    // Admin panel roles are added:
-    // admin, superadmin
-    //
-    // IMPORTANT:
-    // Register/login code does not allow users to create themselves as admin/superadmin.
-    // Promote an account manually in MongoDB:
-    // db.users.updateOne({ email: "your@email.com" }, { $set: { role: "superadmin" } })
     role: {
       type: String,
       enum: [...ACTIVE_ROLES, ...ADMIN_ROLES, ...LEGACY_ROLES],
@@ -95,8 +85,29 @@ const userSchema = new mongoose.Schema(
 
     isVerified: { type: Boolean, default: false },
     phoneVerified: { type: Boolean, default: false },
+    isProfileComplete: { type: Boolean, default: false },
+
+    isSuspended: { type: Boolean, default: false },
+    suspendedAt: { type: Date, default: null },
+    suspendedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    suspensionReason: { type: String, trim: true, default: "" },
+
+    isDeleted: { type: Boolean, default: false },
+    deletedAt: { type: Date, default: null },
+    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+
     lastLogin: Date,
     refreshTokens: [String],
+
+    resetPasswordToken: {
+      type: String,
+      select: false,
+    },
+
+    resetPasswordExpire: {
+      type: Date,
+      select: false,
+    },
   },
   {
     timestamps: true,
@@ -107,6 +118,10 @@ const userSchema = new mongoose.Schema(
 userSchema.index({ loginProvider: 1 });
 userSchema.index({ role: 1 });
 userSchema.index({ isVerified: 1 });
+userSchema.index({ isSuspended: 1 });
+userSchema.index({ isDeleted: 1 });
+userSchema.index({ resetPasswordToken: 1 });
+userSchema.index({ resetPasswordExpire: 1 });
 
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) return next();

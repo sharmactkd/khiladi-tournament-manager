@@ -1,10 +1,13 @@
 import React, { useEffect } from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
+import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
+import CompleteProfile from "./pages/CompleteProfile";
 import TournamentForm from "./pages/TournamentForm";
 import TournamentDetails from "./pages/TournamentDetails";
 import SocialLogin from "./pages/SocialLogin";
@@ -33,6 +36,29 @@ import "./App.css";
 
 function App() {
   const { isAuthenticated, user } = useAuth();
+  const location = useLocation();
+
+  const needsProfileCompletion =
+    isAuthenticated &&
+    user?.loginProvider === "google" &&
+    user?.isProfileComplete === false;
+
+  const requireAuth = (element) => {
+    if (!isAuthenticated) {
+      return (
+        <Navigate
+          to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
+          replace
+        />
+      );
+    }
+
+    if (needsProfileCompletion) {
+      return <Navigate to="/complete-profile" replace />;
+    }
+
+    return element;
+  };
 
   useEffect(() => {
     console.log("Auth status updated:", isAuthenticated);
@@ -48,12 +74,69 @@ function App() {
 
           <Route
             path="/login"
-            element={!isAuthenticated ? <Login /> : <Navigate to="/" replace />}
+            element={
+              !isAuthenticated ? (
+                <Login />
+              ) : needsProfileCompletion ? (
+                <Navigate to="/complete-profile" replace />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
           />
 
           <Route
             path="/register"
-            element={!isAuthenticated ? <Register /> : <Navigate to="/" replace />}
+            element={
+              !isAuthenticated ? (
+                <Register />
+              ) : needsProfileCompletion ? (
+                <Navigate to="/complete-profile" replace />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+
+          <Route
+            path="/forgot-password"
+            element={
+              !isAuthenticated ? (
+                <ForgotPassword />
+              ) : needsProfileCompletion ? (
+                <Navigate to="/complete-profile" replace />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+
+          <Route
+            path="/reset-password/:token"
+            element={
+              !isAuthenticated ? (
+                <ResetPassword />
+              ) : needsProfileCompletion ? (
+                <Navigate to="/complete-profile" replace />
+              ) : (
+                <Navigate to="/" replace />
+              )
+            }
+          />
+
+          <Route
+            path="/complete-profile"
+            element={
+              isAuthenticated ? (
+                needsProfileCompletion ? (
+                  <CompleteProfile />
+                ) : (
+                  <Navigate to="/" replace />
+                )
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
           />
 
           <Route
@@ -63,35 +146,33 @@ function App() {
 
           <Route
             path="/tournament/create"
-            element={
-              isAuthenticated ? <TournamentForm /> : <Navigate to="/login" replace />
-            }
+            element={requireAuth(<TournamentForm />)}
           />
 
           <Route
             path="/tournament-form"
-            element={
-              isAuthenticated ? <TournamentForm /> : <Navigate to="/login" replace />
-            }
+            element={requireAuth(<TournamentForm />)}
           />
 
           <Route path="/tournaments" element={<TournamentsPages />} />
 
           <Route
             path="/team-entry/:id"
-            element={
-              isAuthenticated ? (
-                <TeamEntryForm />
-              ) : (
-                <Navigate
-                  to={`/login?redirect=${encodeURIComponent(window.location.pathname)}`}
-                  replace
-                />
-              )
-            }
+            element={requireAuth(<TeamEntryForm />)}
           />
 
-          <Route path="/admin" element={<AdminLayout />}>
+          <Route
+            path="/admin"
+            element={
+              isAuthenticated && !needsProfileCompletion ? (
+                <AdminLayout />
+              ) : isAuthenticated && needsProfileCompletion ? (
+                <Navigate to="/complete-profile" replace />
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          >
             <Route index element={<AdminDashboard />} />
             <Route path="users" element={<AdminUsers />} />
             <Route path="users/:userId" element={<AdminUserDetails />} />
@@ -101,7 +182,16 @@ function App() {
             <Route path="entries" element={<AdminEntries />} />
           </Route>
 
-          <Route path="/tournaments/:id" element={<TournamentLayout />}>
+          <Route
+            path="/tournaments/:id"
+            element={
+              needsProfileCompletion ? (
+                <Navigate to="/complete-profile" replace />
+              ) : (
+                <TournamentLayout />
+              )
+            }
+          >
             <Route index element={<TournamentDetails />} />
             <Route path="entry" element={<Entry />} />
             <Route path="tie-sheet" element={<TieSheet />} />
@@ -113,8 +203,12 @@ function App() {
             <Route
               path="team-submissions"
               element={
-                isAuthenticated && user?.role === "organizer" ? (
+                isAuthenticated &&
+                !needsProfileCompletion &&
+                user?.role === "organizer" ? (
                   <TeamSubmissions />
+                ) : needsProfileCompletion ? (
+                  <Navigate to="/complete-profile" replace />
                 ) : (
                   <Navigate to="/" replace />
                 )

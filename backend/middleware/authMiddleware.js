@@ -42,6 +42,22 @@ const authMiddleware = async (req, res, next) => {
       return res.status(401).json({ message: "User not found" });
     }
 
+    if (user.isDeleted) {
+      logger.warn("Deleted user attempted authenticated access", {
+        userId: user._id,
+        path: req.path,
+      });
+      return res.status(403).json({ message: "This account has been deleted" });
+    }
+
+    if (user.isSuspended) {
+      logger.warn("Suspended user attempted authenticated access", {
+        userId: user._id,
+        path: req.path,
+      });
+      return res.status(403).json({ message: "This account has been suspended" });
+    }
+
     req.user = user;
     req.user.role = normalizeRole(user.role);
 

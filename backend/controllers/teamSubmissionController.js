@@ -3,6 +3,7 @@ import TeamEntrySubmission from "../models/TeamEntrySubmission.js";
 import Tournament from "../models/tournament.js";
 import logger from "../utils/logger.js";
 import Entry from "../models/entry.js";
+import { logActivitySafe } from "../utils/activityLogger.js";
 
 const createEmptyEntryState = () => ({
   sorting: [],
@@ -62,7 +63,6 @@ const parseDob = (value) => {
   const str = String(value).trim();
   if (!str) return null;
 
-  // dd-mm-yyyy or dd/mm/yyyy
   const ddmmyyyy = str.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
   if (ddmmyyyy) {
     const [, dd, mm, yyyy] = ddmmyyyy;
@@ -71,7 +71,6 @@ const parseDob = (value) => {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
   }
 
-  // yyyy-mm-dd
   const parsed = new Date(str);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 };
@@ -184,6 +183,26 @@ export const submitTeamSubmission = async (req, res) => {
       tournamentId,
       coachId: req.user._id,
       playerCount: normalizedPlayers.length,
+    });
+
+    logActivitySafe({
+      req,
+      user: req.user._id,
+      actor: req.user._id,
+      tournament: tournamentId,
+      action: "TEAM_SUBMISSION_CREATED",
+      module: "teamSubmission",
+      title: "Team submission created",
+      description: `${normalizedTeamName} submitted ${normalizedPlayers.length} entries.`,
+      metadata: {
+        submissionId: submission._id,
+        tournamentId,
+        tournamentName: tournament.tournamentName || "",
+        teamName: normalizedTeamName,
+        playersCount: normalizedPlayers.length,
+        coachId: req.user._id,
+        status: submission.status,
+      },
     });
 
     res.status(201).json({
@@ -307,6 +326,28 @@ export const approveTeamSubmission = async (req, res) => {
       totalEntriesAfterMerge: mergedEntries.length,
     });
 
+    logActivitySafe({
+      req,
+      user: submission.coachId,
+      actor: req.user._id,
+      tournament: submission.tournamentId,
+      action: "TEAM_SUBMISSION_APPROVED",
+      module: "teamSubmission",
+      title: "Team submission approved",
+      description: `${submission.teamName || "Team"} submission approved and merged into entries.`,
+      metadata: {
+        submissionId: submission._id,
+        tournamentId: submission.tournamentId,
+        tournamentName: tournament.tournamentName || "",
+        teamName: submission.teamName || "",
+        coachId: submission.coachId || null,
+        reviewedBy: req.user._id,
+        mergedPlayers: approvedPlayers.length,
+        totalEntriesAfterMerge: mergedEntries.length,
+        status: submission.status,
+      },
+    });
+
     res.json({
       message: "Submission approved and merged into tournament entries",
       submission,
@@ -316,20 +357,20 @@ export const approveTeamSubmission = async (req, res) => {
       entries: mergedEntries,
       userState: updatedEntryDoc.userState,
     });
- } catch (error) {
-  console.error("=== APPROVE ERROR ===");
-  console.error(error);
+  } catch (error) {
+    console.error("=== APPROVE ERROR ===");
+    console.error(error);
 
-  logger.error("approveTeamSubmission failed", {
-    error: error.message,
-    stack: error.stack,
-  });
+    logger.error("approveTeamSubmission failed", {
+      error: error.message,
+      stack: error.stack,
+    });
 
-  res.status(500).json({
-    message: "Failed to approve submission",
-    error: error.message,
-  });
-}
+    res.status(500).json({
+      message: "Failed to approve submission",
+      error: error.message,
+    });
+  }
 };
 
 export const rejectTeamSubmission = async (req, res) => {
@@ -372,6 +413,28 @@ export const rejectTeamSubmission = async (req, res) => {
       submissionId,
       tournamentId: submission.tournamentId,
       rejectedBy: req.user._id,
+    });
+
+    logActivitySafe({
+      req,
+      user: submission.coachId,
+      actor: req.user._id,
+      tournament: submission.tournamentId,
+      action: "TEAM_SUBMISSION_REJECTED",
+      module: "teamSubmission",
+      title: "Team submission rejected",
+      description: `${submission.teamName || "Team"} submission rejected.`,
+      metadata: {
+        submissionId: submission._id,
+        tournamentId: submission.tournamentId,
+        tournamentName: tournament.tournamentName || "",
+        teamName: submission.teamName || "",
+        coachId: submission.coachId || null,
+        reviewedBy: req.user._id,
+        playersCount: Array.isArray(submission.players) ? submission.players.length : 0,
+        status: submission.status,
+        rejectionReason: submission.rejectionReason || "",
+      },
     });
 
     res.json({

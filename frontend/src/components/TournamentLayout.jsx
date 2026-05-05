@@ -32,6 +32,8 @@ const TournamentLayout = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
+  const [adminEditMode, setAdminEditMode] = useState(false);
+
   useEffect(() => {
     if (!id) {
       setError("Tournament ID is missing");
@@ -60,6 +62,10 @@ const TournamentLayout = () => {
     fetchTournament();
   }, [id]);
 
+  useEffect(() => {
+    setAdminEditMode(false);
+  }, [id]);
+
   const isActive = useMemo(() => {
     if (!tournament?.dateTo) return false;
 
@@ -82,6 +88,20 @@ const TournamentLayout = () => {
 
     return !!ownerId && !!currentUserId && String(ownerId) === String(currentUserId);
   }, [user, tournament]);
+
+  const isAdminUser = useMemo(() => {
+    return ["admin", "superadmin"].includes(user?.role);
+  }, [user]);
+
+  const canAccessTournamentManagement = useMemo(() => {
+    return Boolean(user && (isTournamentOwner || isAdminUser));
+  }, [user, isTournamentOwner, isAdminUser]);
+
+  const isAdminReadOnly = Boolean(isAdminUser && !adminEditMode);
+
+  const requestAdminSaveConfirmation = () => {
+    return window.confirm("Are you sure, you want to save these changes?");
+  };
 
   if (authLoading || loading) {
     return (
@@ -128,16 +148,30 @@ const TournamentLayout = () => {
 
   return (
     <div className={styles.layoutContainer}>
-      {user && isActive && isTournamentOwner && (
-        <SubNavBar tournament={tournament} user={user} />
+      {canAccessTournamentManagement && (
+        <SubNavBar
+          tournament={tournament}
+          user={user}
+          isAdminUser={isAdminUser}
+          adminEditMode={adminEditMode}
+          setAdminEditMode={setAdminEditMode}
+          isAdminReadOnly={isAdminReadOnly}
+        />
       )}
 
       <div className={styles.content}>
         <Outlet
           context={{
             tournament,
+            setTournament,
             isActive,
             isTournamentOwner,
+            isAdminUser,
+            canAccessTournamentManagement,
+            adminEditMode,
+            setAdminEditMode,
+            isAdminReadOnly,
+            requestAdminSaveConfirmation,
             user,
             loading: false,
             error: null,

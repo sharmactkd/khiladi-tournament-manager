@@ -8,6 +8,20 @@ export const adminMiddleware = (req, res, next) => {
     });
   }
 
+  if (req.user.isDeleted) {
+    return res.status(403).json({
+      success: false,
+      message: "This account has been deleted",
+    });
+  }
+
+  if (req.user.isSuspended) {
+    return res.status(403).json({
+      success: false,
+      message: "This account has been suspended",
+    });
+  }
+
   if (!["admin", "superadmin"].includes(role)) {
     return res.status(403).json({
       success: false,
@@ -25,6 +39,20 @@ export const superAdminMiddleware = (req, res, next) => {
     return res.status(401).json({
       success: false,
       message: "Authentication required",
+    });
+  }
+
+  if (req.user.isDeleted) {
+    return res.status(403).json({
+      success: false,
+      message: "This account has been deleted",
+    });
+  }
+
+  if (req.user.isSuspended) {
+    return res.status(403).json({
+      success: false,
+      message: "This account has been suspended",
     });
   }
 

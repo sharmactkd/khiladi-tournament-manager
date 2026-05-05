@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { getAdminUsers } from "../../api";
+import { useNavigate } from "react-router-dom";
+import {
+  deleteAdminUser,
+  getAdminUsers,
+  suspendAdminUser,
+  unsuspendAdminUser,
+} from "../../api";
+import { useAuth } from "../../context/AuthContext";
 import styles from "./Admin.module.css";
 
 const formatDate = (value) => {
@@ -15,13 +21,31 @@ const formatCurrency = (value) =>
     maximumFractionDigits: 0,
   }).format(Number(value || 0));
 
+const getStatusLabel = (user) => {
+  if (user?.isDeleted) return "Deleted";
+  if (user?.isSuspended) return "Suspended";
+  return "Active";
+};
+
+const getStatusClass = (user) => {
+  if (user?.isDeleted) return styles.errorBadge || styles.mutedBadge;
+  if (user?.isSuspended) return styles.warningBadge || styles.mutedBadge;
+  return styles.successBadge || styles.badge;
+};
+
 const AdminUsers = () => {
+  const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
+
   const [users, setUsers] = useState([]);
   const [pagination, setPagination] = useState({ page: 1, totalPages: 1 });
   const [search, setSearch] = useState("");
   const [activeSearch, setActiveSearch] = useState("");
   const [loading, setLoading] = useState(true);
+  const [actionLoadingId, setActionLoadingId] = useState("");
   const [error, setError] = useState("");
+
+  const isSuperadmin = currentUser?.role === "superadmin";
 
   const loadUsers = async (page = 1, searchValue = activeSearch) => {
     try {
@@ -48,6 +72,95 @@ const AdminUsers = () => {
     loadUsers(1, search);
   };
 
+  const canManageUser = (targetUser) => {
+    if (!isSuperadmin) return false;
+    if (!targetUser?._id) return false;
+    if (String(targetUser._id) === String(currentUser?.id || currentUser?._id)) {
+      return false;
+    }
+    if (targetUser.role === "superadmin") return false;
+    if (targetUser.isDeleted) return false;
+    return true;
+  };
+
+  const openUser = (targetUser) => {
+    if (targetUser?._id) navigate(`/admin/users/${targetUser._id}`);
+  };
+
+  const stopRowNavigation = (event) => {
+    event.stopPropagation();
+  };
+
+  const handleSuspend = async (event, targetUser) => {
+    stopRowNavigation(event);
+    if (!canManageUser(targetUser)) return;
+
+    const reason = window.prompt(
+      `Reason for suspending ${targetUser.name || targetUser.email || "this user"}?`,
+      targetUser.suspensionReason || ""
+    );
+
+    if (reason === null) return;
+
+    try {
+      setActionLoadingId(targetUser._id);
+      await suspendAdminUser(targetUser._id, reason);
+      await loadUsers(pagination.page, activeSearch);
+    } catch (err) {
+      alert(err.message || "Failed to suspend user");
+    } finally {
+      setActionLoadingId("");
+    }
+  };
+
+  const handleUnsuspend = async (event, targetUser) => {
+    stopRowNavigation(event);
+    if (!canManageUser(targetUser)) return;
+
+    if (
+      !window.confirm(
+        `Unsuspend ${targetUser.name || targetUser.email || "this user"}?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setActionLoadingId(targetUser._id);
+      await unsuspendAdminUser(targetUser._id);
+      await loadUsers(pagination.page, activeSearch);
+    } catch (err) {
+      alert(err.message || "Failed to unsuspend user");
+    } finally {
+      setActionLoadingId("");
+    }
+  };
+
+  const handleDelete = async (event, targetUser) => {
+    stopRowNavigation(event);
+    if (!canManageUser(targetUser)) return;
+
+    const label = targetUser.name || targetUser.email || "this user";
+
+    if (
+      !window.confirm(
+        `Delete ${label}? This will soft-delete the account and revoke all active sessions.`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setActionLoadingId(targetUser._id);
+      await deleteAdminUser(targetUser._id);
+      await loadUsers(pagination.page, activeSearch);
+    } catch (err) {
+      alert(err.message || "Failed to delete user");
+    } finally {
+      setActionLoadingId("");
+    }
+  };
+
   return (
     <div className={styles.pageStack}>
       <section className={styles.panel}>
@@ -65,7 +178,9 @@ const AdminUsers = () => {
             placeholder="Search name, email, phone, role..."
             className={styles.searchInput}
           />
-          <button type="submit" className={styles.primaryBtn}>Search</button>
+          <button type="submit" className={styles.primaryBtn}>
+            Search
+          </button>
         </form>
 
         {loading ? (
@@ -81,33 +196,104 @@ const AdminUsers = () => {
                     <th>Name</th>
                     <th>Email / Phone</th>
                     <th>Role</th>
+                    <th>Status</th>
                     <th>Tournaments</th>
                     <th>Entries</th>
                     <th>Paid</th>
                     <th>Joined</th>
-                    <th>Action</th>
+                    {isSuperadmin && <th>Manage</th>}
                   </tr>
                 </thead>
                 <tbody>
-                  {users.map((user) => (
-                    <tr key={user._id}>
-                      <td>{user.name || "-"}</td>
-                      <td>{user.email || user.phone || "-"}</td>
-                      <td><span className={styles.badge}>{user.role}</span></td>
-                      <td>{user.totalTournaments || 0}</td>
-                      <td>{user.totalEntries || 0}</td>
-                      <td>{formatCurrency(user.totalAmountPaid)}</td>
-                      <td>{formatDate(user.createdAt)}</td>
-                      <td>
-                        <Link to={`/admin/users/${user._id}`} className={styles.tableLink}>
-                          View
-                        </Link>
-                      </td>
-                    </tr>
-                  ))}
+                  {users.map((targetUser) => {
+                    const manageable = canManageUser(targetUser);
+                    const busy = actionLoadingId === targetUser._id;
+
+                    return (
+                      <tr
+                        key={targetUser._id}
+                        className={styles.clickableRow}
+                        onClick={() => openUser(targetUser)}
+                        tabIndex={0}
+                        role="button"
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter" || event.key === " ") {
+                            event.preventDefault();
+                            openUser(targetUser);
+                          }
+                        }}
+                      >
+                        <td>{targetUser.name || "-"}</td>
+                        <td>{targetUser.email || targetUser.phone || "-"}</td>
+                        <td>
+                          <span className={styles.badge}>{targetUser.role}</span>
+                        </td>
+                        <td>
+                          <span className={getStatusClass(targetUser)}>
+                            {getStatusLabel(targetUser)}
+                          </span>
+                        </td>
+                        <td>{targetUser.totalTournaments || 0}</td>
+                        <td>{targetUser.totalEntries || 0}</td>
+                        <td>{formatCurrency(targetUser.totalAmountPaid)}</td>
+                        <td>{formatDate(targetUser.createdAt)}</td>
+
+                        {isSuperadmin && (
+                          <td onClick={stopRowNavigation}>
+                            <div
+                              className={styles.actionGroup}
+                              onClick={stopRowNavigation}
+                              onKeyDown={stopRowNavigation}
+                            >
+                              {manageable && targetUser.isSuspended ? (
+                                <button
+                                  type="button"
+                                  className={styles.secondaryBtn}
+                                  disabled={busy}
+                                  onClick={(event) =>
+                                    handleUnsuspend(event, targetUser)
+                                  }
+                                >
+                                  {busy ? "..." : "Unsuspend"}
+                                </button>
+                              ) : manageable ? (
+                                <button
+                                  type="button"
+                                  className={styles.secondaryBtn}
+                                  disabled={busy}
+                                  onClick={(event) =>
+                                    handleSuspend(event, targetUser)
+                                  }
+                                >
+                                  {busy ? "..." : "Suspend"}
+                                </button>
+                              ) : null}
+
+                              {manageable && (
+                                <button
+                                  type="button"
+                                  className={styles.dangerBtn}
+                                  disabled={busy}
+                                  onClick={(event) => handleDelete(event, targetUser)}
+                                >
+                                  Delete
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })}
+
                   {users.length === 0 && (
                     <tr>
-                      <td colSpan="8" className={styles.emptyCell}>No users found.</td>
+                      <td
+                        colSpan={isSuperadmin ? 9 : 8}
+                        className={styles.emptyCell}
+                      >
+                        No users found.
+                      </td>
                     </tr>
                   )}
                 </tbody>
@@ -123,7 +309,9 @@ const AdminUsers = () => {
               >
                 Previous
               </button>
-              <span>Page {pagination.page} of {pagination.totalPages}</span>
+              <span>
+                Page {pagination.page} of {pagination.totalPages}
+              </span>
               <button
                 type="button"
                 disabled={pagination.page >= pagination.totalPages}

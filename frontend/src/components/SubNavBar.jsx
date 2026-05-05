@@ -1,9 +1,15 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { NavLink, useParams, useLocation, useNavigate } from "react-router-dom";
 import { getPendingTeamSubmissionCount } from "../api";
 import styles from "./SubNavBar.module.css";
 
-const SubNavBar = ({ tournament, user }) => {
+const SubNavBar = ({
+  tournament,
+  user,
+  isAdminUser: isAdminUserProp = false,
+  adminEditMode = false,
+  setAdminEditMode,
+}) => {
   const { id } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
@@ -23,10 +29,14 @@ const SubNavBar = ({ tournament, user }) => {
   const isActive = start && end && today <= end;
 
   const isOrganizer = user?.role === "organizer";
+  const isAdminUser =
+    isAdminUserProp || ["admin", "superadmin"].includes(user?.role);
+
+  const canReviewTeamSubmissions = isOrganizer || isAdminUser;
 
   const loadPendingCount = useCallback(async () => {
     try {
-      if (!id || !isOrganizer) {
+      if (!id || !canReviewTeamSubmissions) {
         setPendingCount(0);
         return;
       }
@@ -37,10 +47,10 @@ const SubNavBar = ({ tournament, user }) => {
       console.error("Failed to load pending team submission count:", error);
       setPendingCount(0);
     }
-  }, [id, isOrganizer]);
+  }, [id, canReviewTeamSubmissions]);
 
   useEffect(() => {
-    if (!user || !isActive || !isOrganizer) return;
+    if (!user || (!isActive && !isAdminUser) || !canReviewTeamSubmissions) return;
 
     loadPendingCount();
 
@@ -58,16 +68,34 @@ const SubNavBar = ({ tournament, user }) => {
       clearInterval(intervalId);
       window.removeEventListener(`teamSubmissionCountUpdated_${id}`, handleCountRefresh);
     };
-  }, [user, isActive, isOrganizer, id, loadPendingCount]);
+  }, [user, isActive, isAdminUser, canReviewTeamSubmissions, id, loadPendingCount]);
 
-  if (!user || !isActive) {
+  if (!user || (!isActive && !isAdminUser)) {
     return null;
   }
 
   const isTournamentDetailsPage = location.pathname === `/tournaments/${id}`;
 
   const handleBackClick = () => {
-    navigate("/tournaments");
+    navigate(isAdminUser ? "/admin/tournaments" : "/tournaments");
+  };
+
+  const handleAdminEditClick = () => {
+    if (typeof setAdminEditMode === "function") {
+      setAdminEditMode(true);
+    }
+  };
+
+  const handleAdminCancelClick = () => {
+    if (typeof setAdminEditMode === "function") {
+      const confirmed = window.confirm(
+        "Are you sure, you want to cancel editing? Unsaved changes may be lost."
+      );
+
+      if (!confirmed) return;
+
+      setAdminEditMode(false);
+    }
   };
 
   const menuItems = [
@@ -83,7 +111,7 @@ const SubNavBar = ({ tournament, user }) => {
     { label: "Team Championship", path: `/tournaments/${id}/team-championship` },
     { label: "Official", path: `/tournaments/${id}/official` },
     { label: "Team", path: `/tournaments/${id}/team` },
-    ...(isOrganizer
+    ...(canReviewTeamSubmissions
       ? [
           {
             label: "Team Submissions",
@@ -118,6 +146,7 @@ const SubNavBar = ({ tournament, user }) => {
               </NavLink>
             ) : (
               <button
+                type="button"
                 onClick={item.onClick}
                 className={styles.inactive}
                 style={{
@@ -135,6 +164,28 @@ const SubNavBar = ({ tournament, user }) => {
             )}
           </li>
         ))}
+
+        {isAdminUser && (
+          <li>
+            {!adminEditMode ? (
+              <button
+                type="button"
+                onClick={handleAdminEditClick}
+                className={styles.adminEditButton}
+              >
+                Edit
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleAdminCancelClick}
+                className={styles.adminCancelButton}
+              >
+                Cancel Edit
+              </button>
+            )}
+          </li>
+        )}
       </ul>
     </nav>
   );

@@ -2,6 +2,7 @@ import mongoose from "mongoose";
 import Tournament from "../models/tournament.js";
 import Entry from "../models/entry.js";
 import logger from "../utils/logger.js";
+import { logActivitySafe } from "../utils/activityLogger.js";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 import path from "path";
 
@@ -347,10 +348,7 @@ const buildUniqueMedalList = (items = []) => {
     const normalized = normalizeMedalPayloadItem(item);
     if (!normalized) return;
 
-    const key = [
-      buildResultStrictKey(normalized),
-      normalized.medal,
-    ].join("###");
+    const key = [buildResultStrictKey(normalized), normalized.medal].join("###");
 
     if (seen.has(key)) return;
 
@@ -668,9 +666,7 @@ export const getTieSheet = async (req, res) => {
 
 export const getTieSheetOutcomes = async (req, res) => {
   try {
-    const tournament = await Tournament.findById(req.params.id)
-      .select("tiesheet")
-      .lean();
+    const tournament = await Tournament.findById(req.params.id).select("tiesheet").lean();
 
     if (!tournament) {
       return res.status(404).json({ message: "Tournament not found" });
@@ -719,16 +715,16 @@ export const saveTieSheetOutcomes = async (req, res) => {
       return res.status(400).json({ message: "Invalid outcomes data" });
     }
 
-   const updated = await Tournament.findByIdAndUpdate(
-  req.params.id,
-  {
-    $set: {
-      "tiesheet.outcomes": outcomes,
-      "tiesheet.outcomesUpdatedAt": new Date(),
-    },
-  },
-  { new: true, select: "tiesheet" }
-).lean();
+    const updated = await Tournament.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: {
+          "tiesheet.outcomes": outcomes,
+          "tiesheet.outcomesUpdatedAt": new Date(),
+        },
+      },
+      { new: true, select: "tiesheet" }
+    ).lean();
 
     const saved = updated?.tiesheet?.outcomes || {};
 
@@ -1013,6 +1009,26 @@ export const createTournament = async (req, res) => {
 
     logger.info("Tournament created successfully", { id: saved._id, createdBy: req.user._id });
 
+    logActivitySafe({
+      req,
+      user: req.user._id,
+      actor: req.user._id,
+      tournament: saved._id,
+      action: "TOURNAMENT_CREATED",
+      module: "tournament",
+      title: "Tournament created",
+      description: `${saved.tournamentName || "Tournament"} was created.`,
+      metadata: {
+        tournamentId: saved._id,
+        tournamentName: saved.tournamentName || "",
+        organizer: saved.organizer || "",
+        federation: saved.federation || "",
+        dateFrom: saved.dateFrom || null,
+        dateTo: saved.dateTo || null,
+        visibility: saved.visibility,
+      },
+    });
+
     res.status(201).json(saved.toObject());
   } catch (error) {
     await session.abortTransaction();
@@ -1117,7 +1133,10 @@ export const updateTournament = async (req, res) => {
         logoPaths.some((p) => typeof p === "string" && /^https?:\/\//i.test(p));
 
       if (req.files?.poster?.[0] || (req.files?.logos && req.files.logos.length > 0)) {
-        console.log("📸 [UPLOAD DEBUG] (update) storage:", isCloudinary ? "cloudinary" : "disk/local");
+        console.log(
+          "📸 [UPLOAD DEBUG] (update) storage:",
+          isCloudinary ? "cloudinary" : "disk/local"
+        );
 
         if (req.files?.poster?.[0]) {
           console.log("📸 [UPLOAD DEBUG] (update) poster saved as:", updates.poster);
@@ -1172,6 +1191,26 @@ export const updateTournament = async (req, res) => {
     await session.commitTransaction();
 
     logger.info("Tournament updated successfully", { id: req.params.id, updatedBy: req.user?._id });
+
+    logActivitySafe({
+      req,
+      user: updated.createdBy?._id || updated.createdBy || req.user?._id,
+      actor: req.user?._id,
+      tournament: updated._id,
+      action: "TOURNAMENT_UPDATED",
+      module: "tournament",
+      title: "Tournament updated",
+      description: `${updated.tournamentName || "Tournament"} was updated.`,
+      metadata: {
+        tournamentId: updated._id,
+        tournamentName: updated.tournamentName || "",
+        organizer: updated.organizer || "",
+        federation: updated.federation || "",
+        updatedFields: Object.keys(updates || {}),
+        hasPosterUpload: Boolean(req.files?.poster?.[0]),
+        logosUploaded: Array.isArray(req.files?.logos) ? req.files.logos.length : 0,
+      },
+    });
 
     res.status(200).json(updated.toObject());
   } catch (error) {

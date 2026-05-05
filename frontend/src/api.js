@@ -150,6 +150,17 @@ const toQueryString = (params = {}) => {
 export const registerUser = (userData) => apiCall("post", "/auth/register", userData);
 export const loginUser = (credentials) => apiCall("post", "/auth/login", credentials);
 
+export const forgotPassword = (payload) =>
+  apiCall("post", "/auth/forgot-password", payload);
+
+export const resetPassword = (token, payload) =>
+  apiCall("post", `/auth/reset-password/${encodeURIComponent(token)}`, payload);
+
+export const completeProfile = (payload) =>
+  apiCall("patch", "/auth/complete-profile", payload);
+
+export const getCurrentUser = () => apiCall("get", "/auth/me");
+
 export const createTournament = (data) =>
   apiCall("post", "/tournament", data, {
     headers: { "Content-Type": "multipart/form-data" },
@@ -211,5 +222,17 @@ export const getAdminPayments = (params = {}) =>
   apiCall("get", `/admin/payments${toQueryString(params)}`);
 export const getAdminEntries = (params = {}) =>
   apiCall("get", `/admin/entries${toQueryString(params)}`);
+
+export const suspendAdminUser = (userId, reason = "") =>
+  apiCall("patch", `/admin/users/${userId}/suspend`, { reason });
+
+export const unsuspendAdminUser = (userId) =>
+  apiCall("patch", `/admin/users/${userId}/unsuspend`, {});
+
+export const deleteAdminUser = (userId) =>
+  apiCall("delete", `/admin/users/${userId}`);
+
+export const deleteAdminTournament = (tournamentId) =>
+  apiCall("delete", `/admin/tournaments/${tournamentId}`);
 
 export default api;
