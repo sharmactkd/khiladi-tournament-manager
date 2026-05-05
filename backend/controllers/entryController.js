@@ -210,7 +210,12 @@ export const getEntries = async (req, res) => {
       lastUpdated: entryDoc.updatedAt,
     });
   } catch (error) {
-    console.error("Get entries error:", error);
+    logger.error("Get entries failed", {
+  error: error.message,
+  stack: error.stack,
+  tournamentId: req.params.id,
+  userId: req.user?._id,
+});
 
     res.status(500).json({
       error: "Failed to retrieve entries",
@@ -387,7 +392,12 @@ export const saveEntries = async (req, res) => {
       count: updated?.entries?.length || 0,
     });
   } catch (error) {
-    console.error("Real-time save failed:", error);
+  logger.error("Real-time save failed", {
+  error: error.message,
+  stack: error.stack,
+  tournamentId: req.params.id,
+  userId: req.user?._id,
+});
 
     logger.error("Real-time save failed", {
       error: error.message,

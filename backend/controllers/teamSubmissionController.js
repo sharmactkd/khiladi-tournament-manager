@@ -416,8 +416,7 @@ export const approveTeamSubmission = async (req, res) => {
       userState: updatedEntryDoc.userState,
     });
   } catch (error) {
-    console.error("=== APPROVE ERROR ===");
-    console.error(error);
+   
 
     logger.error("approveTeamSubmission failed", {
       error: error.message,

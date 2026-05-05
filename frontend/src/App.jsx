@@ -83,10 +83,6 @@ function App() {
     return element;
   };
 
-  useEffect(() => {
-    console.log("Auth status updated:", isAuthenticated);
-  }, [isAuthenticated]);
-
   return (
     <div className="appLayout">
       <Header />

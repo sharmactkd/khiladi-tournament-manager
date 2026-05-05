@@ -28,7 +28,7 @@ const PremiumAccessGuard = ({ children }) => {
       }
 
       const res = await getMyAccessStatus(tournamentId);
-      console.log("PAYMENT ACCESS STATUS:", res);
+
 
       const accessGranted = res?.hasAccess === true;
 

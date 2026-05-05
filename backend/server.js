@@ -78,7 +78,9 @@ app.use(express.urlencoded({ extended: true, limit: urlEncodedBodyLimit }));
 app.use(cookieParser());
 app.use(passport.initialize());
 
-console.log("STATIC UPLOADS PATH:", path.join(__dirname, "uploads"));
+if (isDev) {
+  console.log("STATIC UPLOADS PATH:", path.join(__dirname, "uploads"));
+}
 
 app.use("/uploads", (req, res, next) => {
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
