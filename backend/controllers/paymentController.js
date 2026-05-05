@@ -1,6 +1,7 @@
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import mongoose from "mongoose";
+import logger from "../utils/logger.js";
 import Payment from "../models/payment.js";
 
 const PLANS = {
@@ -32,9 +33,13 @@ const addMonths = (date, months) => {
 };
 
 export const createPaymentOrder = async (req, res) => {
+  let userId;
+  let planType;
+  let tournamentId;
+
   try {
-    const userId = getUserId(req);
-    const { planType, tournamentId } = req.body;
+    userId = getUserId(req);
+    ({ planType, tournamentId } = req.body);
 
     if (!userId) {
       return res.status(401).json({
@@ -107,8 +112,14 @@ export const createPaymentOrder = async (req, res) => {
         accessType: selectedPlan.accessType,
       },
     });
-  } catch (error) {
-    console.error("createPaymentOrder error:", error);
+   } catch (error) {
+    logger.error("Create payment order failed", {
+      error: error.message,
+      stack: error.stack,
+      userId,
+      planType,
+      tournamentId,
+    });
 
     return res.status(500).json({
       success: false,
@@ -118,8 +129,10 @@ export const createPaymentOrder = async (req, res) => {
 };
 
 export const verifyPayment = async (req, res) => {
+  let userId;
+
   try {
-    const userId = getUserId(req);
+    userId = getUserId(req);
 
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
       req.body;
@@ -199,8 +212,12 @@ export const verifyPayment = async (req, res) => {
         accessExpiresAt: payment.accessExpiresAt,
       },
     });
-  } catch (error) {
-    console.error("verifyPayment error:", error);
+   } catch (error) {
+    logger.error("Verify payment failed", {
+      error: error.message,
+      stack: error.stack,
+      userId,
+    });
 
     return res.status(500).json({
       success: false,
@@ -210,9 +227,13 @@ export const verifyPayment = async (req, res) => {
 };
 
 export const getMyAccessStatus = async (req, res) => {
+  let userId;
+  let tournamentId;
+
   try {
-    const userId = getUserId(req);
-    const { tournamentId } = req.query;
+    userId = getUserId(req);
+    ({ tournamentId } = req.query);
+
 
     if (!userId) {
       return res.status(401).json({
@@ -270,7 +291,12 @@ export const getMyAccessStatus = async (req, res) => {
       message: "Premium access required",
     });
   } catch (error) {
-    console.error("getMyAccessStatus error:", error);
+    logger.error("Get payment access status failed", {
+      error: error.message,
+      stack: error.stack,
+      userId,
+      tournamentId,
+    });
 
     return res.status(500).json({
       success: false,

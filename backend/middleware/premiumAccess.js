@@ -1,5 +1,6 @@
 // backend/middleware/premiumAccess.js
 import mongoose from "mongoose";
+import logger from "../utils/logger.js";
 import Payment from "../models/payment.js";
 
 const getUserId = (req) => {
@@ -17,9 +18,12 @@ const getTournamentId = (req) => {
 };
 
 const premiumAccess = async (req, res, next) => {
+  let userId;
+  let tournamentId;
+
   try {
-    const userId = getUserId(req);
-    const tournamentId = getTournamentId(req);
+    userId = getUserId(req);
+    tournamentId = getTournamentId(req);
 
     if (!userId) {
       return res.status(401).json({
@@ -77,7 +81,12 @@ const premiumAccess = async (req, res, next) => {
       message: "Premium access required",
     });
   } catch (error) {
-    console.error("premiumAccess error:", error);
+    logger.error("Premium access verification failed", {
+      error: error.message,
+      stack: error.stack,
+      userId,
+      tournamentId,
+    });
 
     return res.status(500).json({
       success: false,

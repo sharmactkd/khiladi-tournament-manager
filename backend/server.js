@@ -7,6 +7,7 @@ import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
 
+
 import passport from "./config/passport.js";
 import authRoutes from "./routes/authRoutes.js";
 import tournamentRoutes from "./routes/tournamentRoutes.js";
@@ -16,6 +17,7 @@ import visitorRoutes from "./routes/visitorRoutes.js";
 import importRoutes from "./routes/importRoutes.js";
 import teamSubmissionRoutes from "./routes/teamSubmissionRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
+import paymentRoutes from "./routes/paymentRoutes.js";
 
 import logger, { logMiddleware } from "./utils/logger.js";
 import { generalRateLimiter, authRateLimiter } from "./middleware/rateLimiter.js";
@@ -99,6 +101,7 @@ if (process.env.NODE_ENV === "production") {
   app.use("/api/import", generalRateLimiter);
   app.use("/api/team-submissions", generalRateLimiter);
   app.use("/api/admin", generalRateLimiter);
+  app.use("/api/payment", generalRateLimiter);
   app.use(generalRateLimiter);
 }
 
@@ -129,6 +132,7 @@ app.use("/api/visitor", visitorRoutes);
 app.use("/api/import", importRoutes);
 app.use("/api/team-submissions", teamSubmissionRoutes);
 app.use("/api/admin", adminRoutes);
+app.use("/api/payment", paymentRoutes);
 
 app.get("/health", (req, res) => {
   res.status(200).json({

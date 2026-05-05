@@ -1,5 +1,6 @@
 import express from "express";
 import multer from "multer";
+
 import {
   createTournament,
   getAllTournaments,
@@ -19,7 +20,7 @@ import {
   saveTeamPayments,
   saveTieSheetRecord,
 } from "../controllers/tournamentController.js";
-
+import optionalAuthMiddleware from "../middleware/optionalAuthMiddleware.js";
 import authMiddleware from "../middleware/authMiddleware.js"; // Default import
 import { upload } from "../middleware/upload.js";
 import mongoose from "mongoose";
@@ -104,7 +105,7 @@ router.get("/my", authMiddleware, async (req, res) => {
 });
 
 // Public view with visibility check
-router.get("/:id", async (req, res, next) => {
+router.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
   const { id } = req.params;
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ message: "Invalid tournament ID" });
