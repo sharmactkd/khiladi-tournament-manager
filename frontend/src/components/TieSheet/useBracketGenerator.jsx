@@ -103,7 +103,18 @@ const generateSingleEliminationGameStructure = (players, poolLabel = '') => {
     }
     const player = players[idx];
     return {
-      team: { id: `player-${idx}`, name: player.name || '', team: player.team || '' },
+      team: {
+  id: player.entryId || `player-${idx}`,
+  entryId: player.entryId || "",
+  name: player.name || "",
+  team: player.team || "",
+  gender: player.gender || "",
+  ageCategory: player.ageCategory || "",
+  weightCategory: player.weightCategory || "",
+  weight: player.weight || "",
+  event: player.event || "",
+  subEvent: player.subEvent || "",
+},
       score: { score: null },
     };
   };
@@ -446,10 +457,11 @@ export default function useBracketGenerator({
             }
 
             // ── Pool Final Bracket ─────────────────────────────────────────────
-            const dummyPlayoffPlayers = pools.map((_, idx) => ({
-              name: `Winner Pool ${String.fromCharCode(65 + idx)}`,
-              team: '',
-            }));
+           const dummyPlayoffPlayers = pools.map((_, idx) => ({
+  entryId: `pool-winner-${idx}`,
+  name: `Winner Pool ${String.fromCharCode(65 + idx)}`,
+  team: "",
+}));
 
             let playoffStruct = generateSingleEliminationGameStructure(dummyPlayoffPlayers);
             let poolIndex = 0;

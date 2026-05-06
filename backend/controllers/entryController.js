@@ -7,6 +7,9 @@ const isDev = process.env.NODE_ENV !== "production";
 
 const allowedMedals = ["Gold", "Silver", "Bronze", "X-X-X-X", ""];
 const allowedMedalSources = ["", "manual", "tiesheet"];
+const allowedEntrySources = ["", "manual", "teamSubmission", "import"];
+
+const createEntryId = () => new mongoose.Types.ObjectId().toString();
 
 const normalizeText = (value) =>
   String(value || "")
@@ -27,8 +30,19 @@ const normalizeMedalSource = (value) => {
   return allowedMedalSources.includes(source) ? source : "";
 };
 
+const normalizeEntrySource = (value) => {
+  const source = String(value || "").trim();
+
+  if (source === "team-submission") return "teamSubmission";
+  if (source === "manual-entry") return "manual";
+
+  return allowedEntrySources.includes(source) ? source : "";
+};
+
 const normalizeGender = (value) => {
-  const v = String(value || "").trim().toLowerCase();
+  const v = String(value || "")
+    .trim()
+    .toLowerCase();
 
   if (["male", "m", "boy", "boys"].includes(v)) return "Male";
   if (["female", "f", "girl", "girls"].includes(v)) return "Female";
@@ -39,7 +53,9 @@ const normalizeGender = (value) => {
 const normalizeWeight = (value) => {
   if (value === undefined || value === null || value === "") return null;
 
-  const cleaned = String(value).replace(/[^0-9.]/g, "").trim();
+  const cleaned = String(value)
+    .replace(/[^0-9.]/g, "")
+    .trim();
 
   if (!cleaned) return null;
 
@@ -126,6 +142,7 @@ const buildLooseMatchKey = (row) =>
   ].join("|||");
 
 const buildExistingEntryMaps = (existingEntries = []) => {
+  const byEntryId = new Map();
   const strict = new Map();
   const medium = new Map();
   const loose = new Map();
@@ -133,39 +150,70 @@ const buildExistingEntryMaps = (existingEntries = []) => {
   existingEntries.forEach((entry) => {
     const plain = entry?.toObject ? entry.toObject() : entry;
 
+    const entryId = String(plain?.entryId || "").trim();
     const strictKey = buildStrictMatchKey(plain);
     const mediumKey = buildMediumMatchKey(plain);
     const looseKey = buildLooseMatchKey(plain);
 
+    if (entryId && !byEntryId.has(entryId)) byEntryId.set(entryId, plain);
     if (strictKey && !strict.has(strictKey)) strict.set(strictKey, plain);
     if (mediumKey && !medium.has(mediumKey)) medium.set(mediumKey, plain);
     if (looseKey && !loose.has(looseKey)) loose.set(looseKey, plain);
   });
 
-  return { strict, medium, loose };
+  return { byEntryId, strict, medium, loose };
 };
 
 const findExistingMatch = (entry, maps) => {
+  const entryId = String(entry?.entryId || "").trim();
+
+  if (entryId && maps.byEntryId.has(entryId)) {
+    return maps.byEntryId.get(entryId);
+  }
+
   const strictKey = buildStrictMatchKey(entry);
   const mediumKey = buildMediumMatchKey(entry);
   const looseKey = buildLooseMatchKey(entry);
 
-  return maps.strict.get(strictKey) || maps.medium.get(mediumKey) || maps.loose.get(looseKey) || null;
+  return (
+    maps.strict.get(strictKey) ||
+    maps.medium.get(mediumKey) ||
+    maps.loose.get(looseKey) ||
+    null
+  );
 };
 
-const mapEntryForResponse = (e) => ({
-  ...e,
-  school: e.school ?? e.schoolName ?? "",
-  medal: normalizeMedal(e.medal),
-  medalSource: normalizeMedalSource(e.medalSource),
-  medalUpdatedAt: e.medalUpdatedAt || null,
-});
+const getStableEntryId = (incomingEntry, existingMatch) => {
+  const incomingId = String(incomingEntry?.entryId || "").trim();
+  if (incomingId) return incomingId;
+
+  const existingId = String(existingMatch?.entryId || "").trim();
+  if (existingId) return existingId;
+
+  return createEntryId();
+};
+
+const mapEntryForResponse = (e) => {
+  const entry = e?.toObject ? e.toObject() : e || {};
+
+  return {
+    ...entry,
+    entryId: String(entry.entryId || "").trim() || createEntryId(),
+    school: entry.school ?? entry.schoolName ?? "",
+    medal: normalizeMedal(entry.medal),
+    medalSource: normalizeMedalSource(entry.medalSource),
+    medalUpdatedAt: entry.medalUpdatedAt || null,
+    entrySource: normalizeEntrySource(entry.entrySource),
+    sourceSubmissionId: entry.sourceSubmissionId || null,
+    sourcePlayerId: String(entry.sourcePlayerId || "").trim(),
+  };
+};
 
 const getTeamsFromEntries = (entries = []) => [
   ...new Set(
     (Array.isArray(entries) ? entries : [])
       .map((entry) => String(entry?.team || "").trim())
-      .filter(Boolean)
+      .filter(Boolean),
   ),
 ];
 
@@ -180,7 +228,12 @@ export const getEntries = async (req, res) => {
     const entryDoc = await Entry.findOne({ tournamentId: id }).lean();
 
     if (!entryDoc) {
-      if (isDev) console.log("[getEntries] No entry doc found for tournament:", id);
+      if (isDev) {
+        logger.info("No entry doc found for tournament", {
+          tournamentId: id,
+          userId: req.user?._id,
+        });
+      }
 
       return res.status(200).json({
         success: true,
@@ -195,14 +248,15 @@ export const getEntries = async (req, res) => {
     const mappedEntries = (entryDoc.entries || []).map(mapEntryForResponse);
 
     if (isDev) {
-      console.log("[getEntries] Found entry doc:", {
+      logger.info("Entry doc loaded", {
         tournamentId: id,
         count: mappedEntries.length,
         lastUpdated: entryDoc.updatedAt,
+        userId: req.user?._id,
       });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       entries: mappedEntries,
       count: mappedEntries.length,
@@ -211,13 +265,13 @@ export const getEntries = async (req, res) => {
     });
   } catch (error) {
     logger.error("Get entries failed", {
-  error: error.message,
-  stack: error.stack,
-  tournamentId: req.params.id,
-  userId: req.user?._id,
-});
+      error: error.message,
+      stack: error.stack,
+      tournamentId: req.params.id,
+      userId: req.user?._id,
+    });
 
-    res.status(500).json({
+    return res.status(500).json({
       error: "Failed to retrieve entries",
       details: error.message,
     });
@@ -230,14 +284,14 @@ export const saveEntries = async (req, res) => {
     const { entries, state } = req.body || {};
 
     if (isDev) {
-      console.log("[saveEntries] request received:", {
+      logger.info("Save entries request received", {
         method: req.method,
         url: req.originalUrl,
         tournamentId: id,
-        userId: req.user?._id?.toString?.(),
+        userId: req.user?._id,
         hasEntries: Array.isArray(entries),
         entriesCount: Array.isArray(entries) ? entries.length : 0,
-        hasState: !!state,
+        hasState: Boolean(state),
       });
     }
 
@@ -250,20 +304,39 @@ export const saveEntries = async (req, res) => {
     }
 
     const existingEntryDoc = await Entry.findOne({ tournamentId: id }).lean();
+
     const existingEntriesCount = Array.isArray(existingEntryDoc?.entries)
       ? existingEntryDoc.entries.length
       : 0;
-    const existingMaps = buildExistingEntryMaps(existingEntryDoc?.entries || []);
+
+    const existingMaps = buildExistingEntryMaps(
+      existingEntryDoc?.entries || [],
+    );
     const now = new Date();
 
-    const filteredEntries = (entries || []).filter((entry) => {
-      if (!entry || typeof entry !== "object") return false;
+    const filteredEntries = (Array.isArray(entries) ? entries : []).filter(
+      (entry) => {
+        if (!entry || typeof entry !== "object") return false;
 
-      return Object.entries(entry).some(([key, val]) => {
-        if (key === "sr" || key === "srNo" || key === "actions") return false;
-        return val !== undefined && val !== null && val !== "" && val !== 0;
-      });
-    });
+        return Object.entries(entry).some(([key, val]) => {
+          if (
+            [
+              "sr",
+              "srNo",
+              "actions",
+              "entryId",
+              "entrySource",
+              "sourceSubmissionId",
+              "sourcePlayerId",
+            ].includes(key)
+          ) {
+            return false;
+          }
+
+          return val !== undefined && val !== null && val !== "" && val !== 0;
+        });
+      },
+    );
 
     const mappedEntries = filteredEntries.map((e, i) => {
       const { sr, actions, ...rest } = e;
@@ -293,16 +366,41 @@ export const saveEntries = async (req, res) => {
         managerContact: String(e.managerContact || "").trim(),
       };
 
+      const existingMatch = findExistingMatch(
+        {
+          ...baseEntry,
+          entryId: e.entryId,
+        },
+        existingMaps,
+      );
+
+      const entryId = getStableEntryId(e, existingMatch);
+
+      const enrichedBaseEntry = {
+        ...baseEntry,
+        entryId,
+        entrySource:
+          normalizeEntrySource(e.entrySource) ||
+          normalizeEntrySource(existingMatch?.entrySource) ||
+          "manual",
+        sourceSubmissionId:
+          e.sourceSubmissionId || existingMatch?.sourceSubmissionId || null,
+        sourcePlayerId: String(
+          e.sourcePlayerId || existingMatch?.sourcePlayerId || "",
+        ).trim(),
+      };
+
       const incomingMedal = normalizeMedal(e.medal);
-      const existingMatch = findExistingMatch(baseEntry, existingMaps);
 
       const existingMedal = normalizeMedal(existingMatch?.medal);
-      const existingMedalSource = normalizeMedalSource(existingMatch?.medalSource);
+      const existingMedalSource = normalizeMedalSource(
+        existingMatch?.medalSource,
+      );
       const existingMedalUpdatedAt = existingMatch?.medalUpdatedAt || null;
 
       if (existingMedalSource === "tiesheet") {
         return {
-          ...baseEntry,
+          ...enrichedBaseEntry,
           medal: existingMedal,
           medalSource: "tiesheet",
           medalUpdatedAt: existingMedalUpdatedAt,
@@ -311,7 +409,7 @@ export const saveEntries = async (req, res) => {
 
       if (incomingMedal) {
         return {
-          ...baseEntry,
+          ...enrichedBaseEntry,
           medal: incomingMedal,
           medalSource: "manual",
           medalUpdatedAt: now,
@@ -319,7 +417,7 @@ export const saveEntries = async (req, res) => {
       }
 
       return {
-        ...baseEntry,
+        ...enrichedBaseEntry,
         medal: "",
         medalSource: "",
         medalUpdatedAt: null,
@@ -345,16 +443,18 @@ export const saveEntries = async (req, res) => {
     }).lean();
 
     if (isDev) {
-      console.log("[saveEntries] DB write OK:", {
+      logger.info("Entries saved to DB", {
         tournamentId: id,
         storedCount: updated?.entries?.length || 0,
         lastUpdated: updated?.updatedAt,
-        hasTournamentIdField: !!updated?.tournamentId,
+        hasTournamentIdField: Boolean(updated?.tournamentId),
+        userId: req.user?._id,
       });
     }
 
     logger.info("Entries updated real-time", {
       tournamentId: id,
+      userId: req.user?._id,
       count: updated?.entries?.length || 0,
     });
 
@@ -385,20 +485,13 @@ export const saveEntries = async (req, res) => {
       },
     });
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Saved successfully",
       lastUpdated: updated?.updatedAt || null,
       count: updated?.entries?.length || 0,
     });
   } catch (error) {
-  logger.error("Real-time save failed", {
-  error: error.message,
-  stack: error.stack,
-  tournamentId: req.params.id,
-  userId: req.user?._id,
-});
-
     logger.error("Real-time save failed", {
       error: error.message,
       stack: error.stack,
@@ -406,9 +499,184 @@ export const saveEntries = async (req, res) => {
       userId: req.user?._id,
     });
 
-    res.status(500).json({
+    return res.status(500).json({
       error: "Failed to save changes",
       details: error.message,
+    });
+  }
+};
+
+export const updateSingleEntry = async (req, res) => {
+  try {
+    const { id, entryId } = req.params;
+    const updates = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid tournament ID",
+      });
+    }
+
+    if (!entryId || !String(entryId).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "entryId is required",
+      });
+    }
+
+    const allowedFields = [
+      "title",
+      "name",
+      "fathersName",
+      "school",
+      "schoolName",
+      "class",
+      "team",
+      "gender",
+      "dob",
+      "weight",
+      "event",
+      "subEvent",
+      "ageCategory",
+      "weightCategory",
+      "coach",
+      "coachContact",
+      "manager",
+      "managerContact",
+      "medal",
+      "medalSource",
+      "medalUpdatedAt",
+    ];
+
+    const setObj = {};
+
+    allowedFields.forEach((field) => {
+      if (updates[field] !== undefined) {
+        setObj[`entries.$.${field}`] = updates[field];
+      }
+    });
+
+    if (Object.keys(setObj).length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid fields provided for update",
+      });
+    }
+
+    const rootSetObj = {
+      updatedBy: req.user._id,
+    };
+
+    const updated = await Entry.findOneAndUpdate(
+      {
+        tournamentId: id,
+        "entries.entryId": String(entryId).trim(),
+      },
+      {
+        $set: {
+          ...setObj,
+          ...rootSetObj,
+        },
+      },
+      { new: true, runValidators: true },
+    ).lean();
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Entry row not found",
+      });
+    }
+
+    logger.info("Entry row updated", {
+      entryId,
+      tournamentId: id,
+      userId: req.user._id,
+      updatedFields: Object.keys(updates),
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Entry updated successfully",
+      entryId,
+      lastUpdated: updated.updatedAt,
+    });
+  } catch (error) {
+    logger.error("Single entry update failed", {
+      error: error.message,
+      stack: error.stack,
+      entryId: req.params.entryId,
+      tournamentId: req.params.id,
+      userId: req.user?._id,
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to update entry",
+    });
+  }
+};
+
+export const deleteSingleEntry = async (req, res) => {
+  try {
+    const { id, entryId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid tournament ID",
+      });
+    }
+
+    if (!entryId || !String(entryId).trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "entryId is required",
+      });
+    }
+
+    const updated = await Entry.findOneAndUpdate(
+      { tournamentId: id },
+      {
+        $pull: { entries: { entryId: String(entryId).trim() } },
+        $set: { updatedBy: req.user._id },
+      },
+      { new: true },
+    ).lean();
+
+    if (!updated) {
+      return res.status(404).json({
+        success: false,
+        message: "Entry document not found",
+      });
+    }
+
+    logger.info("Entry row deleted", {
+      entryId,
+      tournamentId: id,
+      userId: req.user._id,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: "Entry deleted successfully",
+      entryId,
+      lastUpdated: updated.updatedAt,
+      count: updated.entries?.length || 0,
+    });
+  } catch (error) {
+    logger.error("Delete entry failed", {
+      error: error.message,
+      stack: error.stack,
+      entryId: req.params.entryId,
+      tournamentId: req.params.id,
+      userId: req.user?._id,
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete entry",
     });
   }
 };

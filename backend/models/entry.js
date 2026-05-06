@@ -18,6 +18,26 @@ const entrySchema = new mongoose.Schema(
             type: Number,
             required: true,
           },
+          entryId: {
+  type: String,
+  required: true,
+  index: true,
+},
+entrySource: {
+  type: String,
+  enum: ["manual", "teamSubmission", "import", ""],
+  default: "",
+},
+sourceSubmissionId: {
+  type: mongoose.Schema.Types.ObjectId,
+  ref: "TeamEntrySubmission",
+  default: null,
+},
+sourcePlayerId: {
+  type: String,
+  trim: true,
+  default: "",
+},
           title: {
             type: String,
             trim: true,
@@ -143,6 +163,8 @@ const entrySchema = new mongoose.Schema(
   }
 );
 
+entrySchema.index({ tournamentId: 1, "entries.entryId": 1 });
+entrySchema.index({ tournamentId: 1, "entries.sourceSubmissionId": 1 });
 entrySchema.index({ tournamentId: 1, "entries.weight": 1 });
 entrySchema.index({ tournamentId: 1, "entries.gender": 1, "entries.ageCategory": 1 });
 entrySchema.index({ tournamentId: 1, "entries.event": 1 });

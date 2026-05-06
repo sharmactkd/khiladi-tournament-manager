@@ -209,6 +209,12 @@ const normalizeMedalPayloadItem = (item = {}, fallback = {}) => {
   if (!medal) return null;
 
   const normalized = {
+    entryId: String(
+  getPlayerLikeValue(source, ["entryId", "_entryId"]) ||
+    getPlayerLikeValue(item, ["entryId", "_entryId"]) ||
+    fallback.entryId ||
+    ""
+).trim(),
     name: String(
       getPlayerLikeValue(source, ["name", "playerName", "fullName", "athleteName"]) ||
         getPlayerLikeValue(item, ["name", "playerName", "fullName", "athleteName"])
@@ -271,6 +277,7 @@ const collectMedalsFromObject = (node, fallback = {}, output = [], visited = new
 
   const nextFallback = {
     ...fallback,
+     entryId: node.entryId || node._entryId || fallback.entryId || "",
     gender: node.gender || fallback.gender || "",
     event: node.event || fallback.event || "",
     subEvent: node.subEvent || fallback.subEvent || "",
@@ -348,7 +355,10 @@ const buildUniqueMedalList = (items = []) => {
     const normalized = normalizeMedalPayloadItem(item);
     if (!normalized) return;
 
-    const key = [buildResultStrictKey(normalized), normalized.medal].join("###");
+    const key = [
+  normalized.entryId || buildResultStrictKey(normalized),
+  normalized.medal,
+].join("###");
 
     if (seen.has(key)) return;
 
@@ -438,14 +448,20 @@ const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => 
     };
   }
 
-  const targetByStrictKey = new Map();
-  const targetByMediumKey = new Map();
-  const targetByLooseKey = new Map();
+const targetByEntryId = new Map();
+const targetByStrictKey = new Map();
+const targetByMediumKey = new Map();
+const targetByLooseKey = new Map();
 
   validMedals.forEach((item) => {
+     const entryId = String(item.entryId || "").trim();
     const strictKey = buildResultStrictKey(item);
     const mediumKey = buildResultMediumKey(item);
     const looseKey = buildResultLooseKey(item);
+
+    if (entryId && !targetByEntryId.has(entryId)) {
+  targetByEntryId.set(entryId, item);
+}
 
     if (strictKey && !targetByStrictKey.has(strictKey)) targetByStrictKey.set(strictKey, item);
     if (mediumKey && !targetByMediumKey.has(mediumKey)) targetByMediumKey.set(mediumKey, item);
@@ -483,10 +499,15 @@ const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => 
     const mediumKey = buildResultMediumKey(entryObj);
     const looseKey = buildResultLooseKey(entryObj);
 
-    const matched =
-      targetByStrictKey.get(strictKey) ||
-      targetByMediumKey.get(mediumKey) ||
-      targetByLooseKey.get(looseKey);
+    const matchedByEntryId = entryObj.entryId
+  ? targetByEntryId.get(String(entryObj.entryId))
+  : null;
+
+const matched =
+  matchedByEntryId ||
+  targetByStrictKey.get(strictKey) ||
+  targetByMediumKey.get(mediumKey) ||
+  (targetByEntryId.size === 0 ? targetByLooseKey.get(looseKey) : null);
 
     if (matched) {
       matchedCount += 1;
@@ -751,12 +772,13 @@ export const saveTieSheetOutcomes = async (req, res) => {
       });
 
       logger.info("TieSheet outcomes saved and medals sync attempted", {
-        tournamentId: req.params.id,
-        matchedCount: syncResult.matchedCount,
-        clearedCount: syncResult.clearedCount,
-        medalsReceived: syncResult.medalsReceived,
-        reason: syncResult.reason,
-      });
+  tournamentId: req.params.id,
+  matchedCount: syncResult.matchedCount,
+  clearedCount: syncResult.clearedCount,
+  medalsReceived: syncResult.medalsReceived,
+  entryIdMatchesUsed: medalsToSync.some((m) => m.entryId),
+  reason: syncResult.reason,
+});
     }
 
     res.status(200).json({

@@ -2,7 +2,12 @@
 
 import express from "express";
 import authMiddleware from "../middleware/authMiddleware.js";
-import { getEntries, saveEntries } from "../controllers/entryController.js";
+import {
+  getEntries,
+  saveEntries,
+  updateSingleEntry,
+  deleteSingleEntry,
+} from "../controllers/entryController.js";
 import Tournament from "../models/tournament.js";
 import mongoose from "mongoose";
 import logger from "../utils/logger.js";
@@ -71,5 +76,20 @@ const validateTournamentOwnership = async (req, res, next) => {
 
 router.get("/:id/entries", authMiddleware, validateTournamentOwnership, getEntries);
 router.post("/:id/entries", authMiddleware, validateTournamentOwnership, saveEntries);
+
+// Row-level APIs
+router.patch(
+  "/:id/entries/:entryId",
+  authMiddleware,
+  validateTournamentOwnership,
+  updateSingleEntry
+);
+
+router.delete(
+  "/:id/entries/:entryId",
+  authMiddleware,
+  validateTournamentOwnership,
+  deleteSingleEntry
+);
 
 export default router;

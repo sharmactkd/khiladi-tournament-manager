@@ -95,6 +95,7 @@ const buildStrictDuplicateKey = (row = {}) =>
     normalizeTextForKey(row.event),
     normalizeTextForKey(row.ageCategory),
     normalizeTextForKey(row.weightCategory),
+    String(parseWeight(row.weight) ?? ""),
   ].join("|||");
 
 const normalizePlayers = (players = [], teamName = "") => {
@@ -130,6 +131,10 @@ const normalizeEntryRowForEntryModel = (row, index) => {
 
   return {
     srNo: index + 1,
+    entryId: String(row.entryId || new mongoose.Types.ObjectId().toString()),
+entrySource: row.entrySource || "",
+sourceSubmissionId: row.sourceSubmissionId || null,
+sourcePlayerId: String(row.sourcePlayerId || ""),
     title: String(row.title || "").trim(),
     name: String(row.name || "").trim(),
     fathersName: String(row.fathersName || "").trim(),
@@ -331,7 +336,13 @@ export const approveTeamSubmission = async (req, res) => {
         existingKeys.add(duplicateKey);
       }
 
-      uniqueApprovedPlayers.push(player);
+     uniqueApprovedPlayers.push({
+  ...player,
+  entryId: player.entryId || new mongoose.Types.ObjectId().toString(),
+  entrySource: "teamSubmission",
+  sourceSubmissionId: submission._id,
+  sourcePlayerId: String(player._id || player.id || ""),
+});
     });
 
     const mergedEntries = [...existingNormalizedEntries, ...uniqueApprovedPlayers]

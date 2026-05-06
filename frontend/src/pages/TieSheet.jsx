@@ -365,15 +365,15 @@ const getUniqueAgeCategories = (rows = []) => {
       console.log('ENTRY SAMPLE:', rows?.[0]);
     }
 
-    const cleanedMapped = playersData.map((p) => ({
-      ...p,
-      // ✅ apply normalization here
-      gender: normalizeGender(p?.gender),
-      ageCategory: ageCategoryMapping[normalizeString(p?.ageCategory)] || p?.ageCategory,
-      weightCategory: p?.weightCategory,
-      name: p?.name || '',
-      team: p?.team || '',
-    }));
+ const cleanedMapped = playersData.map((p) => ({
+  ...p,
+  entryId: p?.entryId || "",
+  gender: normalizeGender(p?.gender),
+  ageCategory: ageCategoryMapping[normalizeString(p?.ageCategory)] || p?.ageCategory,
+  weightCategory: p?.weightCategory,
+  name: p?.name || "",
+  team: p?.team || "",
+}));
 
     if (isDev) console.log('BEFORE FILTER SAMPLE:', cleanedMapped?.[0]);
 
