@@ -1,4 +1,3 @@
-// backend/middleware/premiumAccess.js
 import mongoose from "mongoose";
 import logger from "../utils/logger.js";
 import Payment from "../models/payment.js";
@@ -34,47 +33,50 @@ const premiumAccess = async (req, res, next) => {
 
     const now = new Date();
 
-    // ✅ Check unlimited plan
     const unlimitedAccess = await Payment.findOne({
       userId,
       status: "paid",
       accessType: "unlimited",
       accessStartsAt: { $ne: null },
       accessExpiresAt: { $gt: now },
-    });
+    }).sort({ accessExpiresAt: -1 });
 
     if (unlimitedAccess) {
       req.premiumAccess = {
         hasAccess: true,
         accessType: "unlimited",
         planType: unlimitedAccess.planType,
+        paymentId: unlimitedAccess._id,
+        accessStartsAt: unlimitedAccess.accessStartsAt,
+        accessExpiresAt: unlimitedAccess.accessExpiresAt,
       };
 
       return next();
     }
 
-    // ✅ Check single tournament plan
     if (tournamentId && mongoose.Types.ObjectId.isValid(tournamentId)) {
       const tournamentAccess = await Payment.findOne({
         userId,
         tournamentId,
         status: "paid",
         accessType: "tournament",
-      });
+      }).sort({ createdAt: -1 });
 
       if (tournamentAccess) {
         req.premiumAccess = {
           hasAccess: true,
           accessType: "tournament",
           planType: tournamentAccess.planType,
+          paymentId: tournamentAccess._id,
           tournamentId,
+          accessStartsAt: tournamentAccess.accessStartsAt,
+          accessExpiresAt: tournamentAccess.accessExpiresAt,
         };
 
         return next();
       }
     }
 
-    // ❌ No access
     return res.status(402).json({
       success: false,
       paymentRequired: true,

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import Payment from "../models/payment.js";
 import User from "../models/user.js";
 import Tournament from "../models/tournament.js";
 import Entry from "../models/entry.js";
@@ -732,25 +733,78 @@ export const getAdminPayments = async (req, res) => {
     const { page, limit, skip } = getPagination(req.query);
     const searchRegex = buildSearchRegex(req.query.search);
 
-    const tournaments = await Tournament.find({})
-      .select("tournamentName organizer createdBy teamPayments createdAt updatedAt")
-      .populate("createdBy", "name email phone role createdAt isSuspended isDeleted")
-      .sort({ updatedAt: -1 })
-      .lean();
+    const filter = {};
 
-    let rows = tournaments.flatMap((tournament) => getTeamPaymentRows(tournament));
+    if (req.query.status) {
+      filter.status = String(req.query.status).trim();
+    }
+
+    if (req.query.planType) {
+      filter.planType = String(req.query.planType).trim();
+    }
+
+    const query = Payment.find(filter)
+      .populate("userId", "name email phone role isSuspended isDeleted")
+      .populate("tournamentId", "tournamentName organizer dateFrom dateTo")
+      .sort({ createdAt: -1 });
+
+    const payments = await query.lean();
+
+    let rows = payments.map((payment) => ({
+      _id: payment._id,
+      id: payment._id,
+      source: "razorpay",
+      user: payment.userId
+        ? {
+            _id: payment.userId._id,
+            id: payment.userId._id,
+            name: payment.userId.name || "",
+            email: payment.userId.email || null,
+            phone: payment.userId.phone || null,
+            role: payment.userId.role || "player",
+            isSuspended: Boolean(payment.userId.isSuspended),
+            isDeleted: Boolean(payment.userId.isDeleted),
+          }
+        : null,
+      tournament: payment.tournamentId
+        ? {
+            _id: payment.tournamentId._id,
+            id: payment.tournamentId._id,
+            tournamentName: payment.tournamentId.tournamentName || "",
+            organizer: payment.tournamentId.organizer || "",
+            dateFrom: payment.tournamentId.dateFrom || null,
+            dateTo: payment.tournamentId.dateTo || null,
+          }
+        : null,
+      tournamentId: payment.tournamentId?._id || payment.tournamentId || null,
+      planType: payment.planType,
+      amount: Number(payment.amount || 0),
+      currency: payment.currency || "INR",
+      status: payment.status,
+      accessType: payment.accessType,
+      razorpayOrderId: payment.razorpayOrderId || "",
+      razorpayPaymentId: payment.razorpayPaymentId || "",
+      accessStartsAt: payment.accessStartsAt || null,
+      accessExpiresAt: payment.accessExpiresAt || null,
+      createdAt: payment.createdAt || null,
+      updatedAt: payment.updatedAt || null,
+    }));
 
     if (searchRegex) {
       rows = rows.filter((row) => {
         const text = [
-          row.teamName,
-          row.mode,
-          row.txnId,
-          row.status,
-          row.tournament?.tournamentName,
           row.user?.name,
           row.user?.email,
           row.user?.phone,
+          row.tournament?.tournamentName,
+          row.tournament?.organizer,
+          row.planType,
+          row.status,
+          row.accessType,
+          row.razorpayOrderId,
+          row.razorpayPaymentId,
+          row.currency,
+          String(row.amount),
         ]
           .filter(Boolean)
           .join(" ");
@@ -758,8 +812,6 @@ export const getAdminPayments = async (req, res) => {
         return searchRegex.test(text);
       });
     }
-
-    rows.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
 
     const total = rows.length;
     const data = rows.slice(skip, skip + limit);
@@ -775,7 +827,12 @@ export const getAdminPayments = async (req, res) => {
       },
     });
   } catch (error) {
-    logger.error("Admin payments failed", { error: error.message, stack: error.stack });
+    logger.error("Admin Razorpay payments failed", {
+      error: error.message,
+      stack: error.stack,
+      adminId: req.user?._id,
+    });
+
     return res.status(500).json({
       success: false,
       message: "Failed to load payments",

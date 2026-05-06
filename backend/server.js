@@ -7,7 +7,6 @@ import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
 
-
 import passport from "./config/passport.js";
 import authRoutes from "./routes/authRoutes.js";
 import tournamentRoutes from "./routes/tournamentRoutes.js";
@@ -18,6 +17,7 @@ import importRoutes from "./routes/importRoutes.js";
 import teamSubmissionRoutes from "./routes/teamSubmissionRoutes.js";
 import adminRoutes from "./routes/adminRoutes.js";
 import paymentRoutes from "./routes/paymentRoutes.js";
+import razorpayWebhookRoutes from "./routes/razorpayWebhookRoutes.js";
 
 import logger, { logMiddleware } from "./utils/logger.js";
 import { generalRateLimiter, authRateLimiter } from "./middleware/rateLimiter.js";
@@ -31,7 +31,10 @@ const app = express();
 const isDev = process.env.NODE_ENV !== "production";
 
 process.on("uncaughtException", (err) => {
-  logger.error("Uncaught Exception - Server crashing", { error: err.message, stack: err.stack });
+  logger.error("Uncaught Exception - Server crashing", {
+    error: err.message,
+    stack: err.stack,
+  });
   process.exit(1);
 });
 
@@ -72,6 +75,16 @@ app.use(
   })
 );
 
+/**
+ * Razorpay webhook MUST be mounted before express.json(),
+ * otherwise raw body signature verification will fail.
+ */
+app.use(
+  "/api/payment/webhook",
+  express.raw({ type: "application/json" }),
+  razorpayWebhookRoutes
+);
+
 const jsonBodyLimit = process.env.JSON_BODY_LIMIT || "5mb";
 const urlEncodedBodyLimit = process.env.URLENCODED_BODY_LIMIT || "1mb";
 
@@ -81,7 +94,9 @@ app.use(cookieParser());
 app.use(passport.initialize());
 
 if (isDev) {
-  console.log("STATIC UPLOADS PATH:", path.join(__dirname, "uploads"));
+  logger.info("Static uploads path configured", {
+    path: path.join(__dirname, "uploads"),
+  });
 }
 
 app.use("/uploads", (req, res, next) => {
@@ -116,11 +131,15 @@ mongoose
   .connect(mongoURI)
   .then(() => {
     logger.info("MongoDB connected successfully");
-    if (isDev) console.log("🚀 MongoDB Connected ✅");
+    if (isDev) {
+      logger.info("Development server MongoDB connection ready");
+    }
   })
   .catch((err) => {
-    logger.error("MongoDB connection failed", { error: err.message, stack: err.stack });
-    console.error("❌ MongoDB Connection Failed:", err.message);
+    logger.error("MongoDB connection failed", {
+      error: err.message,
+      stack: err.stack,
+    });
     process.exit(1);
   });
 
@@ -167,7 +186,6 @@ const PORT = process.env.PORT || 5000;
 
 const server = app.listen(PORT, "0.0.0.0", () => {
   logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || "development"} mode`);
-  if (isDev) console.log(`✅ Server running on http://localhost:${PORT}`);
 });
 
 process.on("SIGTERM", shutDown);

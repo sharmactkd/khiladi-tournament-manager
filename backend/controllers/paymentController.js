@@ -3,6 +3,7 @@ import crypto from "crypto";
 import mongoose from "mongoose";
 import logger from "../utils/logger.js";
 import Payment from "../models/payment.js";
+import Tournament from "../models/tournament.js";
 
 const PLANS = {
   single: {
@@ -32,6 +33,12 @@ const addMonths = (date, months) => {
   return d;
 };
 
+const getAccessExpiry = (planType, now) => {
+  if (planType === "six_months") return addMonths(now, 6);
+  if (planType === "one_year") return addMonths(now, 12);
+  return null;
+};
+
 export const createPaymentOrder = async (req, res) => {
   let userId;
   let planType;
@@ -39,7 +46,7 @@ export const createPaymentOrder = async (req, res) => {
 
   try {
     userId = getUserId(req);
-    ({ planType, tournamentId } = req.body);
+    ({ planType, tournamentId } = req.body || {});
 
     if (!userId) {
       return res.status(401).json({
@@ -67,6 +74,34 @@ export const createPaymentOrder = async (req, res) => {
         return res.status(400).json({
           success: false,
           message: "Valid tournamentId is required for single tournament plan",
+        });
+      }
+
+      const tournament = await Tournament.findOne({
+        _id: tournamentId,
+        createdBy: userId,
+      }).lean();
+
+      if (!tournament) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only buy premium access for your own tournament",
+        });
+      }
+
+      const existingAccess = await Payment.findOne({
+        userId,
+        tournamentId,
+        status: "paid",
+        accessType: "tournament",
+      }).lean();
+
+      if (existingAccess) {
+        return res.status(200).json({
+          success: true,
+          alreadyPaid: true,
+          hasAccess: true,
+          message: "You already have premium access for this tournament",
         });
       }
     }
@@ -97,6 +132,14 @@ export const createPaymentOrder = async (req, res) => {
       accessType: selectedPlan.accessType,
     });
 
+    logger.info("Payment order created", {
+      paymentId: payment._id,
+      userId,
+      tournamentId,
+      planType,
+      razorpayOrderId: order.id,
+    });
+
     return res.status(201).json({
       success: true,
       keyId: process.env.RAZORPAY_KEY_ID,
@@ -112,7 +155,7 @@ export const createPaymentOrder = async (req, res) => {
         accessType: selectedPlan.accessType,
       },
     });
-   } catch (error) {
+  } catch (error) {
     logger.error("Create payment order failed", {
       error: error.message,
       stack: error.stack,
@@ -130,12 +173,12 @@ export const createPaymentOrder = async (req, res) => {
 
 export const verifyPayment = async (req, res) => {
   let userId;
+  let payment;
 
   try {
     userId = getUserId(req);
 
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
-      req.body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
 
     if (!userId) {
       return res.status(401).json({
@@ -151,7 +194,7 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
-    const payment = await Payment.findOne({
+    payment = await Payment.findOne({
       razorpayOrderId: razorpay_order_id,
       userId,
     });
@@ -160,6 +203,20 @@ export const verifyPayment = async (req, res) => {
       return res.status(404).json({
         success: false,
         message: "Payment order not found",
+      });
+    }
+
+    if (payment.status === "paid") {
+      return res.status(200).json({
+        success: true,
+        message: "Payment already verified",
+        access: {
+          planType: payment.planType,
+          accessType: payment.accessType,
+          tournamentId: payment.tournamentId,
+          accessStartsAt: payment.accessStartsAt,
+          accessExpiresAt: payment.accessExpiresAt,
+        },
       });
     }
 
@@ -176,6 +233,13 @@ export const verifyPayment = async (req, res) => {
       payment.razorpaySignature = razorpay_signature;
       await payment.save();
 
+      logger.warn("Invalid payment signature", {
+        paymentId: payment._id,
+        userId,
+        razorpayOrderId: razorpay_order_id,
+        razorpayPaymentId: razorpay_payment_id,
+      });
+
       return res.status(400).json({
         success: false,
         message: "Invalid payment signature",
@@ -183,23 +247,23 @@ export const verifyPayment = async (req, res) => {
     }
 
     const now = new Date();
-    let accessExpiresAt = null;
-
-    if (payment.planType === "six_months") {
-      accessExpiresAt = addMonths(now, 6);
-    }
-
-    if (payment.planType === "one_year") {
-      accessExpiresAt = addMonths(now, 12);
-    }
 
     payment.status = "paid";
     payment.razorpayPaymentId = razorpay_payment_id;
     payment.razorpaySignature = razorpay_signature;
     payment.accessStartsAt = now;
-    payment.accessExpiresAt = accessExpiresAt;
+    payment.accessExpiresAt = getAccessExpiry(payment.planType, now);
 
     await payment.save();
+
+    logger.info("Payment verified successfully", {
+      paymentId: payment._id,
+      userId,
+      tournamentId: payment.tournamentId,
+      planType: payment.planType,
+      razorpayOrderId: payment.razorpayOrderId,
+      razorpayPaymentId: payment.razorpayPaymentId,
+    });
 
     return res.status(200).json({
       success: true,
@@ -212,11 +276,12 @@ export const verifyPayment = async (req, res) => {
         accessExpiresAt: payment.accessExpiresAt,
       },
     });
-   } catch (error) {
+  } catch (error) {
     logger.error("Verify payment failed", {
       error: error.message,
       stack: error.stack,
       userId,
+      paymentId: payment?._id,
     });
 
     return res.status(500).json({
@@ -232,8 +297,7 @@ export const getMyAccessStatus = async (req, res) => {
 
   try {
     userId = getUserId(req);
-    ({ tournamentId } = req.query);
-
+    ({ tournamentId } = req.query || {});
 
     if (!userId) {
       return res.status(401).json({

@@ -20,8 +20,10 @@ import {
   saveTeamPayments,
   saveTieSheetRecord,
 } from "../controllers/tournamentController.js";
+
+import premiumAccess from "../middleware/premiumAccess.js";
 import optionalAuthMiddleware from "../middleware/optionalAuthMiddleware.js";
-import authMiddleware from "../middleware/authMiddleware.js"; // Default import
+import authMiddleware from "../middleware/authMiddleware.js";
 import { upload } from "../middleware/upload.js";
 import mongoose from "mongoose";
 import Tournament from "../models/tournament.js";
@@ -29,20 +31,20 @@ import logger from "../utils/logger.js";
 
 const router = express.Router();
 
-// Multer Error Handler (Add kar do — silent crash fix)
 const multerErrorHandler = (err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     logger.error("Multer error", { code: err.code, field: err.field });
     return res.status(400).json({ message: err.message });
   }
+
   if (err) {
     logger.error("File upload error", { error: err.message });
     return res.status(400).json({ message: err.message });
   }
+
   next();
 };
 
-// ================ MIDDLEWARE: Tournament Ownership Check ================
 const requireOwnership = async (req, res, next) => {
   const { id } = req.params;
 
@@ -52,6 +54,7 @@ const requireOwnership = async (req, res, next) => {
 
   try {
     const tournament = await Tournament.findById(id).select("createdBy visibility");
+
     if (!tournament) {
       return res.status(404).json({ message: "Tournament not found" });
     }
@@ -65,22 +68,23 @@ const requireOwnership = async (req, res, next) => {
     req.tournament = tournament;
     next();
   } catch (error) {
-    logger.error("Tournament ownership check failed", { 
-      tournamentId: id, 
-      userId: req.user?._id, 
+    logger.error("Tournament ownership check failed", {
+      tournamentId: id,
+      userId: req.user?._id,
       error: error.message,
-      stack: error.stack // Stack add for better debug
+      stack: error.stack,
     });
+
     return res.status(500).json({ message: "Server error during authorization" });
   }
 };
 
-// ================ PUBLIC ROUTES (No Auth Required) ================
+// ================ PUBLIC ROUTES ================
 router.get("/", getAllTournaments);
 router.get("/ongoing", getOngoingTournaments);
 router.get("/previous", getPreviousTournaments);
 
-// My Tournaments - Logged in user के अपने tournaments
+// ================ MY TOURNAMENTS ================
 router.get("/my", authMiddleware, async (req, res) => {
   try {
     const tournaments = await Tournament.find({ createdBy: req.user._id })
@@ -94,43 +98,57 @@ router.get("/my", authMiddleware, async (req, res) => {
       logos: t.logos || [],
     }));
 
-    res.status(200).json({ count: normalized.length, data: normalized });
-  } catch (error) {
-    logger.error("Get my tournaments failed", { 
-      error: error.message, 
-      userId: req.user?._id 
+    return res.status(200).json({
+      count: normalized.length,
+      data: normalized,
     });
-    res.status(500).json({ message: "Failed to load your tournaments" });
+  } catch (error) {
+    logger.error("Get my tournaments failed", {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?._id,
+    });
+
+    return res.status(500).json({ message: "Failed to load your tournaments" });
   }
 });
 
-// Public view with visibility check
+// ================ PUBLIC TOURNAMENT VIEW WITH OPTIONAL AUTH ================
 router.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
   const { id } = req.params;
+
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return res.status(400).json({ message: "Invalid tournament ID" });
   }
 
   try {
-    const tournament = await Tournament.findById(id).select("+visibility"); // visibility field include
+    const tournament = await Tournament.findById(id).select("createdBy visibility");
+
     if (!tournament) {
       return res.status(404).json({ message: "Tournament not found" });
     }
 
-    // If private and not logged in or not owner, hide
-    if (tournament.visibility === false && (!req.user || tournament.createdBy.toString() !== req.user._id.toString())) {
+    if (
+      tournament.visibility === false &&
+      (!req.user || tournament.createdBy.toString() !== req.user._id.toString())
+    ) {
       return res.status(403).json({ message: "This tournament is private" });
     }
 
-    // Call original controller
-    getTournamentById(req, res, next);
+    return getTournamentById(req, res, next);
   } catch (error) {
-    logger.error("Public tournament view error", { tournamentId: id, error: error.message, stack: error.stack });
-    res.status(500).json({ message: "Server error" });
+    logger.error("Public tournament view error", {
+      tournamentId: id,
+      userId: req.user?._id,
+      error: error.message,
+      stack: error.stack,
+    });
+
+    return res.status(500).json({ message: "Server error" });
   }
 });
 
-// ================ PROTECTED ROUTES (Auth + Ownership Required) ================
+// ================ CREATE / UPDATE TOURNAMENT ================
 router.post(
   "/",
   authMiddleware,
@@ -138,7 +156,7 @@ router.post(
     { name: "poster", maxCount: 1 },
     { name: "logos", maxCount: 2 },
   ]),
-  multerErrorHandler, // Add kar do — silent crash fix
+  multerErrorHandler,
   createTournament
 );
 
@@ -150,32 +168,73 @@ router.put(
     { name: "poster", maxCount: 1 },
     { name: "logos", maxCount: 2 },
   ]),
-  multerErrorHandler, // Add kar do — silent crash fix
+  multerErrorHandler,
   updateTournament
 );
 
-// Outcomes
+// ================ NON-PREMIUM PROTECTED ROUTES ================
 router.get("/:id/outcomes", authMiddleware, requireOwnership, getOutcomes);
 router.put("/:id/outcomes", authMiddleware, requireOwnership, saveOutcomes);
 
-// Tie Sheet
-router.get("/:id/tiesheet", authMiddleware, requireOwnership, getTieSheet);
-router.put("/:id/tiesheet", authMiddleware, requireOwnership, saveTieSheet);
+// ================ PREMIUM PROTECTED ROUTES ================
 
-// ✅ NEW: lightweight outcomes update
-router.patch("/:id/tiesheet/outcomes", authMiddleware, requireOwnership, saveTieSheetOutcomes);
-router.get("/:id/tiesheet-outcomes", authMiddleware, requireOwnership, getTieSheetOutcomes);
-router.put("/:id/tiesheet-outcomes", authMiddleware, requireOwnership, saveTieSheetOutcomes);
+// Tie Sheet
+router.get("/:id/tiesheet", authMiddleware, requireOwnership, premiumAccess, getTieSheet);
+router.put("/:id/tiesheet", authMiddleware, requireOwnership, premiumAccess, saveTieSheet);
+
+// Tie Sheet Outcomes
+router.patch(
+  "/:id/tiesheet/outcomes",
+  authMiddleware,
+  requireOwnership,
+  premiumAccess,
+  saveTieSheetOutcomes
+);
+
+router.get(
+  "/:id/tiesheet-outcomes",
+  authMiddleware,
+  requireOwnership,
+  premiumAccess,
+  getTieSheetOutcomes
+);
+
+router.put(
+  "/:id/tiesheet-outcomes",
+  authMiddleware,
+  requireOwnership,
+  premiumAccess,
+  saveTieSheetOutcomes
+);
 
 // Officials
-router.get("/:id/officials", authMiddleware, requireOwnership, getOfficials);
-router.put("/:id/officials", authMiddleware, requireOwnership, saveOfficials);
+router.get("/:id/officials", authMiddleware, requireOwnership, premiumAccess, getOfficials);
+router.put("/:id/officials", authMiddleware, requireOwnership, premiumAccess, saveOfficials);
 
 // Team Payments
-router.get("/:id/team-payments", authMiddleware, requireOwnership, getTeamPayments);
-router.put("/:id/team-payments", authMiddleware, requireOwnership, saveTeamPayments);
+router.get(
+  "/:id/team-payments",
+  authMiddleware,
+  requireOwnership,
+  premiumAccess,
+  getTeamPayments
+);
+
+router.put(
+  "/:id/team-payments",
+  authMiddleware,
+  requireOwnership,
+  premiumAccess,
+  saveTeamPayments
+);
 
 // TieSheet Record
-router.post("/:id/tiesheet-record", authMiddleware, requireOwnership, saveTieSheetRecord);
+router.post(
+  "/:id/tiesheet-record",
+  authMiddleware,
+  requireOwnership,
+  premiumAccess,
+  saveTieSheetRecord
+);
 
 export default router;
