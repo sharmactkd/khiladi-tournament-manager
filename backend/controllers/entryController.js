@@ -551,11 +551,41 @@ export const updateSingleEntry = async (req, res) => {
 
     const setObj = {};
 
-    allowedFields.forEach((field) => {
-      if (updates[field] !== undefined) {
-        setObj[`entries.$.${field}`] = updates[field];
-      }
-    });
+   allowedFields.forEach((field) => {
+  if (updates[field] === undefined) return;
+
+  let value = updates[field];
+
+  if (field === "gender") value = normalizeGender(value);
+  if (field === "weight") value = normalizeWeight(value);
+  if (field === "dob") value = normalizeDob(value);
+  if (field === "medal") value = normalizeMedal(value);
+  if (field === "medalSource") value = normalizeMedalSource(value);
+
+  if (
+    [
+      "title",
+      "name",
+      "fathersName",
+      "school",
+      "schoolName",
+      "class",
+      "team",
+      "event",
+      "subEvent",
+      "ageCategory",
+      "weightCategory",
+      "coach",
+      "coachContact",
+      "manager",
+      "managerContact",
+    ].includes(field)
+  ) {
+    value = String(value || "").trim();
+  }
+
+  setObj[`entries.$.${field}`] = value;
+});
 
     if (Object.keys(setObj).length === 0) {
       return res.status(400).json({

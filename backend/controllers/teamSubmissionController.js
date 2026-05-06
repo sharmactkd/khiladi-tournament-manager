@@ -321,29 +321,45 @@ export const approveTeamSubmission = async (req, res) => {
       existingNormalizedEntries.map((entry) => buildStrictDuplicateKey(entry)).filter(Boolean)
     );
 
+const existingEntryIds = new Set(
+  existingNormalizedEntries
+    .map((entry) => String(entry.entryId || "").trim())
+    .filter(Boolean)
+);
+    
     const uniqueApprovedPlayers = [];
     const skippedDuplicatePlayers = [];
 
     approvedPlayers.forEach((player) => {
-      const duplicateKey = buildStrictDuplicateKey(player);
+  const playerEntryId = String(player.entryId || "").trim();
+  const duplicateKey = buildStrictDuplicateKey(player);
 
-      if (duplicateKey && existingKeys.has(duplicateKey)) {
-        skippedDuplicatePlayers.push(player);
-        return;
-      }
+  if (playerEntryId && existingEntryIds.has(playerEntryId)) {
+    skippedDuplicatePlayers.push(player);
+    return;
+  }
 
-      if (duplicateKey) {
-        existingKeys.add(duplicateKey);
-      }
+  if (duplicateKey && existingKeys.has(duplicateKey)) {
+    skippedDuplicatePlayers.push(player);
+    return;
+  }
 
-     uniqueApprovedPlayers.push({
-  ...player,
-  entryId: player.entryId || new mongoose.Types.ObjectId().toString(),
-  entrySource: "teamSubmission",
-  sourceSubmissionId: submission._id,
-  sourcePlayerId: String(player._id || player.id || ""),
+  const finalEntryId = playerEntryId || new mongoose.Types.ObjectId().toString();
+
+  existingEntryIds.add(finalEntryId);
+
+  if (duplicateKey) {
+    existingKeys.add(duplicateKey);
+  }
+
+  uniqueApprovedPlayers.push({
+    ...player,
+    entryId: finalEntryId,
+    entrySource: "teamSubmission",
+    sourceSubmissionId: submission._id,
+    sourcePlayerId: String(player._id || player.id || ""),
+  });
 });
-    });
 
     const mergedEntries = [...existingNormalizedEntries, ...uniqueApprovedPlayers]
       .filter(isMeaningfulRow)

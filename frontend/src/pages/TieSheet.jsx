@@ -572,6 +572,66 @@ if (isDev) console.log('🧬 [TieSheet] cleaned[0].gender:', cleaned?.[0]?.gende
     [id, getApiBaseUrl, getAuthConfig]
   );
 
+const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesSnapshot = {}) => {
+  const extractSideTeam = (side, bracketKey) => {
+    if (!side) return null;
+
+    if (side.team) {
+      return side.team;
+    }
+
+    if (side.sourceGame) {
+      const sourceGame = side.sourceGame;
+      const sourceOutcomes = outcomesSnapshot?.[bracketKey] || {};
+      const winnerSide = sourceOutcomes[sourceGame.id];
+
+      if (winnerSide && sourceGame.sides?.[winnerSide]?.team) {
+        return sourceGame.sides[winnerSide].team;
+      }
+    }
+
+    return null;
+  };
+
+  const medals = [];
+
+  (Array.isArray(bracketsSnapshot) ? bracketsSnapshot : []).forEach((bracket) => {
+    const finalGame = bracket?.game;
+    const bracketOutcomes = outcomesSnapshot?.[bracket?.key] || {};
+    const winnerSide = bracketOutcomes?.[finalGame?.id];
+
+    if (!finalGame || !winnerSide) return;
+
+    const goldTeam = extractSideTeam(finalGame.sides?.[winnerSide], bracket.key);
+    const silverTeam = extractSideTeam(
+      finalGame.sides?.[winnerSide === "home" ? "away" : "home"],
+      bracket.key
+    );
+
+    if (goldTeam?.name && goldTeam.name !== "BYE") {
+      medals.push({
+        ...goldTeam,
+        medal: "Gold",
+        gender: goldTeam.gender || bracket.gender || "",
+        ageCategory: goldTeam.ageCategory || bracket.ageCategory || "",
+        weightCategory: goldTeam.weightCategory || bracket.weightCategory || "",
+      });
+    }
+
+    if (silverTeam?.name && silverTeam.name !== "BYE") {
+      medals.push({
+        ...silverTeam,
+        medal: "Silver",
+        gender: silverTeam.gender || bracket.gender || "",
+        ageCategory: silverTeam.ageCategory || bracket.ageCategory || "",
+        weightCategory: silverTeam.weightCategory || bracket.weightCategory || "",
+      });
+    }
+  });
+
+  return medals;
+}, []);
+  
 const saveTieSheetOutcomesToServer = useCallback(
   async (outcomes, signal, bracketsSnapshot = []) => {
     const baseUrl = getApiBaseUrl();
@@ -585,15 +645,18 @@ const saveTieSheetOutcomesToServer = useCallback(
       },
     };
 
-    const payload = {
-      outcomes: outcomes || {},
-      brackets: Array.isArray(bracketsSnapshot) ? bracketsSnapshot : [],
-    };
+   const safeBrackets = Array.isArray(bracketsSnapshot) ? bracketsSnapshot : [];
+
+const payload = {
+  outcomes: outcomes || {},
+  brackets: safeBrackets,
+  medals: collectBracketMedalPayload(safeBrackets, outcomes || {}),
+};
 
     const resp = await axios.put(`${baseUrl}/tournament/${id}/tiesheet-outcomes`, payload, config);
     return resp?.data || null;
   },
-  [id, getApiBaseUrl, getAuthConfig]
+[id, getApiBaseUrl, getAuthConfig, collectBracketMedalPayload]
 );
 
   const shouldRestoreSavedBrackets = useCallback((serverTieSheet, currentEntriesMeta) => {

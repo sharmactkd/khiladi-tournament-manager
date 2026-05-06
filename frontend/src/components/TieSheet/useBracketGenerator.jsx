@@ -99,7 +99,21 @@ const generateSingleEliminationGameStructure = (players, poolLabel = '') => {
 
   const p = (idx) => {
     if (idx >= players.length) {
-      return { team: { id: `bye-${idx}`, name: 'BYE', team: '' }, score: { score: null } };
+      return {
+  team: {
+    id: `bye-${idx}`,
+    entryId: "",
+    name: "BYE",
+    team: "",
+    gender: "",
+    ageCategory: "",
+    weightCategory: "",
+    weight: "",
+    event: "",
+    subEvent: "",
+  },
+  score: { score: null },
+};
     }
     const player = players[idx];
     return {

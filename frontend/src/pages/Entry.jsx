@@ -69,6 +69,19 @@ const extractEntryRows = (payload) => {
   return [];
 };
 
+const createEntryId = () => {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const ensureEntryId = (row = {}) => ({
+  ...row,
+  entryId: String(row.entryId || "").trim() || createEntryId(),
+});
+
 const Entry = () => {
   const { id: rawId } = useParams();
   const id = rawId?.trim();
@@ -189,7 +202,9 @@ const Entry = () => {
     if (authLoading) return;
 
     const loadEntries = async () => {
-      const emptyRow = Object.fromEntries(columnsDef.map((col) => [col.id, col.id === 'actions' ? '' : '']));
+      const emptyRow = ensureEntryId(
+  Object.fromEntries(columnsDef.map((col) => [col.id, col.id === "actions" ? "" : ""]))
+);
 
       let serverEntries = [];
       let serverState = null;
@@ -245,7 +260,7 @@ const Entry = () => {
         finalEntries = [emptyRow];
       }
 
-      finalEntries = regenerateSrNumbers(finalEntries);
+      finalEntries = regenerateSrNumbers(finalEntries.map(ensureEntryId));
 
       React.startTransition(() => {
         setData(finalEntries);
@@ -350,7 +365,9 @@ const Entry = () => {
     if (guardAdminReadOnly()) return;
 
     saveToHistory();
-    const emptyRow = Object.fromEntries(columnsDef.map((col) => [col.id, col.id === 'actions' ? '' : '']));
+    const emptyRow = ensureEntryId(
+  Object.fromEntries(columnsDef.map((col) => [col.id, col.id === "actions" ? "" : ""]))
+);
     setData((prev) => regenerateSrNumbers([...prev, emptyRow]));
   }, [columnsDef, saveToHistory, regenerateSrNumbers, guardAdminReadOnly]);
 
@@ -359,7 +376,9 @@ const Entry = () => {
       if (guardAdminReadOnly()) return;
 
       saveToHistory();
-      const emptyRow = Object.fromEntries(columnsDef.map((col) => [col.id, col.id === 'actions' ? '' : '']));
+      const emptyRow = ensureEntryId(
+  Object.fromEntries(columnsDef.map((col) => [col.id, col.id === "actions" ? "" : ""]))
+);
       setData((prev) => {
         const newData = [...prev.slice(0, index + 1), emptyRow, ...prev.slice(index + 1)];
         return regenerateSrNumbers(newData);
@@ -375,7 +394,9 @@ const Entry = () => {
       saveToHistory();
       setData((prev) => {
         if (prev.length === 1) {
-          const emptyRow = Object.fromEntries(columnsDef.map((col) => [col.id, col.id === 'actions' ? '' : '']));
+          const emptyRow = ensureEntryId(
+  Object.fromEntries(columnsDef.map((col) => [col.id, col.id === "actions" ? "" : ""]))
+);
           return regenerateSrNumbers([emptyRow]);
         }
         const newData = prev.filter((_, i) => i !== index);
@@ -423,7 +444,9 @@ const Entry = () => {
 
     if (window.confirm('Are you sure you want to delete ALL entries? This cannot be undone.')) {
       saveToHistory();
-      const emptyRow = Object.fromEntries(columnsDef.map((col) => [col.id, col.id === 'actions' ? '' : '']));
+      const emptyRow = ensureEntryId(
+  Object.fromEntries(columnsDef.map((col) => [col.id, col.id === "actions" ? "" : ""]))
+);
       setData(regenerateSrNumbers([emptyRow]));
     }
   }, [columnsDef, saveToHistory, regenerateSrNumbers, guardAdminReadOnly]);
@@ -439,7 +462,11 @@ const Entry = () => {
       const final =
         filtered.length > 0
           ? filtered
-          : [Object.fromEntries(columnsDef.map((col) => [col.id, col.id === 'actions' ? '' : '']))];
+          : [
+    ensureEntryId(
+      Object.fromEntries(columnsDef.map((col) => [col.id, col.id === "actions" ? "" : ""]))
+    ),
+  ];
       return regenerateSrNumbers(final);
     });
   }, [columnsDef, saveToHistory, regenerateSrNumbers, guardAdminReadOnly]);
@@ -506,10 +533,11 @@ const Entry = () => {
         return cleaned;
       });
 
-      const numberedRows = cleanedRows.map((row, idx) => ({
-        ...row,
-        sr: (data.length + idx + 1).toString(),
-      }));
+    const numberedRows = cleanedRows.map((row, idx) => ({
+  ...ensureEntryId(row),
+  entrySource: row.entrySource || "import",
+  sr: (data.length + idx + 1).toString(),
+}));
 
       let newData = [...data, ...numberedRows];
       newData = newData.filter((row) =>
@@ -517,8 +545,10 @@ const Entry = () => {
       );
 
       if (newData.length === 0) {
-        const emptyRow = Object.fromEntries(columnsDef.map((col) => [col.id, col.id === 'actions' ? '' : '']));
-        newData = [emptyRow];
+       const emptyRow = ensureEntryId(
+  Object.fromEntries(columnsDef.map((col) => [col.id, col.id === "actions" ? "" : ""]))
+);
+newData = [emptyRow];
       }
 
       setData(regenerateSrNumbers(newData));
@@ -588,11 +618,12 @@ const Entry = () => {
       }
     }
 
-    const mergedEntries = [...existingEntries, ...cleanRows].map((row, index) => ({
-      ...row,
-      sr: String(index + 1),
-    }));
-
+ const mergedEntries = [...existingEntries.map(ensureEntryId), ...cleanRows.map(ensureEntryId)].map(
+  (row, index) => ({
+    ...row,
+    sr: String(index + 1),
+  })
+);
     localStorage.setItem(`entryData_${id}`, JSON.stringify(mergedEntries));
 
     if (token) {

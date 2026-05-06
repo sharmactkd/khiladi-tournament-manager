@@ -499,15 +499,20 @@ const targetByLooseKey = new Map();
     const mediumKey = buildResultMediumKey(entryObj);
     const looseKey = buildResultLooseKey(entryObj);
 
-    const matchedByEntryId = entryObj.entryId
-  ? targetByEntryId.get(String(entryObj.entryId))
+    const hasAnyEntryIdPayload = targetByEntryId.size > 0;
+const currentEntryId = String(entryObj.entryId || "").trim();
+
+const matchedByEntryId = currentEntryId
+  ? targetByEntryId.get(currentEntryId)
   : null;
 
 const matched =
   matchedByEntryId ||
-  targetByStrictKey.get(strictKey) ||
-  targetByMediumKey.get(mediumKey) ||
-  (targetByEntryId.size === 0 ? targetByLooseKey.get(looseKey) : null);
+  (!hasAnyEntryIdPayload
+    ? targetByStrictKey.get(strictKey) ||
+      targetByMediumKey.get(mediumKey) ||
+      targetByLooseKey.get(looseKey)
+    : null);
 
     if (matched) {
       matchedCount += 1;
@@ -938,9 +943,11 @@ export const createTournament = async (req, res) => {
         (typeof posterPath === "string" && /^https?:\/\//i.test(posterPath)) ||
         logoPaths.some((p) => typeof p === "string" && /^https?:\/\//i.test(p));
 
-      console.log("📸 [UPLOAD DEBUG] storage:", isCloudinary ? "cloudinary" : "disk/local");
-      console.log("📸 [UPLOAD DEBUG] poster saved as:", poster);
-      console.log("📸 [UPLOAD DEBUG] logos saved as:", logos);
+     logger.info("Upload debug during tournament creation", {
+  storage: isCloudinary ? "cloudinary" : "disk/local",
+  poster,
+  logos,
+});
     }
 
     let tournamentData = {
@@ -1155,18 +1162,11 @@ export const updateTournament = async (req, res) => {
         logoPaths.some((p) => typeof p === "string" && /^https?:\/\//i.test(p));
 
       if (req.files?.poster?.[0] || (req.files?.logos && req.files.logos.length > 0)) {
-        console.log(
-          "📸 [UPLOAD DEBUG] (update) storage:",
-          isCloudinary ? "cloudinary" : "disk/local"
-        );
-
-        if (req.files?.poster?.[0]) {
-          console.log("📸 [UPLOAD DEBUG] (update) poster saved as:", updates.poster);
-        }
-
-        if (req.files?.logos?.length > 0) {
-          console.log("📸 [UPLOAD DEBUG] (update) logos saved as:", updates.logos);
-        }
+        logger.info("Upload debug during tournament update", {
+  storage: isCloudinary ? "cloudinary" : "disk/local",
+  poster: req.files?.poster?.[0] ? updates.poster : undefined,
+  logos: req.files?.logos?.length > 0 ? updates.logos : undefined,
+});
       }
     }
 
