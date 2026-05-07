@@ -683,8 +683,12 @@ export const getPrivateTournamentById = async (req, res) => {
       return res.status(404).json({ message: "Tournament not found" });
     }
 
+    // Do not return deprecated Tournament.entries.
+    // Entry model is the single source of truth for player entries and medals.
+    const { entries, ...safeTournament } = tournament;
+
     return res.status(200).json({
-      ...tournament,
+      ...safeTournament,
       poster: normalizePath(tournament.poster),
       logos: tournament.logos?.map(normalizePath) || [],
     });

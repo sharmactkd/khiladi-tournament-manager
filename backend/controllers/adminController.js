@@ -215,26 +215,22 @@ const assertNotSelfOrSuperadmin = async ({ targetUserId, currentUserId, action }
 
 export const getAdminDashboard = async (req, res) => {
   try {
-    const [totalUsers, totalTournaments, tournamentsForStats, recentUsers, recentTournaments] =
+    const [totalUsers, totalTournaments, recentUsers, recentTournaments] =
       await Promise.all([
         User.countDocuments({ isDeleted: { $ne: true } }),
         Tournament.countDocuments({ isDeleted: { $ne: true } }),
-        Tournament.find({})
-          .select("entries teamPayments createdAt updatedAt tournamentName createdBy entryFees foodAndLodging")
-          .populate("createdBy", "name email phone role createdAt isSuspended isDeleted")
-          .sort({ createdAt: -1 })
-          .lean(),
+    
         User.find({ isDeleted: { $ne: true } })
           .select("-password -refreshTokens -weightPresets -resetPasswordToken -resetPasswordExpire -googleId -facebookId")
           .sort({ createdAt: -1 })
           .limit(8)
           .lean(),
         Tournament.find({})
-          .select("tournamentName organizer createdBy entries teamPayments createdAt updatedAt entryFees foodAndLodging isDeleted deletedAt")
-          .populate("createdBy", "name email phone role createdAt isSuspended isDeleted")
-          .sort({ createdAt: -1 })
-          .limit(8)
-          .lean(),
+  .select("tournamentName organizer createdBy teamPayments createdAt updatedAt entryFees foodAndLodging isDeleted deletedAt")
+  .populate("createdBy", "name email phone role createdAt isSuspended isDeleted")
+  .sort({ createdAt: -1 })
+  .limit(8)
+  .lean(),
       ]);
 
    const entryStats = await Entry.aggregate([
@@ -257,34 +253,120 @@ export const getAdminDashboard = async (req, res) => {
 
 const totalEntries = entryStats?.[0]?.totalEntries || 0;
 
-    const paymentRows = tournamentsForStats.flatMap((tournament) => getTeamPaymentRows(tournament));
-    const paidPaymentRows = paymentRows.filter((payment) => Number(payment.amount || 0) > 0);
-    const totalRevenue = paidPaymentRows.reduce(
-      (sum, payment) => sum + Number(payment.amount || 0),
-      0
-    );
+   const paymentStats = await Payment.aggregate([
+  {
+    $match: {
+      status: "paid",
+    },
+  },
+  {
+    $group: {
+      _id: null,
+      totalRevenue: { $sum: "$amount" },
+      totalPaidUsers: { $addToSet: "$userId" },
+    },
+  },
+  {
+    $project: {
+      _id: 0,
+      totalRevenue: 1,
+      totalPaidUsers: { $size: "$totalPaidUsers" },
+    },
+  },
+]);
 
-    const paidUserIds = new Set(
-      paidPaymentRows
-        .map((payment) => String(payment.user?._id || payment.user || ""))
-        .filter(Boolean)
-    );
+const totalRevenue = paymentStats?.[0]?.totalRevenue || 0;
+const totalPaidUsers = paymentStats?.[0]?.totalPaidUsers || 0;
 
-    const monthlyMap = new Map();
-    paidPaymentRows.forEach((payment) => {
-      const date = payment.createdAt ? new Date(payment.createdAt) : new Date();
-      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}`;
-      monthlyMap.set(key, (monthlyMap.get(key) || 0) + Number(payment.amount || 0));
-    });
+const monthlyRevenue = await Payment.aggregate([
+  {
+    $match: {
+      status: "paid",
+      createdAt: {
+        $gte: new Date(new Date().setMonth(new Date().getMonth() - 12)),
+      },
+    },
+  },
+  {
+    $group: {
+      _id: {
+        year: { $year: "$createdAt" },
+        month: { $month: "$createdAt" },
+      },
+      amount: { $sum: "$amount" },
+    },
+  },
+  {
+    $sort: {
+      "_id.year": 1,
+      "_id.month": 1,
+    },
+  },
+  {
+    $project: {
+      _id: 0,
+      month: {
+        $concat: [
+          { $toString: "$_id.year" },
+          "-",
+          {
+            $cond: [
+              { $lt: ["$_id.month", 10] },
+              { $concat: ["0", { $toString: "$_id.month" }] },
+              { $toString: "$_id.month" },
+            ],
+          },
+        ],
+      },
+      amount: 1,
+    },
+  },
+]);
 
-    const monthlyRevenue = Array.from(monthlyMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-12)
-      .map(([month, amount]) => ({ month, amount }));
+const recentRazorpayPayments = await Payment.find({ status: "paid" })
+  .populate("userId", "name email phone role isSuspended isDeleted")
+  .populate("tournamentId", "tournamentName organizer dateFrom dateTo")
+  .sort({ createdAt: -1 })
+  .limit(8)
+  .lean();
 
-    const recentPayments = paymentRows
-      .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
-      .slice(0, 8);
+const recentPayments = recentRazorpayPayments.map((payment) => ({
+  _id: payment._id,
+  id: payment._id,
+  source: "razorpay",
+  user: payment.userId
+    ? {
+        _id: payment.userId._id,
+        id: payment.userId._id,
+        name: payment.userId.name || "",
+        email: payment.userId.email || null,
+        phone: payment.userId.phone || null,
+        role: payment.userId.role || "player",
+        isSuspended: Boolean(payment.userId.isSuspended),
+        isDeleted: Boolean(payment.userId.isDeleted),
+      }
+    : null,
+  tournament: payment.tournamentId
+    ? {
+        _id: payment.tournamentId._id,
+        id: payment.tournamentId._id,
+        tournamentName: payment.tournamentId.tournamentName || "",
+        organizer: payment.tournamentId.organizer || "",
+        dateFrom: payment.tournamentId.dateFrom || null,
+        dateTo: payment.tournamentId.dateTo || null,
+      }
+    : null,
+  tournamentId: payment.tournamentId?._id || payment.tournamentId || null,
+  planType: payment.planType,
+  amount: Number(payment.amount || 0),
+  currency: payment.currency || "INR",
+  status: payment.status,
+  accessType: payment.accessType,
+  razorpayOrderId: payment.razorpayOrderId || "",
+  razorpayPaymentId: payment.razorpayPaymentId || "",
+  createdAt: payment.createdAt || null,
+  updatedAt: payment.updatedAt || null,
+}));
 
     return res.json({
       success: true,
@@ -292,7 +374,7 @@ const totalEntries = entryStats?.[0]?.totalEntries || 0;
         totalUsers,
         totalTournaments,
         totalEntries,
-        totalPaidUsers: paidUserIds.size,
+        totalPaidUsers,
         totalRevenue,
         recentUsers: recentUsers.map(sanitizeUser),
         recentTournaments: recentTournaments.map(formatTournamentListItem),
