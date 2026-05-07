@@ -2,6 +2,12 @@ import jwt from "jsonwebtoken";
 import User from "../models/user.js";
 import logger from "../utils/logger.js";
 
+
+const jwtVerifyOptions = {
+  issuer: "khiladi-khoj.com",
+  audience: "khiladi-khoj-users",
+};
+
 const normalizeRole = (role) => {
   const allowedRoles = ["organizer", "coach", "player", "admin", "superadmin"];
   return allowedRoles.includes(role) ? role : "player";
@@ -27,9 +33,9 @@ const authMiddleware = async (req, res, next) => {
     const isRefreshRoute = req.path === "/auth/refresh";
 
     if (isRefreshRoute) {
-      decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET);
+      decoded = jwt.verify(token, process.env.JWT_REFRESH_SECRET, jwtVerifyOptions);
     } else {
-      decoded = jwt.verify(token, process.env.JWT_SECRET);
+      decoded = jwt.verify(token, process.env.JWT_SECRET, jwtVerifyOptions);
     }
 
     const user = await User.findById(decoded.id).select("-password -refreshTokens");

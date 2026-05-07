@@ -118,6 +118,42 @@ const getPublicVisibilityFilter = () => ({
   $or: [{ visibility: { $exists: false } }, { visibility: true }],
 });
 
+const buildPublicTournamentResponse = (tournament) => ({
+  _id: tournament._id,
+  id: tournament._id,
+  tournamentName: tournament.tournamentName,
+  organizer: tournament.organizer,
+  federation: tournament.federation,
+  email: tournament.email,
+  contact: tournament.contact,
+  dateFrom: tournament.dateFrom,
+  dateTo: tournament.dateTo,
+  venue: tournament.venue,
+  tournamentLevel: tournament.tournamentLevel,
+  tournamentType: tournament.tournamentType,
+  ageCategories: tournament.ageCategories,
+  ageGender: tournament.ageGender,
+  eventCategories: tournament.eventCategories,
+  entryFees: tournament.entryFees,
+  foodAndLodging: tournament.foodAndLodging,
+  medalPoints: tournament.medalPoints,
+  description: tournament.description,
+  matchSchedule: tournament.matchSchedule,
+  visibility: tournament.visibility,
+  poster: normalizePath(tournament.poster),
+  logos: tournament.logos?.map(normalizePath) || [],
+  createdBy: tournament.createdBy
+    ? {
+        _id: tournament.createdBy._id,
+        name: tournament.createdBy.name,
+        phone: tournament.createdBy.phone,
+        email: tournament.createdBy.email,
+      }
+    : null,
+  createdAt: tournament.createdAt,
+  updatedAt: tournament.updatedAt,
+});
+
 const allowedResultMedals = ["Gold", "Silver", "Bronze"];
 
 const normalizeResultText = (value) =>
@@ -564,11 +600,7 @@ export const getAllTournaments = async (req, res) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    const normalized = tournaments.map((t) => ({
-      ...t,
-      poster: normalizePath(t.poster),
-      logos: t.logos?.map(normalizePath),
-    }));
+   const normalized = tournaments.map(buildPublicTournamentResponse);
 
     res.status(200).json({ count: normalized.length, data: normalized });
   } catch (error) {
@@ -589,11 +621,7 @@ export const getOngoingTournaments = async (req, res) => {
       .sort({ dateFrom: 1 })
       .lean();
 
-    const normalized = tournaments.map((t) => ({
-      ...t,
-      poster: normalizePath(t.poster),
-      logos: t.logos?.map(normalizePath),
-    }));
+   const normalized = tournaments.map(buildPublicTournamentResponse);
 
     res.status(200).json({ count: normalized.length, data: normalized });
   } catch (error) {
@@ -614,11 +642,7 @@ export const getPreviousTournaments = async (req, res) => {
       .sort({ dateTo: -1 })
       .lean();
 
-    const normalized = tournaments.map((t) => ({
-      ...t,
-      poster: normalizePath(t.poster),
-      logos: t.logos?.map(normalizePath),
-    }));
+const normalized = tournaments.map(buildPublicTournamentResponse);
 
     res.status(200).json({ count: normalized.length, data: normalized });
   } catch (error) {
@@ -626,6 +650,8 @@ export const getPreviousTournaments = async (req, res) => {
     res.status(500).json({ message: "Failed to load previous tournaments" });
   }
 };
+
+
 
 export const getTournamentById = async (req, res) => {
   try {
@@ -637,16 +663,41 @@ export const getTournamentById = async (req, res) => {
       return res.status(404).json({ message: "Tournament not found" });
     }
 
-    tournament.poster = normalizePath(tournament.poster);
-    tournament.logos = tournament.logos?.map(normalizePath);
-
-    res.status(200).json(tournament);
+    return res.status(200).json(buildPublicTournamentResponse(tournament));
   } catch (error) {
     logger.error("Get tournament by ID failed", {
       error: error.message,
       tournamentId: req.params.id,
     });
     res.status(500).json({ message: "Failed to load tournament details" });
+  }
+};
+
+export const getPrivateTournamentById = async (req, res) => {
+  try {
+    const tournament = await Tournament.findById(req.params.id)
+      .populate("createdBy", "name phone email role")
+      .lean();
+
+    if (!tournament) {
+      return res.status(404).json({ message: "Tournament not found" });
+    }
+
+    return res.status(200).json({
+      ...tournament,
+      poster: normalizePath(tournament.poster),
+      logos: tournament.logos?.map(normalizePath) || [],
+    });
+  } catch (error) {
+    logger.error("Get private tournament by ID failed", {
+      error: error.message,
+      tournamentId: req.params.id,
+      userId: req.user?._id,
+    });
+
+    return res.status(500).json({
+      message: "Failed to load private tournament details",
+    });
   }
 };
 

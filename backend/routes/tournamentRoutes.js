@@ -7,6 +7,7 @@ import {
   getOngoingTournaments,
   getPreviousTournaments,
   getTournamentById,
+  getPrivateTournamentById,
   updateTournament,
   getOutcomes,
   saveOutcomes,
@@ -147,6 +148,8 @@ router.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
     return res.status(500).json({ message: "Server error" });
   }
 });
+
+router.get("/:id/private", authMiddleware, requireOwnership, getPrivateTournamentById);
 
 // ================ CREATE / UPDATE TOURNAMENT ================
 router.post(

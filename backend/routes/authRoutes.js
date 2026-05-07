@@ -60,7 +60,10 @@ router.post("/refresh", async (req, res) => {
       return res.status(401).json({ message: "Refresh token missing" });
     }
 
-    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, {
+  issuer: "khiladi-khoj.com",
+  audience: "khiladi-khoj-users",
+});
     const tokenHash = hashRefreshToken(refreshToken);
 
     const user = await User.findById(decoded.id).select("+refreshTokens");
