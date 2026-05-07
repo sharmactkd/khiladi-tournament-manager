@@ -499,7 +499,6 @@ const targetByLooseKey = new Map();
     const mediumKey = buildResultMediumKey(entryObj);
     const looseKey = buildResultLooseKey(entryObj);
 
-    const hasAnyEntryIdPayload = targetByEntryId.size > 0;
 const currentEntryId = String(entryObj.entryId || "").trim();
 
 const matchedByEntryId = currentEntryId
@@ -508,7 +507,7 @@ const matchedByEntryId = currentEntryId
 
 const matched =
   matchedByEntryId ||
-  (!hasAnyEntryIdPayload
+  (!currentEntryId
     ? targetByStrictKey.get(strictKey) ||
       targetByMediumKey.get(mediumKey) ||
       targetByLooseKey.get(looseKey)
@@ -525,7 +524,11 @@ const matched =
       };
     }
 
-    if (entryObj.medalSource === "tiesheet" && hasTieSheetUpdateForSameCategory(entryObj)) {
+    if (
+  entryObj.medalSource === "tiesheet" &&
+  !currentEntryId &&
+  hasTieSheetUpdateForSameCategory(entryObj)
+) {
       clearedCount += 1;
 
       return {

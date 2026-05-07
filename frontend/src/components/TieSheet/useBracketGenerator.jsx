@@ -544,13 +544,22 @@ if (weightCmp !== 0) return weightCmp;
           if (existingIndex !== -1) {
             const existingBracket = finalBrackets[existingIndex];
             
-            // 🔥 Agar bracket mein players same hain (shuffle nahi hua) to preserve karo
-            // Agar players different hain (shuffle hua) to new use karo
-            const existingPlayerNames = existingBracket.shuffledPlayers?.map(p => p.name || '').sort();
-            const newPlayerNames = newB.shuffledPlayers?.map(p => p.name || '').sort();
-            
-            const playersChanged = JSON.stringify(existingPlayerNames) !== JSON.stringify(newPlayerNames);
-            
+           const getPlayerIdentity = (p) =>
+  String(p?.entryId || p?.name || "").trim();
+
+const existingPlayerIds = existingBracket.shuffledPlayers
+  ?.map(getPlayerIdentity)
+  .filter(Boolean)
+  .sort();
+
+const newPlayerIds = newB.shuffledPlayers
+  ?.map(getPlayerIdentity)
+  .filter(Boolean)
+  .sort();
+
+const playersChanged = JSON.stringify(existingPlayerIds) !== JSON.stringify(newPlayerIds);
+
+
             if (!playersChanged) {
               // Players same hain, preserve existing (shuffled) bracket
               console.log(`🔁 Preserving existing bracket (players same): ${newB.key}`);

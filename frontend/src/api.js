@@ -229,8 +229,22 @@ export const deleteWeightPreset = (id) => apiCall("delete", `/weight-presets/${i
 
 export const getEntries = (tournamentId) =>
   apiCall("get", `/tournaments/${tournamentId}/entries`);
+
 export const saveEntries = (tournamentId, payload) =>
   apiCall("post", `/tournaments/${tournamentId}/entries`, payload);
+
+export const updateEntryRow = (tournamentId, entryId, updates) =>
+  apiCall(
+    "patch",
+    `/tournaments/${tournamentId}/entries/${encodeURIComponent(entryId)}`,
+    updates
+  );
+
+export const deleteEntryRow = (tournamentId, entryId) =>
+  apiCall(
+    "delete",
+    `/tournaments/${tournamentId}/entries/${encodeURIComponent(entryId)}`
+  );
 
 export const submitTeamSubmission = (tournamentId, payload) =>
   apiCall("post", `/team-submissions/${tournamentId}/submit`, payload);

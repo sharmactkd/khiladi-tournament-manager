@@ -367,7 +367,7 @@ const getUniqueAgeCategories = (rows = []) => {
 
  const cleanedMapped = playersData.map((p) => ({
   ...p,
-  entryId: p?.entryId || "",
+  entryId: String(p?.entryId || "").trim(),
   gender: normalizeGender(p?.gender),
   ageCategory: ageCategoryMapping[normalizeString(p?.ageCategory)] || p?.ageCategory,
   weightCategory: p?.weightCategory,
@@ -608,7 +608,12 @@ const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesS
       bracket.key
     );
 
-    if (goldTeam?.name && goldTeam.name !== "BYE") {
+    if (
+  goldTeam?.name &&
+  goldTeam.name !== "BYE" &&
+  goldTeam.entryId &&
+  !String(goldTeam.entryId).startsWith("pool-winner-")
+) {
       medals.push({
         ...goldTeam,
         medal: "Gold",
@@ -618,7 +623,12 @@ const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesS
       });
     }
 
-    if (silverTeam?.name && silverTeam.name !== "BYE") {
+    if (
+  silverTeam?.name &&
+  silverTeam.name !== "BYE" &&
+  silverTeam.entryId &&
+  !String(silverTeam.entryId).startsWith("pool-winner-")
+) {
       medals.push({
         ...silverTeam,
         medal: "Silver",

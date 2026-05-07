@@ -98,6 +98,16 @@ const buildStrictDuplicateKey = (row = {}) =>
     String(parseWeight(row.weight) ?? ""),
   ].join("|||");
 
+  const buildApprovalDuplicateKey = (row = {}) =>
+  [
+    normalizeTextForKey(row.name),
+    normalizeDobForKey(row.dob),
+    normalizeTextForKey(row.team),
+    normalizeTextForKey(row.event),
+    normalizeTextForKey(row.ageCategory),
+    normalizeTextForKey(row.weightCategory),
+  ].join("|||");
+
 const normalizePlayers = (players = [], teamName = "") => {
   return (Array.isArray(players) ? players : [])
     .filter(isMeaningfulRow)
@@ -138,6 +148,7 @@ sourcePlayerId: String(row.sourcePlayerId || ""),
     title: String(row.title || "").trim(),
     name: String(row.name || "").trim(),
     fathersName: String(row.fathersName || "").trim(),
+    school,
     schoolName: school,
     class: String(row.class || "").trim(),
     team: String(row.team || "").trim().toUpperCase(),
@@ -314,12 +325,25 @@ export const approveTeamSubmission = async (req, res) => {
     const approvedPlayers = normalizePlayers(submission.players, submission.teamName);
 
     const existingNormalizedEntries = existingEntries
-      .filter(isMeaningfulRow)
-      .map((row, index) => normalizeEntryRowForEntryModel(row, index));
+  .filter(isMeaningfulRow)
+  .map((row, index) => ({
+    ...row,
+    srNo: index + 1,
+    entryId: String(row.entryId || new mongoose.Types.ObjectId().toString()),
+    entrySource: row.entrySource || "",
+    sourceSubmissionId: row.sourceSubmissionId || null,
+    sourcePlayerId: String(row.sourcePlayerId || ""),
+  }));
 
-    const existingKeys = new Set(
-      existingNormalizedEntries.map((entry) => buildStrictDuplicateKey(entry)).filter(Boolean)
-    );
+   const existingKeys = new Set(
+  existingNormalizedEntries.map((entry) => buildApprovalDuplicateKey(entry)).filter(Boolean)
+);
+
+const existingSourcePlayerIds = new Set(
+  existingNormalizedEntries
+    .map((entry) => String(entry.sourcePlayerId || "").trim())
+    .filter(Boolean)
+);
 
 const existingEntryIds = new Set(
   existingNormalizedEntries
@@ -330,23 +354,41 @@ const existingEntryIds = new Set(
     const uniqueApprovedPlayers = [];
     const skippedDuplicatePlayers = [];
 
-    approvedPlayers.forEach((player) => {
+   approvedPlayers.forEach((player) => {
   const playerEntryId = String(player.entryId || "").trim();
-  const duplicateKey = buildStrictDuplicateKey(player);
 
+  const sourcePlayerId = String(
+    player._id || player.id || player.sourcePlayerId || ""
+  ).trim();
+
+  const duplicateKey = buildApprovalDuplicateKey(player);
+
+  // ✅ entryId duplicate
   if (playerEntryId && existingEntryIds.has(playerEntryId)) {
     skippedDuplicatePlayers.push(player);
     return;
   }
 
+  // ✅ sourcePlayerId duplicate
+  if (sourcePlayerId && existingSourcePlayerIds.has(sourcePlayerId)) {
+    skippedDuplicatePlayers.push(player);
+    return;
+  }
+
+  // ✅ text-based duplicate
   if (duplicateKey && existingKeys.has(duplicateKey)) {
     skippedDuplicatePlayers.push(player);
     return;
   }
 
-  const finalEntryId = playerEntryId || new mongoose.Types.ObjectId().toString();
+  const finalEntryId =
+    playerEntryId || new mongoose.Types.ObjectId().toString();
 
   existingEntryIds.add(finalEntryId);
+
+  if (sourcePlayerId) {
+    existingSourcePlayerIds.add(sourcePlayerId);
+  }
 
   if (duplicateKey) {
     existingKeys.add(duplicateKey);
@@ -357,7 +399,7 @@ const existingEntryIds = new Set(
     entryId: finalEntryId,
     entrySource: "teamSubmission",
     sourceSubmissionId: submission._id,
-    sourcePlayerId: String(player._id || player.id || ""),
+    sourcePlayerId,
   });
 });
 

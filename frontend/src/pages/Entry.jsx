@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { getTournamentById, getEntries as getEntriesApi, saveEntries } from '../api';
+import {
+  getTournamentById,
+  getEntries as getEntriesApi,
+  saveEntries,
+  updateEntryRow,
+  deleteEntryRow,
+} from "../api";
+
 import * as XLSX from 'xlsx';
 import { FaPlusCircle, FaShareAlt, FaInbox } from 'react-icons/fa';
 
@@ -120,8 +127,9 @@ const Entry = () => {
   const [filters, setFilters] = useState(() => ({}));
   const [loadError, setLoadError] = useState(null);
 
-  const entryTableRef = useRef(null);
-  const dataRef = useRef(data);
+ const entryTableRef = useRef(null);
+const dataRef = useRef(data);
+const rowPatchTimersRef = useRef({});
 
   const [showImportModal, setShowImportModal] = useState(false);
   const [showImageImportModal, setShowImageImportModal] = useState(false);
@@ -287,6 +295,33 @@ const Entry = () => {
     dataRef.current = data;
   }, [data]);
 
+  const patchEntryRowDebounced = useCallback(
+  (row, columnId, value) => {
+    if (!token || !id || !row?.entryId) return;
+
+    const timerKey = `${row.entryId}:${columnId}`;
+
+    if (rowPatchTimersRef.current[timerKey]) {
+      clearTimeout(rowPatchTimersRef.current[timerKey]);
+    }
+
+    rowPatchTimersRef.current[timerKey] = setTimeout(async () => {
+      try {
+        await updateEntryRow(id, row.entryId, {
+          [columnId]: value,
+        });
+
+        window.dispatchEvent(new Event(`entryDataUpdated_${id}`));
+      } catch (error) {
+        console.error("Entry row PATCH failed:", error);
+      } finally {
+        delete rowPatchTimersRef.current[timerKey];
+      }
+    }, 500);
+  },
+  [id, token]
+);
+
   useEffect(() => {
     localStorage.setItem(`entryData_${id}`, JSON.stringify(dataRef.current));
     localStorage.setItem(`visibleColumns_${id}`, JSON.stringify(visibleColumns));
@@ -351,14 +386,23 @@ const Entry = () => {
         finalValue = String(value || '').replace(/[^0-9.]/g, '');
       }
 
-      saveToHistory();
-      setData((prev) => {
-        const newData = [...prev];
-        newData[rowIndex] = { ...newData[rowIndex], [columnId]: finalValue };
-        return newData;
-      });
+     saveToHistory();
+
+setData((prev) => {
+  const newData = [...prev];
+  const currentRow = ensureEntryId(newData[rowIndex] || {});
+
+  newData[rowIndex] = {
+    ...currentRow,
+    [columnId]: finalValue,
+  };
+
+  patchEntryRowDebounced(currentRow, columnId, finalValue);
+
+  return newData;
+});
     },
-    [saveToHistory, guardAdminReadOnly]
+  [saveToHistory, guardAdminReadOnly, patchEntryRowDebounced]
   );
 
   const addNewRow = useCallback(() => {
@@ -392,6 +436,15 @@ const Entry = () => {
       if (guardAdminReadOnly()) return;
 
       saveToHistory();
+
+      const rowToDelete = dataRef.current?.[index];
+
+if (token && rowToDelete?.entryId) {
+  deleteEntryRow(id, rowToDelete.entryId).catch((error) => {
+    console.error("Entry row DELETE failed:", error);
+  });
+}
+
       setData((prev) => {
         if (prev.length === 1) {
           const emptyRow = ensureEntryId(
@@ -403,7 +456,7 @@ const Entry = () => {
         return regenerateSrNumbers(newData);
       });
     },
-    [saveToHistory, columnsDef, regenerateSrNumbers, guardAdminReadOnly]
+    [saveToHistory, columnsDef, regenerateSrNumbers, guardAdminReadOnly, token, id]
   );
 
   const updateColumnWidth = useCallback((colIndex, value) => {
