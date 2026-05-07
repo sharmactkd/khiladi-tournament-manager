@@ -2,7 +2,7 @@ import mongoose from "mongoose";
 import Payment from "../models/payment.js";
 import User from "../models/user.js";
 import Tournament from "../models/tournament.js";
-import Entry from "../models/entry.js";
+import EntryRow from "../models/entryRow.js";
 import logger from "../utils/logger.js";
 
 const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
@@ -37,7 +37,7 @@ const sanitizeUser = (user) => {
 
 const getEntryCount = (tournament) => {
   if (!tournament) return 0;
-  return Number(tournament.entriesCount || 0);
+  return Number(tournament.entriesCount || tournament._entryRowsCount || 0);
 };
 
 const getTeamPaymentRevenue = (tournament) => {
@@ -233,25 +233,7 @@ export const getAdminDashboard = async (req, res) => {
   .lean(),
       ]);
 
-   const entryStats = await Entry.aggregate([
-  {
-    $project: {
-      count: {
-        $size: {
-          $ifNull: ["$entries", []],
-        },
-      },
-    },
-  },
-  {
-    $group: {
-      _id: null,
-      totalEntries: { $sum: "$count" },
-    },
-  },
-]);
-
-const totalEntries = entryStats?.[0]?.totalEntries || 0;
+  const totalEntries = await EntryRow.countDocuments({});
 
    const paymentStats = await Payment.aggregate([
   {
@@ -418,10 +400,23 @@ export const getAdminUsers = async (req, res) => {
         .limit(limit)
         .lean(),
       User.countDocuments(filter),
-      Tournament.find({})
-        .select("createdBy entries teamPayments")
-        .lean(),
+     Tournament.find({})
+  .select("createdBy teamPayments")
+  .lean(),
     ]);
+
+    const entryCountsByTournament = await EntryRow.aggregate([
+  {
+    $group: {
+      _id: "$tournamentId",
+      count: { $sum: 1 },
+    },
+  },
+]);
+
+const entryCountMap = new Map(
+  entryCountsByTournament.map((item) => [String(item._id), item.count])
+);
 
     const statsByUser = new Map();
 
@@ -439,7 +434,7 @@ export const getAdminUsers = async (req, res) => {
       const revenue = getTeamPaymentRevenue(tournament);
 
       current.totalTournaments += 1;
-      current.totalEntries += getEntryCount(tournament);
+      current.totalEntries += entryCountMap.get(String(tournament._id)) || 0;
       current.totalAmountPaid += revenue;
       if (revenue > 0) current.paidTournamentCount += 1;
 
@@ -503,23 +498,39 @@ export const getAdminUserDetails = async (req, res) => {
       });
     }
 
+    const tournamentIds = tournaments.map((t) => t._id);
+
+const entryRows = await EntryRow.find({
+  tournamentId: { $in: tournamentIds },
+})
+  .sort({ tournamentId: 1, srNo: 1, createdAt: 1 })
+  .lean();
+
+const entryRowsByTournament = new Map();
+
+entryRows.forEach((row) => {
+  const key = String(row.tournamentId);
+  if (!entryRowsByTournament.has(key)) entryRowsByTournament.set(key, []);
+  entryRowsByTournament.get(key).push(row);
+});
+
     const payments = tournaments.flatMap((tournament) => getTeamPaymentRows(tournament));
     const totalAmountPaid = payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
-    const totalEntries = tournaments.reduce((sum, tournament) => sum + getEntryCount(tournament), 0);
+    const totalEntries = entryRows.length;
 
     return res.json({
       success: true,
       data: {
         user: sanitizeUser(user),
         tournaments: tournaments.map(formatTournamentListItem),
-        entries: tournaments.flatMap((tournament) =>
-          (Array.isArray(tournament.entries) ? tournament.entries : []).map((entry, index) => ({
-            ...entry,
-            _rowIndex: index + 1,
-            tournamentId: tournament._id,
-            tournamentName: tournament.tournamentName,
-          }))
-        ),
+      entries: tournaments.flatMap((tournament) =>
+  (entryRowsByTournament.get(String(tournament._id)) || []).map((entry, index) => ({
+    ...entry,
+    _rowIndex: index + 1,
+    tournamentId: tournament._id,
+    tournamentName: tournament.tournamentName,
+  }))
+),
         payments,
         summary: {
           totalTournaments: tournaments.length,
@@ -537,6 +548,8 @@ export const getAdminUserDetails = async (req, res) => {
     });
   }
 };
+
+
 
 export const suspendAdminUser = async (req, res) => {
   try {
@@ -746,6 +759,10 @@ export const getAdminTournamentDetails = async (req, res) => {
 
     const payments = getTeamPaymentRows(tournament);
 
+    const entries = await EntryRow.find({ tournamentId })
+  .sort({ srNo: 1, createdAt: 1 })
+  .lean();
+
     return res.json({
       success: true,
       data: {
@@ -755,10 +772,10 @@ export const getAdminTournamentDetails = async (req, res) => {
           createdBy: sanitizeUser(tournament.createdBy),
         },
         owner: sanitizeUser(tournament.createdBy),
-        entries: Array.isArray(tournament.entries) ? tournament.entries : [],
+        entries,
         payments,
         summary: {
-          entriesCount: getEntryCount(tournament),
+          entriesCount: entries.length,
           totalAmountPaid: payments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
           totalPaymentRows: payments.length,
         },
@@ -927,41 +944,52 @@ export const getAdminEntries = async (req, res) => {
     const { page, limit, skip } = getPagination(req.query);
     const searchRegex = buildSearchRegex(req.query.search);
 
-    const tournaments = await Tournament.find({})
-      .select("tournamentName organizer createdBy entries createdAt")
-      .populate("createdBy", "name email phone role createdAt isSuspended isDeleted")
-      .sort({ createdAt: -1 })
-      .lean();
-
-    let rows = tournaments.flatMap((tournament) =>
-      (Array.isArray(tournament.entries) ? tournament.entries : []).map((entry, index) => ({
-        ...entry,
-        _id: `${tournament._id}-${index}`,
-        _rowIndex: index + 1,
-        tournamentId: tournament._id,
-        tournamentName: tournament.tournamentName,
-        organizer: tournament.organizer,
-        owner: sanitizeUser(tournament.createdBy),
-        createdAt: tournament.createdAt,
-      }))
-    );
+    const match = {};
 
     if (searchRegex) {
-      rows = rows.filter((row) => {
-        const text = Object.values(row)
-          .map((value) => {
-            if (value === null || value === undefined) return "";
-            if (typeof value === "object") return JSON.stringify(value);
-            return String(value);
-          })
-          .join(" ");
-
-        return searchRegex.test(text);
-      });
+      match.$or = [
+        { name: searchRegex },
+        { team: searchRegex },
+        { gender: searchRegex },
+        { event: searchRegex },
+        { subEvent: searchRegex },
+        { ageCategory: searchRegex },
+        { weightCategory: searchRegex },
+        { medal: searchRegex },
+      ];
     }
 
-    const total = rows.length;
-    const data = rows.slice(skip, skip + limit);
+    const [rows, total] = await Promise.all([
+      EntryRow.find(match)
+        .populate({
+          path: "tournamentId",
+          select: "tournamentName organizer createdBy createdAt",
+          populate: {
+            path: "createdBy",
+            select: "name email phone role createdAt isSuspended isDeleted",
+          },
+        })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+      EntryRow.countDocuments(match),
+    ]);
+
+    const data = rows.map((row, index) => {
+      const tournament = row.tournamentId || {};
+
+      return {
+        ...row,
+        _id: row._id,
+        _rowIndex: skip + index + 1,
+        tournamentId: tournament._id || row.tournamentId,
+        tournamentName: tournament.tournamentName || "",
+        organizer: tournament.organizer || "",
+        owner: sanitizeUser(tournament.createdBy),
+        createdAt: row.createdAt,
+      };
+    });
 
     return res.json({
       success: true,

@@ -3,6 +3,7 @@ import TeamEntrySubmission from "../models/TeamEntrySubmission.js";
 import Tournament from "../models/tournament.js";
 import logger from "../utils/logger.js";
 import Entry from "../models/entry.js";
+import EntryRow from "../models/entryRow.js";
 import { logActivitySafe } from "../utils/activityLogger.js";
 
 const createEmptyEntryState = () => ({
@@ -160,6 +161,8 @@ sourcePlayerId: String(row.sourcePlayerId || ""),
     ageCategory: String(row.ageCategory || "").trim(),
     weightCategory: String(row.weightCategory || "").trim(),
     medal: normalizeMedal(row.medal),
+    medalSource: row.medalSource || (normalizeMedal(row.medal) ? "manual" : ""),
+medalUpdatedAt: row.medalUpdatedAt || (normalizeMedal(row.medal) ? new Date() : null),
     coach: String(row.coach || "").trim(),
     coachContact: String(row.coachContact || "").trim(),
     manager: String(row.manager || "").trim(),
@@ -321,7 +324,18 @@ export const approveTeamSubmission = async (req, res) => {
 
     const entryDoc = await Entry.findOne({ tournamentId: submission.tournamentId });
 
-    const existingEntries = Array.isArray(entryDoc?.entries) ? entryDoc.entries : [];
+    const existingEntryRows = await EntryRow.find({
+  tournamentId: submission.tournamentId,
+})
+  .sort({ srNo: 1, createdAt: 1 })
+  .lean();
+
+    const existingEntries =
+  existingEntryRows.length > 0
+    ? existingEntryRows
+    : Array.isArray(entryDoc?.entries)
+      ? entryDoc.entries
+      : [];
     const approvedPlayers = normalizePlayers(submission.players, submission.teamName);
 
     const existingNormalizedEntries = existingEntries
@@ -431,6 +445,57 @@ const existingEntryIds = new Set(
         runValidators: true,
       }
     );
+
+    const entryRowBulkOps = mergedEntries
+  .filter((row) => String(row.entryId || "").trim())
+  .map((row, index) => ({
+  updateOne: {
+    filter: {
+      tournamentId: submission.tournamentId,
+      entryId: String(row.entryId || "").trim(),
+    },
+    update: {
+      $set: {
+        srNo: index + 1,
+        title: row.title || "",
+        name: row.name || "",
+        fathersName: row.fathersName || "",
+        school: row.school || "",
+        schoolName: row.schoolName || row.school || "",
+        class: row.class || "",
+        team: row.team || "",
+        gender: row.gender || "",
+        dob: row.dob || null,
+        weight: row.weight ?? null,
+        event: row.event || "",
+        subEvent: row.subEvent || "",
+        ageCategory: row.ageCategory || "",
+        weightCategory: row.weightCategory || "",
+        medal: row.medal || "",
+        medalSource: row.medalSource || "",
+        medalUpdatedAt: row.medalUpdatedAt || null,
+        entrySource: row.entrySource || "",
+        sourceSubmissionId: row.sourceSubmissionId || null,
+        sourcePlayerId: row.sourcePlayerId || "",
+        coach: row.coach || "",
+        coachContact: row.coachContact || "",
+        manager: row.manager || "",
+        managerContact: row.managerContact || "",
+        updatedBy: req.user._id,
+      },
+      $setOnInsert: {
+        tournamentId: submission.tournamentId,
+        entryId: String(row.entryId || "").trim(),
+        createdBy: req.user._id,
+      },
+    },
+    upsert: true,
+  },
+}));
+
+if (entryRowBulkOps.length > 0) {
+  await EntryRow.bulkWrite(entryRowBulkOps, { ordered: false });
+}
 
     submission.status = "approved";
     submission.reviewedBy = req.user._id;

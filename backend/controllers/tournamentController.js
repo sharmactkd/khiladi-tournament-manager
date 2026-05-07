@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Tournament from "../models/tournament.js";
 import Entry from "../models/entry.js";
+import EntryRow from "../models/entryRow.js";
 import logger from "../utils/logger.js";
 import { logActivitySafe } from "../utils/activityLogger.js";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
@@ -472,124 +473,153 @@ const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => 
     };
   }
 
-  const entryDoc = await Entry.findOne({ tournamentId });
+  const rows = await EntryRow.find({ tournamentId }).sort({ srNo: 1, createdAt: 1 }).lean();
 
-  if (!entryDoc) {
+  if (!rows.length) {
     return {
       attempted: true,
       matchedCount: 0,
       clearedCount: 0,
       medalsReceived: validMedals.length,
-      reason: "entry-doc-not-found",
+      reason: "entry-rows-not-found",
     };
   }
 
-const targetByEntryId = new Map();
-const targetByStrictKey = new Map();
-const targetByMediumKey = new Map();
-const targetByLooseKey = new Map();
+  const targetByEntryId = new Map();
+  const targetByStrictKey = new Map();
+  const targetByMediumKey = new Map();
+  const targetByLooseKey = new Map();
 
   validMedals.forEach((item) => {
-     const entryId = String(item.entryId || "").trim();
+    const entryId = String(item.entryId || "").trim();
+    if (entryId && !targetByEntryId.has(entryId)) targetByEntryId.set(entryId, item);
+
     const strictKey = buildResultStrictKey(item);
     const mediumKey = buildResultMediumKey(item);
     const looseKey = buildResultLooseKey(item);
-
-    if (entryId && !targetByEntryId.has(entryId)) {
-  targetByEntryId.set(entryId, item);
-}
 
     if (strictKey && !targetByStrictKey.has(strictKey)) targetByStrictKey.set(strictKey, item);
     if (mediumKey && !targetByMediumKey.has(mediumKey)) targetByMediumKey.set(mediumKey, item);
     if (looseKey && !targetByLooseKey.has(looseKey)) targetByLooseKey.set(looseKey, item);
   });
 
-  const hasTieSheetUpdateForSameCategory = (entryObj) =>
-    validMedals.some((m) => {
-      const sameGender = normalizeResultText(m.gender) === normalizeResultText(entryObj.gender);
-      const sameAge = normalizeResultText(m.ageCategory) === normalizeResultText(entryObj.ageCategory);
-      const sameWeight =
-        normalizeResultText(m.weightCategory) === normalizeResultText(entryObj.weightCategory);
-
-      const sameEvent =
-        !m.event ||
-        !entryObj.event ||
-        normalizeResultText(m.event) === normalizeResultText(entryObj.event);
-
-      const sameSubEvent =
-        !m.subEvent ||
-        !entryObj.subEvent ||
-        normalizeResultText(m.subEvent) === normalizeResultText(entryObj.subEvent);
-
-      return sameGender && sameAge && sameWeight && sameEvent && sameSubEvent;
-    });
-
   const now = new Date();
   let matchedCount = 0;
   let clearedCount = 0;
 
-  entryDoc.entries = (entryDoc.entries || []).map((entry) => {
-    const entryObj = entry?.toObject ? entry.toObject() : entry;
+  const bulkOps = [];
 
-    const strictKey = buildResultStrictKey(entryObj);
-    const mediumKey = buildResultMediumKey(entryObj);
-    const looseKey = buildResultLooseKey(entryObj);
+  rows.forEach((row) => {
+    const currentEntryId = String(row.entryId || "").trim();
 
-const currentEntryId = String(entryObj.entryId || "").trim();
-
-const matchedByEntryId = currentEntryId
-  ? targetByEntryId.get(currentEntryId)
-  : null;
-
-const matched =
-  matchedByEntryId ||
-  (!currentEntryId
-    ? targetByStrictKey.get(strictKey) ||
-      targetByMediumKey.get(mediumKey) ||
-      targetByLooseKey.get(looseKey)
-    : null);
+    const matched =
+      (currentEntryId ? targetByEntryId.get(currentEntryId) : null) ||
+      targetByStrictKey.get(buildResultStrictKey(row)) ||
+      targetByMediumKey.get(buildResultMediumKey(row)) ||
+      targetByLooseKey.get(buildResultLooseKey(row));
 
     if (matched) {
       matchedCount += 1;
 
-      return {
-        ...entryObj,
-        medal: matched.medal,
-        medalSource: "tiesheet",
-        medalUpdatedAt: now,
-      };
+      bulkOps.push({
+        updateOne: {
+          filter: { tournamentId: row.tournamentId, entryId: row.entryId },
+          update: {
+            $set: {
+              medal: matched.medal,
+              medalSource: "tiesheet",
+              medalUpdatedAt: now,
+              updatedBy: userId || null,
+            },
+          },
+        },
+      });
+
+      return;
     }
 
-    if (
-  entryObj.medalSource === "tiesheet" &&
-  !currentEntryId &&
-  hasTieSheetUpdateForSameCategory(entryObj)
-) {
+    if (row.medalSource === "tiesheet") {
       clearedCount += 1;
 
-      return {
-        ...entryObj,
-        medal: "",
-        medalSource: "",
-        medalUpdatedAt: null,
-      };
+      bulkOps.push({
+        updateOne: {
+          filter: { tournamentId: row.tournamentId, entryId: row.entryId },
+          update: {
+            $set: {
+              medal: "",
+              medalSource: "",
+              medalUpdatedAt: null,
+              updatedBy: userId || null,
+            },
+          },
+        },
+      });
     }
-
-    return entryObj;
   });
 
-  entryDoc.updatedBy = userId;
-  await entryDoc.save();
+  if (bulkOps.length > 0) {
+    await EntryRow.bulkWrite(bulkOps, { ordered: false });
+  }
+
+  const latestRows = await EntryRow.find({ tournamentId }).sort({ srNo: 1, createdAt: 1 }).lean();
+
+  const legacyEntries = latestRows.map((row, index) => ({
+    srNo: index + 1,
+    entryId: row.entryId,
+    entrySource: row.entrySource || "",
+    sourceSubmissionId: row.sourceSubmissionId || null,
+    sourcePlayerId: row.sourcePlayerId || "",
+    title: row.title || "",
+    name: row.name || "",
+    fathersName: row.fathersName || "",
+    school: row.school || "",
+    schoolName: row.schoolName || row.school || "",
+    class: row.class || "",
+    team: row.team || "",
+    gender: row.gender || "",
+    dob: row.dob || null,
+    weight: row.weight ?? null,
+    event: row.event || "",
+    subEvent: row.subEvent || "",
+    ageCategory: row.ageCategory || "",
+    weightCategory: row.weightCategory || "",
+    medal: row.medal || "",
+    medalSource: row.medalSource || "",
+    medalUpdatedAt: row.medalUpdatedAt || null,
+    coach: row.coach || "",
+    coachContact: row.coachContact || "",
+    manager: row.manager || "",
+    managerContact: row.managerContact || "",
+  }));
+
+  await Entry.findOneAndUpdate(
+    { tournamentId },
+    {
+      $set: {
+        entries: legacyEntries,
+        updatedBy: userId || null,
+      },
+      $setOnInsert: {
+        tournamentId,
+      },
+    },
+    {
+      upsert: true,
+      new: true,
+      runValidators: true,
+      setDefaultsOnInsert: true,
+    }
+  );
 
   return {
     attempted: true,
     matchedCount,
     clearedCount,
     medalsReceived: validMedals.length,
-    lastUpdated: entryDoc.updatedAt,
+    lastUpdated: now,
     reason: null,
   };
-};
+}; 
 
 // ================ PUBLIC ENDPOINTS (No Auth Required) ================
 

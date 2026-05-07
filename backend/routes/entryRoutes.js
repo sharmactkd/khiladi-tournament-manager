@@ -5,6 +5,7 @@ import authMiddleware from "../middleware/authMiddleware.js";
 import {
   getEntries,
   saveEntries,
+  createSingleEntry,
   updateSingleEntry,
   deleteSingleEntry,
 } from "../controllers/entryController.js";
@@ -75,9 +76,19 @@ const validateTournamentOwnership = async (req, res, next) => {
 };
 
 router.get("/:id/entries", authMiddleware, validateTournamentOwnership, getEntries);
+
+// Backward-compatible full save
 router.post("/:id/entries", authMiddleware, validateTournamentOwnership, saveEntries);
 
-// Row-level APIs
+// New scalable single-row create
+router.post(
+  "/:id/entries/row",
+  authMiddleware,
+  validateTournamentOwnership,
+  createSingleEntry
+);
+
+// Existing row-level update
 router.patch(
   "/:id/entries/:entryId",
   authMiddleware,
@@ -85,6 +96,7 @@ router.patch(
   updateSingleEntry
 );
 
+// Existing row-level delete
 router.delete(
   "/:id/entries/:entryId",
   authMiddleware,
