@@ -22,10 +22,16 @@ const PLANS = {
 
 const getUserId = (req) => req.user?._id || req.user?.id || req.user?.userId;
 
-const razorpay = new Razorpay({
-  key_id: process.env.RAZORPAY_KEY_ID,
-  key_secret: process.env.RAZORPAY_KEY_SECRET,
-});
+const getRazorpayInstance = () => {
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+    throw new Error("Razorpay keys are not configured");
+  }
+
+  return new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+  });
+};
 
 const addMonths = (date, months) => {
   const d = new Date(date);
@@ -110,6 +116,7 @@ export const createPaymentOrder = async (req, res) => {
     const amountInRupees = selectedPlan.amount;
     const amountInPaise = amountInRupees * 100;
 
+    const razorpay = getRazorpayInstance();
     const order = await razorpay.orders.create({
       amount: amountInPaise,
       currency: "INR",
