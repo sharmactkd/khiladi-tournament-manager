@@ -57,14 +57,14 @@ const activityLogSchema = new Schema(
       type: String,
       enum: ACTIVITY_ACTIONS,
       required: true,
-      index: true,
+
       trim: true,
     },
     module: {
       type: String,
       enum: ACTIVITY_MODULES,
       default: "system",
-      index: true,
+      
       trim: true,
     },
     title: {

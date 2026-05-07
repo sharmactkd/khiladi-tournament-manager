@@ -8,7 +8,6 @@ const entrySchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Tournament",
       required: [true, "Tournament ID is required"],
-      index: true,
     },
 
     entries: {
