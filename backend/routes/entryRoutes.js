@@ -8,6 +8,7 @@ import {
   createSingleEntry,
   updateSingleEntry,
   deleteSingleEntry,
+  createBulkEntries,
 } from "../controllers/entryController.js";
 import Tournament from "../models/tournament.js";
 import mongoose from "mongoose";
@@ -102,6 +103,12 @@ router.delete(
   authMiddleware,
   validateTournamentOwnership,
   deleteSingleEntry
+);
+router.post(
+  "/:id/entries/bulk",
+  authMiddleware,
+  validateTournamentOwnership,
+  createBulkEntries
 );
 
 export default router;

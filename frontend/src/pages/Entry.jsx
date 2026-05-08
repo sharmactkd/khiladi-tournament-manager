@@ -7,6 +7,7 @@ import {
   saveEntries,
   updateEntryRow,
   deleteEntryRow,
+  createEntryRowsBulk,
 } from "../api";
 
 import * as XLSX from 'xlsx';
@@ -648,82 +649,62 @@ newData = [emptyRow];
   };
 
   const handleTeamEntriesSubmit = async (preparedRows) => {
-    if (guardAdminReadOnly()) return;
+  if (guardAdminReadOnly()) return;
 
-    const cleanRows = Array.isArray(preparedRows)
-      ? preparedRows.filter((row) =>
+  const cleanRows = Array.isArray(preparedRows)
+    ? preparedRows
+        .filter((row) =>
           Object.entries(row || {}).some(
             ([key, value]) =>
-              key !== 'sr' &&
-              key !== 'actions' &&
-              value !== '' &&
+              key !== "sr" &&
+              key !== "actions" &&
+              value !== "" &&
               value !== null &&
               value !== undefined
           )
         )
-      : [];
+        .map((row) => ({
+          ...ensureEntryId(row),
+          entrySource: row.entrySource || "manual",
+        }))
+    : [];
 
-    if (cleanRows.length === 0) {
-      throw new Error('No valid player rows to submit.');
-    }
+  if (cleanRows.length === 0) {
+    throw new Error("No valid player rows to submit.");
+  }
 
-    if (isAdminUser && !confirmAdminSaveIfNeeded()) {
-      return;
-    }
+  if (isAdminUser && !confirmAdminSaveIfNeeded()) {
+    return;
+  }
 
-    let existingEntries = [];
-    let existingState = createEmptyEntryState();
+  if (token) {
+    const response = await createEntryRowsBulk(id, {
+      entries: cleanRows,
+    });
 
-    try {
-      if (token) {
-        const serverPayload = await getEntriesApi(id, {
-  page: 1,
-  limit: 1000,
-});
-        existingEntries = extractEntryRows(serverPayload);
-        existingState =
-          serverPayload?.userState && typeof serverPayload.userState === 'object'
-            ? serverPayload.userState
-            : createEmptyEntryState();
-      } else {
-        const localRaw = localStorage.getItem(`entryData_${id}`);
-        if (localRaw) {
-          existingEntries = extractEntryRows(JSON.parse(localRaw));
-        }
-      }
-    } catch (error) {
-      console.warn('Could not load latest entries before merge:', error);
-      const localRaw = localStorage.getItem(`entryData_${id}`);
-      if (localRaw) {
-        existingEntries = extractEntryRows(JSON.parse(localRaw));
-      }
-    }
+    const createdRows = Array.isArray(response?.entries)
+      ? response.entries.map(ensureEntryId)
+      : cleanRows;
 
- const mergedEntries = [...existingEntries.map(ensureEntryId), ...cleanRows.map(ensureEntryId)].map(
-  (row, index) => ({
-    ...row,
-    sr: String(index + 1),
-  })
-);
+    setData((prev) =>
+      regenerateSrNumbers([...prev.map(ensureEntryId), ...createdRows])
+    );
+  } else {
+    const mergedEntries = [...dataRef.current.map(ensureEntryId), ...cleanRows].map(
+      (row, index) => ({
+        ...row,
+        sr: String(index + 1),
+      })
+    );
+
     localStorage.setItem(`entryData_${id}`, JSON.stringify(mergedEntries));
-
-    if (token) {
-      await saveEntries(id, {
-        entries: mergedEntries,
-        state: {
-          sorting: existingState.sorting || [],
-          filters: existingState.filters || {},
-          columnWidths: existingState.columnWidths || [],
-          searchTerm: existingState.searchTerm || '',
-        },
-      });
-    }
-
     setData(regenerateSrNumbers(mergedEntries));
-    window.dispatchEvent(new Event(`entryDataUpdated_${id}`));
-    setShowAddTeamEntriesModal(false);
-    exitAdminEditModeIfNeeded();
-  };
+  }
+
+  window.dispatchEvent(new Event(`entryDataUpdated_${id}`));
+  setShowAddTeamEntriesModal(false);
+  exitAdminEditModeIfNeeded();
+};
 
   const handleLoadMoreEntries = useCallback(async () => {
   if (!token || !id || isLoadingMoreEntries || !entryPagination.hasMore) return;

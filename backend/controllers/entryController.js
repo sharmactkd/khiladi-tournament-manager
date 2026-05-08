@@ -1015,3 +1015,134 @@ export const deleteSingleEntry = async (req, res) => {
     });
   }
 };
+export const createBulkEntries = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { entries = [] } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid tournament ID",
+      });
+    }
+
+    if (!Array.isArray(entries) || entries.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "entries must be a non-empty array",
+      });
+    }
+
+    const currentCount = await EntryRow.countDocuments({
+      tournamentId: new mongoose.Types.ObjectId(id),
+    });
+
+    const normalizedRows = entries.map((entry, index) =>
+      normalizeEntryForEntryRow({
+        tournamentId: id,
+        entry: {
+          ...entry,
+          entryId: String(entry.entryId || "").trim() || createEntryId(),
+          srNo: currentCount + index + 1,
+          entrySource: entry.entrySource || "manual",
+        },
+        index: currentCount + index,
+        userId: req.user._id,
+      })
+    );
+
+    const bulkOps = normalizedRows.map((row) => ({
+      updateOne: {
+        filter: {
+          tournamentId: row.tournamentId,
+          entryId: row.entryId,
+        },
+        update: {
+          $set: {
+            srNo: row.srNo,
+            title: row.title,
+            name: row.name,
+            fathersName: row.fathersName,
+            school: row.school,
+            schoolName: row.schoolName,
+            class: row.class,
+            team: row.team,
+            gender: row.gender,
+            dob: row.dob,
+            weight: row.weight,
+            event: row.event,
+            subEvent: row.subEvent,
+            ageCategory: row.ageCategory,
+            weightCategory: row.weightCategory,
+            medal: row.medal,
+            medalSource: row.medalSource,
+            medalUpdatedAt: row.medalUpdatedAt,
+            entrySource: row.entrySource,
+            sourceSubmissionId: row.sourceSubmissionId,
+            sourcePlayerId: row.sourcePlayerId,
+            coach: row.coach,
+            coachContact: row.coachContact,
+            manager: row.manager,
+            managerContact: row.managerContact,
+            updatedBy: req.user._id,
+          },
+          $setOnInsert: {
+            tournamentId: row.tournamentId,
+            entryId: row.entryId,
+            createdBy: req.user._id,
+          },
+        },
+        upsert: true,
+      },
+    }));
+
+    if (bulkOps.length > 0) {
+      await EntryRow.bulkWrite(bulkOps, { ordered: false });
+    }
+
+    await Entry.findOneAndUpdate(
+      { tournamentId: id },
+      {
+        $set: {
+          updatedBy: req.user._id,
+        },
+        $unset: {
+          entries: "",
+        },
+        $setOnInsert: {
+          tournamentId: id,
+        },
+      },
+      {
+        upsert: true,
+        new: true,
+        setDefaultsOnInsert: true,
+      }
+    );
+
+    const total = await EntryRow.countDocuments({
+      tournamentId: new mongoose.Types.ObjectId(id),
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Entries added successfully",
+      insertedCount: normalizedRows.length,
+      total,
+      entries: normalizedRows.map(mapEntryRowForResponse),
+    });
+  } catch (error) {
+    logger.error("Bulk entry create failed", {
+      error: error.message,
+      stack: error.stack,
+      tournamentId: req.params.id,
+      userId: req.user?._id,
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to add entries",
+    });
+  }
+};

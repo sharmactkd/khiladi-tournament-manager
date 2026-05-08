@@ -305,4 +305,7 @@ export const deleteAdminUser = (userId) =>
 export const deleteAdminTournament = (tournamentId) =>
   apiCall("delete", `/admin/tournaments/${tournamentId}`);
 
+export const createEntryRowsBulk = (tournamentId, payload) =>
+  apiCall("post", `/tournaments/${tournamentId}/entries/bulk`, payload);
+
 export default api;
