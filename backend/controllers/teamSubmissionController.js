@@ -330,12 +330,10 @@ export const approveTeamSubmission = async (req, res) => {
   .sort({ srNo: 1, createdAt: 1 })
   .lean();
 
-    const existingEntries =
+   const existingEntries =
   existingEntryRows.length > 0
     ? existingEntryRows
-    : Array.isArray(entryDoc?.entries)
-      ? entryDoc.entries
-      : [];
+    : [];
     const approvedPlayers = normalizePlayers(submission.players, submission.teamName);
 
     const existingNormalizedEntries = existingEntries
@@ -426,25 +424,27 @@ const existingEntryIds = new Set(
         ? entryDoc.userState
         : createEmptyEntryState();
 
-    const updatedEntryDoc = await Entry.findOneAndUpdate(
-      { tournamentId: submission.tournamentId },
-      {
-        $set: {
-          entries: mergedEntries,
-          userState,
-          updatedBy: req.user._id,
-        },
-        $setOnInsert: {
-          tournamentId: submission.tournamentId,
-        },
-      },
-      {
-        upsert: true,
-        new: true,
-        setDefaultsOnInsert: true,
-        runValidators: true,
-      }
-    );
+  const updatedEntryDoc = await Entry.findOneAndUpdate(
+  { tournamentId: submission.tournamentId },
+  {
+    $set: {
+      userState,
+      updatedBy: req.user._id,
+    },
+    $unset: {
+      entries: "",
+    },
+    $setOnInsert: {
+      tournamentId: submission.tournamentId,
+    },
+  },
+  {
+    upsert: true,
+    new: true,
+    setDefaultsOnInsert: true,
+    runValidators: true,
+  }
+);
 
     const entryRowBulkOps = mergedEntries
   .filter((row) => String(row.entryId || "").trim())

@@ -20,6 +20,8 @@ import {
   getTeamPayments,
   saveTeamPayments,
   saveTieSheetRecord,
+  getWinnerAggregation,
+getTeamChampionshipAggregation,
 } from "../controllers/tournamentController.js";
 
 import premiumAccess from "../middleware/premiumAccess.js";
@@ -179,6 +181,14 @@ router.put(
 router.get("/:id/outcomes", authMiddleware, requireOwnership, getOutcomes);
 router.put("/:id/outcomes", authMiddleware, requireOwnership, saveOutcomes);
 
+router.get("/:id/winners", authMiddleware, requireOwnership, getWinnerAggregation);
+
+router.get(
+  "/:id/team-championship",
+  authMiddleware,
+  requireOwnership,
+  getTeamChampionshipAggregation
+);
 // ================ PREMIUM PROTECTED ROUTES ================
 
 // Tie Sheet

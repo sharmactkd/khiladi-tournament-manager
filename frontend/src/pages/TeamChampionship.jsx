@@ -89,6 +89,15 @@ const TeamChampionship = () => {
   const [selectedGender, setSelectedGender] = useState("OVERALL");
   const [availableAges, setAvailableAges] = useState(["OVERALL"]);
   const [availableGenders, setAvailableGenders] = useState(["OVERALL"]);
+const [filteredTeamsFromServer, setFilteredTeamsFromServer] = useState([]);
+const [availableEventsFromServer, setAvailableEventsFromServer] = useState(["OVERALL"]);
+const [serverStats, setServerStats] = useState({
+  totalTeams: 0,
+  totalPlayers: 0,
+  totalMale: 0,
+  totalFemale: 0,
+  medalWinners: 0,
+});
 
   const pdfPageRef = useRef(null);
 
@@ -144,13 +153,11 @@ const TeamChampionship = () => {
     [ageCategoryOrder, genderOrder]
   );
 
-  const availableEvents = useMemo(() => {
-    const events = [...new Set(players.map((p) => p.eventType).filter(Boolean))]
-      .filter((eventName) => EVENT_FILTERS.includes(eventName))
-      .sort((a, b) => EVENT_FILTERS.indexOf(a) - EVENT_FILTERS.indexOf(b));
-
-    return ["OVERALL", ...events];
-  }, [players]);
+const availableEvents = useMemo(() => {
+  return (availableEventsFromServer || ["OVERALL"])
+    .filter((eventName) => EVENT_FILTERS.includes(eventName))
+    .sort((a, b) => EVENT_FILTERS.indexOf(a) - EVENT_FILTERS.indexOf(b));
+}, [availableEventsFromServer]);
 
   useEffect(() => {
     if (!availableEvents.includes(selectedEvent)) {
@@ -170,9 +177,11 @@ const TeamChampionship = () => {
         setIsLoading(true);
         setError(null);
 
-        const [tournamentRes, entriesRes] = await Promise.all([
+       const [tournamentRes, championshipRes] = await Promise.all([
   api.get(`/tournament/${id}`),
-  api.get(`/tournaments/${id}/entries?ts=${Date.now()}`),
+  api.get(
+    `/tournament/${id}/team-championship?event=${encodeURIComponent(selectedEvent)}&age=${encodeURIComponent(selectedAge)}&gender=${encodeURIComponent(selectedGender)}&ts=${Date.now()}`
+  ),
 ]);
 
         const tournamentData = tournamentRes.data;
@@ -189,11 +198,22 @@ const TeamChampionship = () => {
           bronze: Number(tournamentData?.medalPoints?.bronze) || 1,
         });
 
-        const rows = Array.isArray(entriesRes?.data?.entries) ? entriesRes.data.entries : [];
-        const normalizedPlayers = normalizeEntryRows(rows);
+      const championshipData = championshipRes.data || {};
 
-        setPlayers(normalizedPlayers);
-        updateAvailableFilters(normalizedPlayers);
+setPlayers([]);
+setFilteredTeamsFromServer(championshipData.teams || []);
+setAvailableAges(championshipData.availableAges || ["OVERALL"]);
+setAvailableGenders(championshipData.availableGenders || ["OVERALL"]);
+setAvailableEventsFromServer(championshipData.availableEvents || ["OVERALL"]);
+setServerStats(
+  championshipData.stats || {
+    totalTeams: 0,
+    totalPlayers: 0,
+    totalMale: 0,
+    totalFemale: 0,
+    medalWinners: 0,
+  }
+);
       } catch (err) {
         setError(err?.message || "Failed to load data");
       } finally {
@@ -202,79 +222,45 @@ const TeamChampionship = () => {
     };
 
     if (id && isAuthenticated) fetchData();
-  }, [id, isAuthenticated, normalizeEntryRows, updateAvailableFilters]);
+  }, [id, isAuthenticated, selectedEvent, selectedAge, selectedGender]);
 
-  const filteredPlayers = useMemo(() => {
-    return players.filter((player) => {
-      if (selectedEvent !== "OVERALL" && player.eventType !== selectedEvent) return false;
-      if (selectedAge !== "OVERALL" && player.ageCategory !== selectedAge) return false;
-      if (selectedGender !== "OVERALL" && player.gender !== selectedGender) return false;
-      return true;
-    });
-  }, [players, selectedEvent, selectedAge, selectedGender]);
+ const filteredPlayers = [];
 
-  const filteredTeams = useMemo(() => {
-    const teamPoints = {};
-
-    const awardTeam = (team, medal) => {
-      if (!team || !team.trim() || team === "Independent") return;
-
-      if (!teamPoints[team]) {
-        teamPoints[team] = {
-          gold: 0,
-          silver: 0,
-          bronze: 0,
-          total: 0,
-        };
-      }
-
-      if (medal === "Gold") {
-        teamPoints[team].gold += 1;
-        teamPoints[team].total += medalPoints.gold;
-      } else if (medal === "Silver") {
-        teamPoints[team].silver += 1;
-        teamPoints[team].total += medalPoints.silver;
-      } else if (medal === "Bronze") {
-        teamPoints[team].bronze += 1;
-        teamPoints[team].total += medalPoints.bronze;
-      }
-    };
-
-    filteredPlayers.forEach((player) => {
-      if (!player.medal) return;
-      awardTeam(player.team, player.medal);
-    });
-
-    return Object.entries(teamPoints)
-      .map(([team, points]) => ({ team, ...points }))
-      .sort((a, b) => {
-        if (b.total !== a.total) return b.total - a.total;
-        if (b.gold !== a.gold) return b.gold - a.gold;
-        if (b.silver !== a.silver) return b.silver - a.silver;
-        return b.bronze - a.bronze;
-      });
-  }, [filteredPlayers, medalPoints]);
-
+const filteredTeams = filteredTeamsFromServer;
+ 
   const refreshData = async () => {
-    setIsLoading(true);
+  setIsLoading(true);
 
-    try {
-     const entriesRes = await api.get(`/tournaments/${id}/entries?ts=${Date.now()}`);
-      const rows = Array.isArray(entriesRes?.data?.entries) ? entriesRes.data.entries : [];
-      const normalizedPlayers = normalizeEntryRows(rows);
+  try {
+    const championshipRes = await api.get(
+      `/tournament/${id}/team-championship?event=${encodeURIComponent(selectedEvent)}&age=${encodeURIComponent(selectedAge)}&gender=${encodeURIComponent(selectedGender)}&ts=${Date.now()}`
+    );
 
-      setPlayers(normalizedPlayers);
-      updateAvailableFilters(normalizedPlayers);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+    const championshipData = championshipRes.data || {};
 
-  const totalTeams = new Set(filteredPlayers.map((p) => p.team).filter(Boolean)).size;
-  const totalPlayers = filteredPlayers.length;
-  const totalMale = filteredPlayers.filter((p) => p.gender === "Male").length;
-  const totalFemale = filteredPlayers.filter((p) => p.gender === "Female").length;
-  const bracketsWithWinners = filteredPlayers.filter((p) => p.medal).length;
+    setFilteredTeamsFromServer(championshipData.teams || []);
+    setAvailableAges(championshipData.availableAges || ["OVERALL"]);
+    setAvailableGenders(championshipData.availableGenders || ["OVERALL"]);
+    setAvailableEventsFromServer(championshipData.availableEvents || ["OVERALL"]);
+    setServerStats(
+      championshipData.stats || {
+        totalTeams: 0,
+        totalPlayers: 0,
+        totalMale: 0,
+        totalFemale: 0,
+        medalWinners: 0,
+      }
+    );
+  } finally {
+    setIsLoading(false);
+  }
+};
+
+  const totalTeams = serverStats.totalTeams || 0;
+const totalPlayers = serverStats.totalPlayers || 0;
+const totalMale = serverStats.totalMale || 0;
+const totalFemale = serverStats.totalFemale || 0;
+const bracketsWithWinners = serverStats.medalWinners || 0;
 
   const generatePDFDoc = async () => {
     if (!pdfPageRef.current) {

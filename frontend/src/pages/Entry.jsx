@@ -126,6 +126,16 @@ const Entry = () => {
   const [filterColumn, setFilterColumn] = useState(null);
   const [filters, setFilters] = useState(() => ({}));
   const [loadError, setLoadError] = useState(null);
+  const [entryPage, setEntryPage] = useState(1);
+const [entryPagination, setEntryPagination] = useState({
+  page: 1,
+  limit: 500,
+  total: 0,
+  totalPages: 1,
+  hasMore: false,
+});
+const [isLoadingMoreEntries, setIsLoadingMoreEntries] = useState(false);
+
 
  const entryTableRef = useRef(null);
 const dataRef = useRef(data);
@@ -220,7 +230,22 @@ const rowPatchTimersRef = useRef({});
 
       if (token && id) {
         try {
-          const payload = await getEntriesApi(id);
+          const payload = await getEntriesApi(id, {
+  page: 1,
+  limit: 500,
+});
+
+setEntryPage(1);
+setEntryPagination(
+  payload.pagination || {
+    page: 1,
+    limit: 500,
+    total: serverEntries.length,
+    totalPages: 1,
+    hasMore: false,
+  }
+);
+
           serverEntries = Array.isArray(payload.entries) ? payload.entries : [];
           serverState = payload.userState && typeof payload.userState === 'object' ? payload.userState : null;
           usedSource = 'server';
@@ -651,7 +676,10 @@ newData = [emptyRow];
 
     try {
       if (token) {
-        const serverPayload = await getEntriesApi(id);
+        const serverPayload = await getEntriesApi(id, {
+  page: 1,
+  limit: 1000,
+});
         existingEntries = extractEntryRows(serverPayload);
         existingState =
           serverPayload?.userState && typeof serverPayload.userState === 'object'
@@ -696,6 +724,50 @@ newData = [emptyRow];
     setShowAddTeamEntriesModal(false);
     exitAdminEditModeIfNeeded();
   };
+
+  const handleLoadMoreEntries = useCallback(async () => {
+  if (!token || !id || isLoadingMoreEntries || !entryPagination.hasMore) return;
+
+  try {
+    setIsLoadingMoreEntries(true);
+
+    const nextPage = entryPage + 1;
+
+    const payload = await getEntriesApi(id, {
+      page: nextPage,
+      limit: entryPagination.limit || 500,
+    });
+
+    const nextRows = extractEntryRows(payload).map(ensureEntryId);
+
+    setData((prev) =>
+      regenerateSrNumbers([...prev, ...nextRows])
+    );
+
+    setEntryPage(nextPage);
+    setEntryPagination(
+      payload.pagination || {
+        page: nextPage,
+        limit: entryPagination.limit || 500,
+        total: dataRef.current.length + nextRows.length,
+        totalPages: nextPage,
+        hasMore: false,
+      }
+    );
+  } catch (error) {
+    console.error("Failed to load more entries:", error);
+    setLoadError("Failed to load more entries. Please try again.");
+  } finally {
+    setIsLoadingMoreEntries(false);
+  }
+}, [
+  token,
+  id,
+  entryPage,
+  entryPagination,
+  isLoadingMoreEntries,
+  regenerateSrNumbers,
+]);
 
   const handleExport = useCallback(() => {
     try {
@@ -890,6 +962,28 @@ newData = [emptyRow];
         readOnly={isAdminReadOnly}
         disabled={isAdminReadOnly}
       />
+
+{entryPagination.hasMore && (
+  <div style={{ display: "flex", justifyContent: "center", margin: "16px 0" }}>
+    <button
+      type="button"
+      onClick={handleLoadMoreEntries}
+      disabled={isLoadingMoreEntries}
+      style={{
+        padding: "10px 18px",
+        borderRadius: "8px",
+        border: "1px solid #cbd5e1",
+        background: "#ffffff",
+        fontWeight: 700,
+        cursor: isLoadingMoreEntries ? "not-allowed" : "pointer",
+      }}
+    >
+      {isLoadingMoreEntries
+        ? "Loading..."
+        : `Load More Entries (${data.length}/${entryPagination.total})`}
+    </button>
+  </div>
+)}
 
       <AddTeamEntriesModal
         show={showAddTeamEntriesModal && !isAdminReadOnly}

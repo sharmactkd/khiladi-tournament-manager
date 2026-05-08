@@ -179,6 +179,8 @@ const Winner = () => {
 
   const [tournament, setTournament] = useState(null);
   const [players, setPlayers] = useState([]);
+  const [groupedFromServer, setGroupedFromServer] = useState([]);
+const [availableEventsFromServer, setAvailableEventsFromServer] = useState(["OVERALL"]);
   const [selectedEvent, setSelectedEvent] = useState("KYORUGI");
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -194,43 +196,22 @@ const Winner = () => {
         setIsLoading(true);
         setError(null);
 
-       const [tournamentRes, entriesRes] = await Promise.all([
+    const [tournamentRes, winnersRes] = await Promise.all([
   api.get(`/tournament/${id}`),
-  api.get(`/tournaments/${id}/entries?ts=${Date.now()}`),
+  api.get(`/tournament/${id}/winners?event=${encodeURIComponent(selectedEvent)}&ts=${Date.now()}`),
 ]);
 
-        const td = tournamentRes.data;
+const td = tournamentRes.data;
 
-        setTournament({
-          name: td.tournamentName || "Unnamed Tournament",
-          federation: td.federation || "N/A",
-          logos: td.logos || [],
-        });
+setTournament({
+  name: td.tournamentName || "Unnamed Tournament",
+  federation: td.federation || "N/A",
+  logos: td.logos || [],
+});
 
-        const rows = Array.isArray(entriesRes?.data?.entries) ? entriesRes.data.entries : [];
-
-        const normalizedRows = rows
-          .map((p) => {
-            const normalized = {
-              ...p,
-              name: normalizeText(p.name),
-              team: normalizeText(p.team),
-              gender: normalizeGender(p.gender),
-              ageCategory: normalizeAgeCategory(p.ageCategory),
-              weightCategory: normalizeText(p.weightCategory),
-              medal: normalizeMedal(p.medal),
-              event: normalizeText(p.event),
-              subEvent: normalizeText(p.subEvent),
-            };
-
-            return {
-              ...normalized,
-              eventType: getEventType(normalized),
-            };
-          })
-          .filter((p) => p.name && p.gender && p.ageCategory && p.weightCategory && p.medal);
-
-        setPlayers(normalizedRows);
+setPlayers([]);
+setGroupedFromServer(winnersRes.data?.pages || []);
+setAvailableEventsFromServer(winnersRes.data?.availableEvents || ["OVERALL"]);
       } catch (err) {
         console.error("Winner page load failed:", err);
         setError(err?.message || "Failed to load data");
@@ -240,15 +221,13 @@ const Winner = () => {
     };
 
     if (id) fetchData();
-  }, [id]);
+  }, [id, selectedEvent]);
 
   const availableEvents = useMemo(() => {
-    const foundEvents = [...new Set(players.map((p) => p.eventType).filter(Boolean))].sort(
-      (a, b) => EVENT_ORDER.indexOf(a) - EVENT_ORDER.indexOf(b)
-    );
-
-    return ["OVERALL", ...foundEvents];
-  }, [players]);
+  return (availableEventsFromServer || ["OVERALL"]).sort(
+    (a, b) => EVENT_ORDER.indexOf(a) - EVENT_ORDER.indexOf(b)
+  );
+}, [availableEventsFromServer]);
 
   useEffect(() => {
     if (!availableEvents.includes(selectedEvent)) {
@@ -256,51 +235,7 @@ const Winner = () => {
     }
   }, [availableEvents, selectedEvent]);
 
-  const filteredPlayers = useMemo(() => {
-    if (selectedEvent === "OVERALL") return players;
-    return players.filter((player) => player.eventType === selectedEvent);
-  }, [players, selectedEvent]);
-
-  const grouped = useMemo(() => {
-    const pageMap = new Map();
-
-    filteredPlayers.forEach((player) => {
-      const pageKey = `${player.gender}_${player.ageCategory}`;
-      const weightKey = player.weightCategory || "Unknown";
-
-      if (!pageMap.has(pageKey)) {
-        pageMap.set(pageKey, {
-          gender: player.gender,
-          age: player.ageCategory,
-          weights: new Map(),
-        });
-      }
-
-      const page = pageMap.get(pageKey);
-
-      if (!page.weights.has(weightKey)) {
-        page.weights.set(weightKey, []);
-      }
-
-      page.weights.get(weightKey).push(player);
-    });
-
-    const pages = Array.from(pageMap.values()).map((page) => ({
-      ...page,
-      weights: Array.from(page.weights.entries())
-        .map(([weightCategory, medalRows]) => ({
-          weightCategory,
-          rows: medalRows.sort((a, b) => {
-            const medalDiff = (medalOrder[a.medal] || 99) - (medalOrder[b.medal] || 99);
-            if (medalDiff !== 0) return medalDiff;
-            return String(a.name || "").localeCompare(String(b.name || ""));
-          }),
-        }))
-        .sort((a, b) => getWeightSortValue(a.weightCategory) - getWeightSortValue(b.weightCategory)),
-    }));
-
-    return pages.sort(sortByAgeGenderWeight);
-  }, [filteredPlayers]);
+ const grouped = groupedFromServer;
 
   const hasWinners = grouped.length > 0;
 

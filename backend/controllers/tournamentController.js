@@ -561,55 +561,26 @@ const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => 
     await EntryRow.bulkWrite(bulkOps, { ordered: false });
   }
 
-  const latestRows = await EntryRow.find({ tournamentId }).sort({ srNo: 1, createdAt: 1 }).lean();
-
-  const legacyEntries = latestRows.map((row, index) => ({
-    srNo: index + 1,
-    entryId: row.entryId,
-    entrySource: row.entrySource || "",
-    sourceSubmissionId: row.sourceSubmissionId || null,
-    sourcePlayerId: row.sourcePlayerId || "",
-    title: row.title || "",
-    name: row.name || "",
-    fathersName: row.fathersName || "",
-    school: row.school || "",
-    schoolName: row.schoolName || row.school || "",
-    class: row.class || "",
-    team: row.team || "",
-    gender: row.gender || "",
-    dob: row.dob || null,
-    weight: row.weight ?? null,
-    event: row.event || "",
-    subEvent: row.subEvent || "",
-    ageCategory: row.ageCategory || "",
-    weightCategory: row.weightCategory || "",
-    medal: row.medal || "",
-    medalSource: row.medalSource || "",
-    medalUpdatedAt: row.medalUpdatedAt || null,
-    coach: row.coach || "",
-    coachContact: row.coachContact || "",
-    manager: row.manager || "",
-    managerContact: row.managerContact || "",
-  }));
-
   await Entry.findOneAndUpdate(
-    { tournamentId },
-    {
-      $set: {
-        entries: legacyEntries,
-        updatedBy: userId || null,
-      },
-      $setOnInsert: {
-        tournamentId,
-      },
+  { tournamentId },
+  {
+    $set: {
+      updatedBy: userId || null,
     },
-    {
-      upsert: true,
-      new: true,
-      runValidators: true,
-      setDefaultsOnInsert: true,
-    }
-  );
+    $unset: {
+      entries: "",
+    },
+    $setOnInsert: {
+      tournamentId,
+    },
+  },
+  {
+    upsert: true,
+    new: true,
+    runValidators: true,
+    setDefaultsOnInsert: true,
+  }
+);
 
   return {
     attempted: true,
@@ -620,6 +591,512 @@ const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => 
     reason: null,
   };
 }; 
+
+const normalizeEventTypeForAggregation = {
+  $switch: {
+    branches: [
+      {
+        case: {
+          $regexMatch: {
+            input: { $toLower: { $ifNull: ["$subEvent", ""] } },
+            regex: "tag",
+          },
+        },
+        then: "TAG TEAM",
+      },
+      {
+        case: {
+          $regexMatch: {
+            input: { $toLower: { $ifNull: ["$subEvent", ""] } },
+            regex: "fresher|freshers|fresh",
+          },
+        },
+        then: "FRESHER",
+      },
+      {
+        case: {
+          $regexMatch: {
+            input: { $toLower: { $ifNull: ["$event", ""] } },
+            regex: "poomsae",
+          },
+        },
+        then: "POOMSAE",
+      },
+      {
+        case: {
+          $regexMatch: {
+            input: { $toLower: { $ifNull: ["$event", ""] } },
+            regex: "kyorugi",
+          },
+        },
+        then: "KYORUGI",
+      },
+    ],
+    default: "OTHER",
+  },
+};
+
+const normalizeGenderForAggregation = {
+  $switch: {
+    branches: [
+      {
+        case: {
+          $in: [
+            { $toLower: { $trim: { input: { $ifNull: ["$gender", ""] } } } },
+            ["male", "m", "boy", "boys"],
+          ],
+        },
+        then: "Male",
+      },
+      {
+        case: {
+          $in: [
+            { $toLower: { $trim: { input: { $ifNull: ["$gender", ""] } } } },
+            ["female", "f", "girl", "girls"],
+          ],
+        },
+        then: "Female",
+      },
+    ],
+    default: { $trim: { input: { $ifNull: ["$gender", ""] } } },
+  },
+};
+
+const normalizeAgeCategoryForAggregation = {
+  $switch: {
+    branches: [
+      {
+        case: {
+          $in: [
+            { $toLower: { $trim: { input: { $ifNull: ["$ageCategory", ""] } } } },
+            ["sub-junior", "sub junior"],
+          ],
+        },
+        then: "Sub-Junior",
+      },
+      {
+        case: {
+          $eq: [
+            { $toLower: { $trim: { input: { $ifNull: ["$ageCategory", ""] } } } },
+            "cadet",
+          ],
+        },
+        then: "Cadet",
+      },
+      {
+        case: {
+          $eq: [
+            { $toLower: { $trim: { input: { $ifNull: ["$ageCategory", ""] } } } },
+            "junior",
+          ],
+        },
+        then: "Junior",
+      },
+      {
+        case: {
+          $eq: [
+            { $toLower: { $trim: { input: { $ifNull: ["$ageCategory", ""] } } } },
+            "senior",
+          ],
+        },
+        then: "Senior",
+      },
+      {
+        case: {
+          $in: [
+            { $toLower: { $trim: { input: { $ifNull: ["$ageCategory", ""] } } } },
+            ["under-14", "under - 14", "under 14"],
+          ],
+        },
+        then: "Under - 14",
+      },
+      {
+        case: {
+          $in: [
+            { $toLower: { $trim: { input: { $ifNull: ["$ageCategory", ""] } } } },
+            ["under-17", "under - 17", "under 17"],
+          ],
+        },
+        then: "Under - 17",
+      },
+      {
+        case: {
+          $in: [
+            { $toLower: { $trim: { input: { $ifNull: ["$ageCategory", ""] } } } },
+            ["under-19", "under - 19", "under 19"],
+          ],
+        },
+        then: "Under - 19",
+      },
+    ],
+    default: { $trim: { input: { $ifNull: ["$ageCategory", ""] } } },
+  },
+};
+
+const buildEventMatch = (selectedEvent) => {
+  const value = String(selectedEvent || "").trim().toUpperCase();
+  if (!value || value === "OVERALL") return {};
+  return { eventType: value };
+};
+
+export const getWinnerAggregation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const selectedEvent = String(req.query.event || "OVERALL").trim().toUpperCase();
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid tournament ID" });
+    }
+
+    const tournamentId = new mongoose.Types.ObjectId(id);
+
+    const pipeline = [
+      {
+        $match: {
+          tournamentId,
+          medal: { $in: ["Gold", "Silver", "Bronze"] },
+          name: { $nin: ["", null] },
+          gender: { $nin: ["", null] },
+          ageCategory: { $nin: ["", null] },
+          weightCategory: { $nin: ["", null] },
+        },
+      },
+      {
+        $addFields: {
+          eventType: normalizeEventTypeForAggregation,
+          normalizedGender: normalizeGenderForAggregation,
+          normalizedAgeCategory: normalizeAgeCategoryForAggregation,
+          normalizedWeightCategory: { $trim: { input: { $ifNull: ["$weightCategory", ""] } } },
+          normalizedName: { $trim: { input: { $ifNull: ["$name", ""] } } },
+          normalizedTeam: { $trim: { input: { $ifNull: ["$team", ""] } } },
+          medalOrder: {
+            $switch: {
+              branches: [
+                { case: { $eq: ["$medal", "Gold"] }, then: 1 },
+                { case: { $eq: ["$medal", "Silver"] }, then: 2 },
+                { case: { $eq: ["$medal", "Bronze"] }, then: 3 },
+              ],
+              default: 99,
+            },
+          },
+        },
+      },
+      { $match: buildEventMatch(selectedEvent) },
+      {
+        $sort: {
+          normalizedAgeCategory: 1,
+          normalizedGender: 1,
+          normalizedWeightCategory: 1,
+          medalOrder: 1,
+          normalizedName: 1,
+        },
+      },
+      {
+        $group: {
+          _id: {
+            gender: "$normalizedGender",
+            age: "$normalizedAgeCategory",
+            weightCategory: "$normalizedWeightCategory",
+          },
+          rows: {
+            $push: {
+              entryId: "$entryId",
+              name: "$normalizedName",
+              team: "$normalizedTeam",
+              gender: "$normalizedGender",
+              ageCategory: "$normalizedAgeCategory",
+              weightCategory: "$normalizedWeightCategory",
+              medal: "$medal",
+              event: "$event",
+              subEvent: "$subEvent",
+              eventType: "$eventType",
+            },
+          },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            gender: "$_id.gender",
+            age: "$_id.age",
+          },
+          weights: {
+            $push: {
+              weightCategory: "$_id.weightCategory",
+              rows: "$rows",
+            },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          gender: "$_id.gender",
+          age: "$_id.age",
+          weights: 1,
+        },
+      },
+    ];
+
+    const [pages, eventsRaw] = await Promise.all([
+      EntryRow.aggregate(pipeline),
+      EntryRow.aggregate([
+        {
+          $match: {
+            tournamentId,
+            medal: { $in: ["Gold", "Silver", "Bronze"] },
+          },
+        },
+        { $addFields: { eventType: normalizeEventTypeForAggregation } },
+        {
+          $group: {
+            _id: "$eventType",
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            eventType: "$_id",
+          },
+        },
+      ]),
+    ]);
+
+    const availableEvents = [
+      "OVERALL",
+      ...eventsRaw
+        .map((item) => item.eventType)
+        .filter((event) => ["KYORUGI", "POOMSAE", "FRESHER", "TAG TEAM"].includes(event)),
+    ];
+
+    return res.status(200).json({
+      success: true,
+      selectedEvent,
+      availableEvents: [...new Set(availableEvents)],
+      pages,
+      count: pages.length,
+    });
+  } catch (error) {
+    logger.error("Winner aggregation failed", {
+      error: error.message,
+      stack: error.stack,
+      tournamentId: req.params.id,
+      userId: req.user?._id,
+    });
+
+    return res.status(500).json({ message: "Failed to load winners" });
+  }
+};
+
+export const getTeamChampionshipAggregation = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const selectedEvent = String(req.query.event || "OVERALL").trim().toUpperCase();
+    const selectedAge = String(req.query.age || "OVERALL").trim();
+    const selectedGender = String(req.query.gender || "OVERALL").trim();
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ message: "Invalid tournament ID" });
+    }
+
+    const tournament = await Tournament.findById(id).select("medalPoints").lean();
+
+    const medalPoints = {
+      gold: Number(tournament?.medalPoints?.gold) || 5,
+      silver: Number(tournament?.medalPoints?.silver) || 3,
+      bronze: Number(tournament?.medalPoints?.bronze) || 1,
+    };
+
+    const tournamentId = new mongoose.Types.ObjectId(id);
+
+    const basePipeline = [
+      {
+        $match: {
+          tournamentId,
+          name: { $nin: ["", null] },
+          team: { $nin: ["", null, "Independent"] },
+          gender: { $nin: ["", null] },
+          ageCategory: { $nin: ["", null] },
+          weightCategory: { $nin: ["", null] },
+        },
+      },
+      {
+        $addFields: {
+          eventType: normalizeEventTypeForAggregation,
+          normalizedGender: normalizeGenderForAggregation,
+          normalizedAgeCategory: normalizeAgeCategoryForAggregation,
+          normalizedTeam: {
+            $trim: {
+              input: { $ifNull: ["$team", "Independent"] },
+            },
+          },
+          normalizedMedal: {
+            $cond: [{ $in: ["$medal", ["Gold", "Silver", "Bronze"]] }, "$medal", ""],
+          },
+        },
+      },
+    ];
+
+    const filterMatch = {
+      ...buildEventMatch(selectedEvent),
+      ...(selectedAge !== "OVERALL" ? { normalizedAgeCategory: selectedAge } : {}),
+      ...(selectedGender !== "OVERALL" ? { normalizedGender: selectedGender } : {}),
+    };
+
+    const [teams, filtersRaw, eventsRaw, statsRaw] = await Promise.all([
+      EntryRow.aggregate([
+        ...basePipeline,
+        { $match: filterMatch },
+        {
+          $group: {
+            _id: "$normalizedTeam",
+            gold: {
+              $sum: { $cond: [{ $eq: ["$normalizedMedal", "Gold"] }, 1, 0] },
+            },
+            silver: {
+              $sum: { $cond: [{ $eq: ["$normalizedMedal", "Silver"] }, 1, 0] },
+            },
+            bronze: {
+              $sum: { $cond: [{ $eq: ["$normalizedMedal", "Bronze"] }, 1, 0] },
+            },
+          },
+        },
+        {
+          $addFields: {
+            total: {
+              $add: [
+                { $multiply: ["$gold", medalPoints.gold] },
+                { $multiply: ["$silver", medalPoints.silver] },
+                { $multiply: ["$bronze", medalPoints.bronze] },
+              ],
+            },
+          },
+        },
+        {
+          $match: {
+            total: { $gt: 0 },
+          },
+        },
+        {
+          $sort: {
+            total: -1,
+            gold: -1,
+            silver: -1,
+            bronze: -1,
+            _id: 1,
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            team: "$_id",
+            gold: 1,
+            silver: 1,
+            bronze: 1,
+            total: 1,
+          },
+        },
+      ]),
+
+      EntryRow.aggregate([
+        ...basePipeline,
+        {
+          $group: {
+            _id: null,
+            ages: { $addToSet: "$normalizedAgeCategory" },
+            genders: { $addToSet: "$normalizedGender" },
+          },
+        },
+      ]),
+
+      EntryRow.aggregate([
+        ...basePipeline,
+        {
+          $group: {
+            _id: "$eventType",
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            eventType: "$_id",
+          },
+        },
+      ]),
+
+      EntryRow.aggregate([
+        ...basePipeline,
+        { $match: filterMatch },
+        {
+          $group: {
+            _id: null,
+            totalPlayers: { $sum: 1 },
+            totalTeams: { $addToSet: "$normalizedTeam" },
+            totalMale: {
+              $sum: { $cond: [{ $eq: ["$normalizedGender", "Male"] }, 1, 0] },
+            },
+            totalFemale: {
+              $sum: { $cond: [{ $eq: ["$normalizedGender", "Female"] }, 1, 0] },
+            },
+            medalWinners: {
+              $sum: {
+                $cond: [{ $in: ["$normalizedMedal", ["Gold", "Silver", "Bronze"]] }, 1, 0],
+              },
+            },
+          },
+        },
+        {
+          $project: {
+            _id: 0,
+            totalPlayers: 1,
+            totalTeams: { $size: "$totalTeams" },
+            totalMale: 1,
+            totalFemale: 1,
+            medalWinners: 1,
+          },
+        },
+      ]),
+    ]);
+
+    const filters = filtersRaw?.[0] || { ages: [], genders: [] };
+    const stats = statsRaw?.[0] || {
+      totalPlayers: 0,
+      totalTeams: 0,
+      totalMale: 0,
+      totalFemale: 0,
+      medalWinners: 0,
+    };
+
+    const availableEvents = [
+      "OVERALL",
+      ...eventsRaw
+        .map((item) => item.eventType)
+        .filter((event) => ["KYORUGI", "POOMSAE", "FRESHER", "TAG TEAM"].includes(event)),
+    ];
+
+    return res.status(200).json({
+      success: true,
+      selectedEvent,
+      selectedAge,
+      selectedGender,
+      medalPoints,
+      teams,
+      stats,
+      availableEvents: [...new Set(availableEvents)],
+      availableAges: ["OVERALL", ...filters.ages.filter(Boolean)],
+      availableGenders: ["OVERALL", ...filters.genders.filter(Boolean)],
+    });
+  } catch (error) {
+    logger.error("Team championship aggregation failed", {
+      error: error.message,
+      stack: error.stack,
+      tournamentId: req.params.id,
+      userId: req.user?._id,
+    });
+
+    return res.status(500).json({ message: "Failed to load team championship" });
+  }
+};
 
 // ================ PUBLIC ENDPOINTS (No Auth Required) ================
 

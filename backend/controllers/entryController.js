@@ -342,27 +342,30 @@ const syncEntryRowsFromEntries = async ({
 
 const mirrorEntryRowsToLegacyEntry = async ({
   tournamentId,
-  entries,
   userState = {},
   userId,
 }) => {
-  const update = {
-    $set: {
-      entries,
-      userState: userState && typeof userState === "object" ? userState : {},
-      updatedBy: userId || null,
+  return Entry.findOneAndUpdate(
+    { tournamentId },
+    {
+      $set: {
+        userState: userState && typeof userState === "object" ? userState : {},
+        updatedBy: userId || null,
+      },
+      $unset: {
+        entries: "",
+      },
+      $setOnInsert: {
+        tournamentId,
+      },
     },
-    $setOnInsert: {
-      tournamentId: new mongoose.Types.ObjectId(tournamentId),
-    },
-  };
-
-  return Entry.findOneAndUpdate({ tournamentId }, update, {
-    upsert: true,
-    new: true,
-    setDefaultsOnInsert: true,
-    runValidators: true,
-  }).lean();
+    {
+      upsert: true,
+      new: true,
+      setDefaultsOnInsert: true,
+      runValidators: true,
+    }
+  ).lean();
 };
 
 const getLegacyUserState = async (tournamentId) => {
@@ -565,27 +568,18 @@ const buildEntryRowSetFromUpdates = (updates = {}) => {
   return setObj;
 };
 
-const updateLegacySingleEntryMirror = async ({ tournamentId, entryId, setObj, userId }) => {
-  const legacySet = {};
-
-  Object.entries(setObj).forEach(([field, value]) => {
-    legacySet[`entries.$.${field}`] = value;
-  });
-
-  if (!Object.keys(legacySet).length) return null;
-
+const updateLegacySingleEntryMirror = async ({ tournamentId, userId }) => {
   return Entry.findOneAndUpdate(
-    {
-      tournamentId,
-      "entries.entryId": String(entryId).trim(),
-    },
+    { tournamentId },
     {
       $set: {
-        ...legacySet,
-        updatedBy: userId,
+        updatedBy: userId || null,
+      },
+      $unset: {
+        entries: "",
       },
     },
-    { new: true, runValidators: true }
+    { new: true }
   ).lean();
 };
 
@@ -602,10 +596,46 @@ export const getEntries = async (req, res) => {
       userId: req.user?._id || null,
     });
 
-    const [rows, legacyMeta] = await Promise.all([
-      getEntryRows(id),
-      getLegacyUserState(id),
-    ]);
+    const page = Math.max(Number.parseInt(req.query.page, 10) || 1, 1);
+const limit = Math.min(
+  Math.max(Number.parseInt(req.query.limit, 10) || 500, 1),
+  1000
+);
+const skip = (page - 1) * limit;
+const search = String(req.query.search || "").trim();
+
+const query = {
+  tournamentId: new mongoose.Types.ObjectId(id),
+};
+
+if (search) {
+  const searchRegex = new RegExp(
+    search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    "i"
+  );
+
+  query.$or = [
+    { name: searchRegex },
+    { team: searchRegex },
+    { gender: searchRegex },
+    { event: searchRegex },
+    { subEvent: searchRegex },
+    { ageCategory: searchRegex },
+    { weightCategory: searchRegex },
+    { medal: searchRegex },
+    { coach: searchRegex },
+  ];
+}
+
+const [rows, total, legacyMeta] = await Promise.all([
+  EntryRow.find(query)
+    .sort({ srNo: 1, createdAt: 1 })
+    .skip(skip)
+    .limit(limit)
+    .lean(),
+  EntryRow.countDocuments(query),
+  getLegacyUserState(id),
+]);
 
     const mappedEntries = rows.map(mapEntryRowForResponse);
 
@@ -613,9 +643,22 @@ export const getEntries = async (req, res) => {
       success: true,
       entries: mappedEntries,
       count: mappedEntries.length,
+      total,
+pagination: {
+  page,
+  limit,
+  total,
+  totalPages: Math.ceil(total / limit) || 1,
+  hasMore: page * limit < total,
+},
       userState: legacyMeta.userState || {},
-      lastUpdated:
-        rows?.[0]?.updatedAt || legacyMeta.lastUpdated || null,
+     lastUpdated:
+  rows.reduce((latest, row) => {
+    if (!row.updatedAt) return latest;
+    return !latest || new Date(row.updatedAt) > new Date(latest)
+      ? row.updatedAt
+      : latest;
+  }, null) || legacyMeta.lastUpdated || null,
       ...(mappedEntries.length === 0 ? { message: "No entries found" } : {}),
     });
   } catch (error) {
@@ -683,12 +726,11 @@ export const saveEntries = async (req, res) => {
       removeMissingRows: true,
     });
 
-    const updated = await mirrorEntryRowsToLegacyEntry({
-      tournamentId: id,
-      entries: mappedEntries,
-      userState: state,
-      userId: req.user._id,
-    });
+const updated = await mirrorEntryRowsToLegacyEntry({
+  tournamentId: id,
+  userState: state,
+  userId: req.user._id,
+});
 
     const updatedEntriesCount = mappedEntries.length;
     const addedCount = Math.max(updatedEntriesCount - existingEntriesCount, 0);
@@ -793,12 +835,11 @@ export const createSingleEntry = async (req, res) => {
     const mappedEntries = rows.map(mapEntryRowForResponse);
 
     const legacyMeta = await getLegacyUserState(id);
-    await mirrorEntryRowsToLegacyEntry({
-      tournamentId: id,
-      entries: mappedEntries,
-      userState: legacyMeta.userState,
-      userId: req.user._id,
-    });
+   await mirrorEntryRowsToLegacyEntry({
+  tournamentId: id,
+  userState: legacyMeta.userState,
+  userId: req.user._id,
+});
 
     return res.status(201).json({
       success: true,
@@ -870,12 +911,10 @@ export const updateSingleEntry = async (req, res) => {
       });
     }
 
-    await updateLegacySingleEntryMirror({
-      tournamentId: id,
-      entryId,
-      setObj,
-      userId: req.user._id,
-    });
+  await updateLegacySingleEntryMirror({
+  tournamentId: id,
+  userId: req.user._id,
+});
 
     logger.info("Entry row updated", {
       entryId,
@@ -937,14 +976,14 @@ export const deleteSingleEntry = async (req, res) => {
       });
     }
 
-    const updatedLegacy = await Entry.findOneAndUpdate(
-      { tournamentId: id },
-      {
-        $pull: { entries: { entryId: String(entryId).trim() } },
-        $set: { updatedBy: req.user._id },
-      },
-      { new: true }
-    ).lean();
+   const updatedLegacy = await Entry.findOneAndUpdate(
+  { tournamentId: id },
+  {
+    $set: { updatedBy: req.user._id },
+    $unset: { entries: "" },
+  },
+  { new: true }
+).lean();
 
     logger.info("Entry row deleted", {
       entryId,
@@ -957,7 +996,9 @@ export const deleteSingleEntry = async (req, res) => {
       message: "Entry deleted successfully",
       entryId,
       lastUpdated: updatedLegacy?.updatedAt || null,
-      count: updatedLegacy?.entries?.length || 0,
+      count: await EntryRow.countDocuments({
+  tournamentId: new mongoose.Types.ObjectId(id),
+}),
     });
   } catch (error) {
     logger.error("Delete entry failed", {
