@@ -184,17 +184,29 @@ export const generateSingleEliminationGameStructure = (players, poolLabel = '') 
   const p = (idx) => {
     if (idx >= players.length) {
       return {
-        team: { id: `bye-${idx}`, name: 'BYE', team: '' },
+        team: {
+  id: `bye-${idx}`,
+  entryId: "",
+  name: "BYE",
+  team: "",
+},
         score: { score: null },
       };
     }
     const player = players[idx] || {};
     return {
-      team: {
-        id: `player-${idx}`,
-        name: player.name || '',
-        team: player.team || '',
-      },
+     team: {
+  id: player.entryId || `player-${idx}`,
+  entryId: player.entryId || "",
+  name: player.name || "",
+  team: player.team || "",
+  gender: player.gender || "",
+  ageCategory: player.ageCategory || "",
+  weightCategory: player.weightCategory || "",
+  weight: player.weight || "",
+  event: player.event || "",
+  subEvent: player.subEvent || "",
+},
       score: { score: null },
     };
   };

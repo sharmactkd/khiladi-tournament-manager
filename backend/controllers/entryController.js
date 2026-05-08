@@ -679,7 +679,15 @@ pagination: {
 export const saveEntries = async (req, res) => {
   try {
     const { id } = req.params;
-    const { entries, state } = req.body || {};
+    const {
+  entries,
+  state,
+  isFullSnapshot = false,
+  confirmReplaceAll = "",
+} = req.body || {};
+
+const allowDeleteMissingRows =
+  isFullSnapshot === true && confirmReplaceAll === "REPLACE_ALL_ENTRIES";
 
     if (!req.user) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -720,11 +728,11 @@ export const saveEntries = async (req, res) => {
     });
 
     await syncEntryRowsFromEntries({
-      tournamentId: id,
-      entries: mappedEntries,
-      userId: req.user._id,
-      removeMissingRows: true,
-    });
+  tournamentId: id,
+  entries: mappedEntries,
+  userId: req.user._id,
+  removeMissingRows: allowDeleteMissingRows,
+});
 
 const updated = await mirrorEntryRowsToLegacyEntry({
   tournamentId: id,
@@ -759,12 +767,15 @@ const updated = await mirrorEntryRowsToLegacyEntry({
       },
     });
 
-    return res.status(200).json({
-      success: true,
-      message: "Saved successfully",
-      lastUpdated: updated?.updatedAt || null,
-      count: mappedEntries.length,
-    });
+   return res.status(200).json({
+  success: true,
+  message: allowDeleteMissingRows
+    ? "Full snapshot saved successfully"
+    : "Saved safely without deleting missing rows",
+  lastUpdated: updated?.updatedAt || null,
+  count: mappedEntries.length,
+  deleteMissingRows: allowDeleteMissingRows,
+});
   } catch (error) {
     logger.error("Real-time save failed", {
       error: error.message,

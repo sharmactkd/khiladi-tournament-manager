@@ -28,14 +28,7 @@ const normalizeUserData = (data) => {
 };
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(() => {
-    try {
-      const stored = localStorage.getItem("user");
-      return stored ? normalizeUserData(JSON.parse(stored)) : null;
-    } catch {
-      return null;
-    }
-  });
+  const [user, setUser] = useState(null);
 
   const [token, setToken] = useState(getAccessToken());
   const [loading, setLoading] = useState(true);
@@ -48,7 +41,6 @@ export const AuthProvider = ({ children }) => {
       throw new Error("Invalid user data");
     }
 
-    localStorage.setItem("user", JSON.stringify(normalizedUser));
     setUser(normalizedUser);
 
     return normalizedUser;
@@ -57,7 +49,8 @@ export const AuthProvider = ({ children }) => {
   const clearAuthState = useCallback(() => {
     clearAccessToken();
     localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
+localStorage.removeItem("user");
+sessionStorage.removeItem("userSnapshot");
 
     setUser(null);
     setToken(null);
@@ -74,7 +67,7 @@ export const AuthProvider = ({ children }) => {
 
       setAccessToken(accessToken);
       localStorage.removeItem("authToken");
-      localStorage.setItem("user", JSON.stringify(normalizedUser));
+      
 
       setUser(normalizedUser);
       setToken(accessToken);
@@ -121,21 +114,17 @@ export const AuthProvider = ({ children }) => {
     refreshInFlightRef.current = (async () => {
       try {
         const response = await api.post("/auth/refresh", {}, { withCredentials: true });
-        const { accessToken, user: refreshedUser } = response.data || {};
+        const { accessToken } = response.data || {};
 
         if (!accessToken) throw new Error("Refresh did not return accessToken");
 
         setAccessToken(accessToken);
         setToken(accessToken);
 
-        let finalUser = refreshedUser ? normalizeUserData(refreshedUser) : null;
+       const userRes = await api.get("/auth/me");
+const finalUser = normalizeUserData(userRes.data);
 
-        if (!finalUser?.id) {
-          const userRes = await api.get("/auth/me");
-          finalUser = normalizeUserData(userRes.data);
-        }
-
-        persistUser(finalUser);
+persistUser(finalUser);
 
         return accessToken;
       } catch (error) {
@@ -156,7 +145,7 @@ export const AuthProvider = ({ children }) => {
 
       try {
         const response = await api.post("/auth/refresh", {}, { withCredentials: true });
-        const { accessToken, user: refreshedUser } = response.data || {};
+        const { accessToken } = response.data || {};
 
         if (!accessToken) {
           throw new Error("Refresh did not return accessToken");
@@ -165,15 +154,10 @@ export const AuthProvider = ({ children }) => {
         setAccessToken(accessToken);
         setToken(accessToken);
 
-        let userData = refreshedUser ? normalizeUserData(refreshedUser) : null;
+      const res = await api.get("/auth/me");
+const userData = normalizeUserData(res.data);
 
-        if (!userData?.id) {
-          const res = await api.get("/auth/me");
-          userData = normalizeUserData(res.data);
-        }
-
-        setUser(userData);
-        localStorage.setItem("user", JSON.stringify(userData));
+setUser(userData);
       } catch (error) {
         clearAuthState();
       } finally {

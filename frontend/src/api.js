@@ -121,8 +121,9 @@ api.interceptors.response.use(
         console.error("Token refresh failed:", refreshError);
 
         clearAccessToken();
-        localStorage.removeItem("user");
-        localStorage.removeItem("authToken");
+       localStorage.removeItem("user");
+localStorage.removeItem("authToken");
+sessionStorage.removeItem("userSnapshot");
 
         if (typeof window !== "undefined" && !isAuthPublicPage()) {
           window.location.href = "/login";
@@ -231,7 +232,14 @@ export const getEntries = (tournamentId, params = {}) =>
   apiCall("get", `/tournaments/${tournamentId}/entries${toQueryString(params)}`);
 
 export const saveEntries = (tournamentId, payload) =>
-  apiCall("post", `/tournaments/${tournamentId}/entries`, payload);
+  apiCall("post", `/tournaments/${tournamentId}/entries`, {
+    ...payload,
+    isFullSnapshot: payload?.isFullSnapshot === true,
+    confirmReplaceAll:
+      payload?.isFullSnapshot === true
+        ? "REPLACE_ALL_ENTRIES"
+        : "",
+  });
 
 export const updateEntryRow = (tournamentId, entryId, updates) =>
   apiCall(

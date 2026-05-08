@@ -485,23 +485,21 @@ const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => 
     };
   }
 
-  const targetByEntryId = new Map();
-  const targetByStrictKey = new Map();
-  const targetByMediumKey = new Map();
-  const targetByLooseKey = new Map();
+const targetByEntryId = new Map();
+const skippedWithoutEntryId = [];
 
-  validMedals.forEach((item) => {
-    const entryId = String(item.entryId || "").trim();
-    if (entryId && !targetByEntryId.has(entryId)) targetByEntryId.set(entryId, item);
+validMedals.forEach((item) => {
+  const entryId = String(item.entryId || "").trim();
 
-    const strictKey = buildResultStrictKey(item);
-    const mediumKey = buildResultMediumKey(item);
-    const looseKey = buildResultLooseKey(item);
+  if (!entryId) {
+    skippedWithoutEntryId.push(item);
+    return;
+  }
 
-    if (strictKey && !targetByStrictKey.has(strictKey)) targetByStrictKey.set(strictKey, item);
-    if (mediumKey && !targetByMediumKey.has(mediumKey)) targetByMediumKey.set(mediumKey, item);
-    if (looseKey && !targetByLooseKey.has(looseKey)) targetByLooseKey.set(looseKey, item);
-  });
+  if (!targetByEntryId.has(entryId)) {
+    targetByEntryId.set(entryId, item);
+  }
+});
 
   const now = new Date();
   let matchedCount = 0;
@@ -512,11 +510,7 @@ const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => 
   rows.forEach((row) => {
     const currentEntryId = String(row.entryId || "").trim();
 
-    const matched =
-      (currentEntryId ? targetByEntryId.get(currentEntryId) : null) ||
-      targetByStrictKey.get(buildResultStrictKey(row)) ||
-      targetByMediumKey.get(buildResultMediumKey(row)) ||
-      targetByLooseKey.get(buildResultLooseKey(row));
+   const matched = currentEntryId ? targetByEntryId.get(currentEntryId) : null;
 
     if (matched) {
       matchedCount += 1;
@@ -582,14 +576,16 @@ const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => 
   }
 );
 
-  return {
-    attempted: true,
-    matchedCount,
-    clearedCount,
-    medalsReceived: validMedals.length,
-    lastUpdated: now,
-    reason: null,
-  };
+ return {
+  attempted: true,
+  matchedCount,
+  clearedCount,
+  medalsReceived: validMedals.length,
+  skippedWithoutEntryId: skippedWithoutEntryId.length,
+  strictEntryIdOnly: true,
+  lastUpdated: now,
+  reason: null,
+};
 }; 
 
 const normalizeEventTypeForAggregation = {
