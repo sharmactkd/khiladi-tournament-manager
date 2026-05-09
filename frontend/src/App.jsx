@@ -83,6 +83,23 @@ function App() {
     return element;
   };
 
+  const requireTournamentLogin = (element) => {
+  if (!isAuthenticated) {
+    return (
+      <Navigate
+        to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
+        replace
+      />
+    );
+  }
+
+  if (needsProfileCompletion) {
+    return <Navigate to="/complete-profile" replace />;
+  }
+
+  return element;
+};
+
   return (
     <div className="appLayout">
       <Header />
@@ -201,13 +218,13 @@ function App() {
             }
           >
             <Route index element={<TournamentDetails />} />
-            <Route path="entry" element={<Entry />} />
-            <Route path="tie-sheet" element={<TieSheet />} />
-            <Route path="tie-sheet-record" element={<TieSheetRecord />} />
-            <Route path="winner" element={<Winner />} />
-            <Route path="team-championship" element={<TeamChampionship />} />
-            <Route path="official" element={<Official />} />
-            <Route path="team" element={<Team />} />
+            <Route path="entry" element={requireTournamentLogin(<Entry />)} />
+<Route path="tie-sheet" element={requireTournamentLogin(<TieSheet />)} />
+<Route path="tie-sheet-record" element={requireTournamentLogin(<TieSheetRecord />)} />
+<Route path="winner" element={requireTournamentLogin(<Winner />)} />
+<Route path="team-championship" element={requireTournamentLogin(<TeamChampionship />)} />
+<Route path="official" element={requireTournamentLogin(<Official />)} />
+<Route path="team" element={requireTournamentLogin(<Team />)} />
             <Route
               path="team-submissions"
               element={

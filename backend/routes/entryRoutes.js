@@ -48,19 +48,21 @@ const validateTournamentOwnership = async (req, res, next) => {
       return res.status(404).json({ message: "Tournament not found" });
     }
 
-    const isOwner = tournament.createdBy.toString() === req.user._id.toString();
+   const isOwner = tournament.createdBy.toString() === req.user._id.toString();
+const isAdminUser = ["admin", "superadmin"].includes(req.user.role);
 
-    if (!isOwner) {
-      logger.warn("Entry access denied: user is not tournament owner", {
-        tournamentId,
-        ownerId: tournament.createdBy,
-        userId: req.user._id,
-      });
+if (!isOwner && !isAdminUser) {
+  logger.warn("Entry access denied: user is not tournament owner/admin", {
+    tournamentId,
+    ownerId: tournament.createdBy,
+    userId: req.user._id,
+    role: req.user.role,
+  });
 
-      return res.status(403).json({
-        message: "You are not the organizer of this tournament",
-      });
-    }
+  return res.status(403).json({
+    message: "You are not allowed to access this tournament",
+  });
+}
 
     req.tournament = tournament;
     next();

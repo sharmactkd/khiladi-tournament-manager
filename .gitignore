@@ -10,6 +10,24 @@ node_modules/
 .env
 **/.env
 
+# Local env files
+.env.local
+.env.development
+.env.production
+.env.*.local
+
+# Frontend envs
+frontend/.env
+frontend/.env.local
+frontend/.env.development
+frontend/.env.production
+
+# Backend envs
+backend/.env
+backend/.env.local
+backend/.env.development
+backend/.env.production
+
 # Build folders
 dist/
 build/

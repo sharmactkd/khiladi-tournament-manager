@@ -48,8 +48,7 @@ export const AuthProvider = ({ children }) => {
 
   const clearAuthState = useCallback(() => {
     clearAccessToken();
-    localStorage.removeItem("authToken");
-localStorage.removeItem("user");
+  
 sessionStorage.removeItem("userSnapshot");
 
     setUser(null);
@@ -66,7 +65,7 @@ sessionStorage.removeItem("userSnapshot");
       }
 
       setAccessToken(accessToken);
-      localStorage.removeItem("authToken");
+     
       
 
       setUser(normalizedUser);
@@ -141,7 +140,15 @@ persistUser(finalUser);
 
   useEffect(() => {
     const restoreAuth = async () => {
-      localStorage.removeItem("authToken");
+     const hasRefreshCookie =
+  typeof document !== "undefined" &&
+  document.cookie.split(";").some((cookie) => cookie.trim().startsWith("refreshToken="));
+
+if (!hasRefreshCookie) {
+  clearAuthState();
+  setLoading(false);
+  return;
+}
 
       try {
         const response = await api.post("/auth/refresh", {}, { withCredentials: true });
@@ -159,10 +166,16 @@ const userData = normalizeUserData(res.data);
 
 setUser(userData);
       } catch (error) {
-        clearAuthState();
-      } finally {
-        setLoading(false);
-      }
+  const status = error?.response?.status;
+
+  if (status && status !== 401) {
+    console.error("Auth restore failed:", error);
+  }
+
+  clearAuthState();
+} finally {
+  setLoading(false);
+}
     };
 
     restoreAuth();

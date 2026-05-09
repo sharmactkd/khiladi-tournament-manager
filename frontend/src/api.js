@@ -121,8 +121,7 @@ api.interceptors.response.use(
         console.error("Token refresh failed:", refreshError);
 
         clearAccessToken();
-       localStorage.removeItem("user");
-localStorage.removeItem("authToken");
+     
 sessionStorage.removeItem("userSnapshot");
 
         if (typeof window !== "undefined" && !isAuthPublicPage()) {

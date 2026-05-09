@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Outlet, useParams, useNavigate } from "react-router-dom";
+import { Outlet, useParams, useNavigate, useLocation, Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getTournamentById } from "../api";
 import SubNavBar from "../components/SubNavBar";
@@ -27,6 +27,7 @@ const TournamentLayout = () => {
   const { id } = useParams();
   const { user, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [tournament, setTournament] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -97,6 +98,25 @@ const TournamentLayout = () => {
     return Boolean(user && (isTournamentOwner || isAdminUser));
   }, [user, isTournamentOwner, isAdminUser]);
 
+  const managementOnlyPaths = useMemo(
+  () => [
+    "entry",
+    "tie-sheet",
+    "tie-sheet-record",
+    "winner",
+    "team-championship",
+    "official",
+    "team",
+    "team-submissions",
+  ],
+  []
+);
+
+const isManagementOnlyPage = useMemo(() => {
+  const currentPath = location.pathname.split("/").filter(Boolean).pop();
+  return managementOnlyPaths.includes(currentPath);
+}, [location.pathname, managementOnlyPaths]);
+
   const isAdminReadOnly = Boolean(isAdminUser && !adminEditMode);
 
   const requestAdminSaveConfirmation = () => {
@@ -145,6 +165,10 @@ const TournamentLayout = () => {
       </div>
     );
   }
+
+  if (isManagementOnlyPage && !canAccessTournamentManagement) {
+  return <Navigate to={`/tournaments/${id}`} replace />;
+}
 
   return (
     <div className={styles.layoutContainer}>
