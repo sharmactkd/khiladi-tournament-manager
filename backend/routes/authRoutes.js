@@ -7,7 +7,8 @@ import {
   registerUser,
   loginUser,
   getMe,
-  logoutUser,
+ logoutUser,
+logoutAllUser,
   socialAuthSuccess,
   forgotPassword,
   resetPassword,
@@ -41,7 +42,7 @@ const isProd = process.env.NODE_ENV === "production";
 const cookieOptions = {
   httpOnly: true,
   secure: isProd,
-  sameSite: isProd ? "none" : "lax",
+  sameSite: "lax",
   path: "/",
 };
 
@@ -57,7 +58,15 @@ router.get("/me", authMiddleware, getMe);
 
 router.patch("/complete-profile", authMiddleware, completeProfile);
 
+
 router.post("/logout", requireCsrfToken, logoutUser);
+
+router.post(
+  "/logout-all",
+  authMiddleware,
+  requireCsrfToken,
+  logoutAllUser
+);
 
 router.post("/refresh", requireCsrfToken, async (req, res) => {
   try {

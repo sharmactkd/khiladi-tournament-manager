@@ -346,4 +346,7 @@ export const deleteAdminTournament = (tournamentId) =>
 export const createEntryRowsBulk = (tournamentId, payload) =>
   apiCall("post", `/tournaments/${tournamentId}/entries/bulk`, payload);
 
+export const logoutAllDevices = () =>
+  apiCall("post", "/auth/logout-all", {});
+
 export default api;

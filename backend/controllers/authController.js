@@ -31,7 +31,7 @@ const MAX_ACTIVE_REFRESH_SESSIONS = 5;
 const refreshCookieOptions = {
   httpOnly: true,
   secure: isProd,
-  sameSite: isProd ? "none" : "lax",
+  sameSite: "lax",
   path: "/",
   maxAge: REFRESH_COOKIE_MAX_AGE,
 };
@@ -600,14 +600,14 @@ export const logoutUser = async (req, res) => {
     res.clearCookie("refreshToken", {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      sameSite: "lax",
       path: "/",
     });
 
     res.clearCookie("accessToken", {
       httpOnly: true,
       secure: isProd,
-      sameSite: isProd ? "none" : "lax",
+      sameSite: "lax",
       path: "/",
     });
 clearCsrfCookie(res);
@@ -618,6 +618,59 @@ clearCsrfCookie(res);
   } catch (error) {
     logger.error("Logout failed", { error: error.message, stack: error.stack });
     res.status(500).json({ message: "Logout failed" });
+  }
+};
+
+export const logoutAllUser = async (req, res) => {
+  try {
+    if (!req.user?._id) {
+      return res.status(401).json({ message: "Authentication required" });
+    }
+
+    const user = await User.findById(req.user._id).select("+refreshTokens");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.refreshTokens = [];
+    await user.save({ validateBeforeSave: false });
+
+    res.clearCookie("refreshToken", {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/",
+    });
+
+    res.clearCookie("accessToken", {
+      httpOnly: true,
+      secure: isProd,
+      sameSite: "lax",
+      path: "/",
+    });
+
+    clearCsrfCookie(res);
+
+    logger.warn("LOGOUT_ALL_SESSIONS", {
+      userId: user._id,
+      ip: req.ip,
+      userAgent: req.headers?.["user-agent"] || "",
+    });
+
+    return res.json({
+      message: "Logged out from all devices successfully",
+    });
+  } catch (error) {
+    logger.error("Logout all failed", {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?._id,
+    });
+
+    return res.status(500).json({
+      message: "Logout all failed",
+    });
   }
 };
 

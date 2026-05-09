@@ -3,7 +3,18 @@ import winston from "winston";
 import "winston-daily-rotate-file";
 import fs from "fs";
 import path from "path";
+import { sanitizeLogMeta } from "./logSanitizer.js";
 
+const sanitizeFormat = winston.format((info) => {
+  const { level, message, ...meta } = info;
+  const sanitizedMeta = sanitizeLogMeta(meta);
+
+  return {
+    level,
+    message,
+    ...sanitizedMeta,
+  };
+});
 // Ensure logs directory exists
 const logsDir = path.join(process.cwd(), "logs");
 if (!fs.existsSync(logsDir)) {
@@ -12,8 +23,9 @@ if (!fs.existsSync(logsDir)) {
 
 // Common format
 const baseFormat = winston.format.combine(
+  sanitizeFormat(),
   winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
-  winston.format.errors({ stack: true }), // Stack trace include karo
+  winston.format.errors({ stack: process.env.NODE_ENV !== "production" }),
   winston.format.json()
 );
 
@@ -23,14 +35,15 @@ const getFormat = () => {
     return baseFormat;
   }
   // Development mein pretty print + color
-  return winston.format.combine(
-    winston.format.colorize(),
-    winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
-    winston.format.printf(
-      ({ level, message, timestamp, stack }) =>
-        `${timestamp} [${level}]: ${stack || message}`
-    )
-  );
+return winston.format.combine(
+  sanitizeFormat(),
+
+  winston.format.timestamp({ format: "YYYY-MM-DD HH:mm:ss" }),
+  winston.format.printf(
+    ({ level, message, timestamp, stack }) =>
+      `${timestamp} [${level}]: ${stack || message}`
+  )
+);
 };
 
 // Daily Rotate Transport for combined logs
@@ -57,9 +70,9 @@ const logger = winston.createLogger({
   level: process.env.LOG_LEVEL || "info",
   format: getFormat(),
   transports: [
-   new winston.transports.Console({
-  format: getFormat(),
-  silent: process.env.NODE_ENV === "production", // Prod mein console mat dikhao
+  new winston.transports.Console({
+  format: winston.format.simple(),
+  silent: false,
 }),
     errorTransport,
     dailyRotateTransport,
@@ -80,26 +93,25 @@ export const logMiddleware = (req, res, next) => {
   if (safeHeaders.cookie) safeHeaders.cookie = "[MASKED]";
   if (safeHeaders["x-api-key"]) safeHeaders["x-api-key"] = "[MASKED]";
 
-  logger.info("HTTP Request", {
+ req.startTime = Date.now();
+
+logger.info("HTTP Request", {
+  method: req.method,
+  url: req.originalUrl || req.url,
+  ip: req.ip || req.connection.remoteAddress,
+  userAgent: req.get("User-Agent"),
+  headers: safeHeaders,
+  bodyPresent: Boolean(req.body && Object.keys(req.body).length),
+});
+
+res.on("finish", () => {
+  logger.info("HTTP Response", {
     method: req.method,
     url: req.originalUrl || req.url,
-    ip: req.ip || req.connection.remoteAddress,
-    userAgent: req.get("User-Agent"),
-    headers: safeHeaders,
-    body: req.body ? { ...req.body, password: req.body.password ? "[MASKED]" : undefined } : undefined,
+    statusCode: res.statusCode,
+    duration: Date.now() - req.startTime,
   });
-
-  // Log response on finish
-  res.on("finish", () => {
-    logger.info("HTTP Response", {
-      method: req.method,
-      url: req.originalUrl || req.url,
-      statusCode: res.statusCode,
-      duration: Date.now() - req.startTime,
-    });
-  });
-
-  req.startTime = Date.now(); // For duration
+});
   next();
 };
 

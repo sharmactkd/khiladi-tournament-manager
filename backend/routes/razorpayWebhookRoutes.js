@@ -1,6 +1,7 @@
 import express from "express";
 import crypto from "crypto";
 import Payment from "../models/payment.js";
+import Tournament from "../models/tournament.js";
 import logger from "../utils/logger.js";
 import { getPaymentAccessFields } from "../services/subscriptionService.js";
 
@@ -95,7 +96,83 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const accessFields = getPaymentAccessFields(payment.planType, new Date());
+const expectedAmountInPaise = Number(payment.amount || 0) * 100;
+
+const paymentNotes = paymentEntity.notes || {};
+
+const isValidWebhookPayment =
+  paymentEntity.id &&
+  paymentEntity.order_id === payment.razorpayOrderId &&
+  paymentEntity.status === "captured" &&
+  paymentEntity.captured === true &&
+  Number(paymentEntity.amount) === expectedAmountInPaise &&
+  String(paymentEntity.currency || "").toUpperCase() === "INR";
+
+if (!isValidWebhookPayment) {
+  logger.warn("Razorpay webhook payment validation failed", {
+    paymentId: payment._id,
+    userId: payment.userId,
+    expectedOrderId: payment.razorpayOrderId,
+    incomingOrderId: paymentEntity.order_id,
+    incomingPaymentId: paymentEntity.id,
+    incomingStatus: paymentEntity.status,
+    incomingCaptured: paymentEntity.captured,
+    incomingAmount: paymentEntity.amount,
+    expectedAmountInPaise,
+    incomingCurrency: paymentEntity.currency,
+  });
+
+  return res.status(400).json({
+    success: false,
+    message: "Webhook payment validation failed",
+  });
+}
+
+if (paymentNotes.userId && String(paymentNotes.userId) !== String(payment.userId)) {
+  logger.warn("Razorpay webhook user mismatch", {
+    paymentId: payment._id,
+    paymentUserId: payment.userId,
+    notesUserId: paymentNotes.userId,
+    razorpayOrderId: paymentEntity.order_id,
+    razorpayPaymentId: paymentEntity.id,
+  });
+
+  return res.status(400).json({
+    success: false,
+    message: "Webhook user mismatch",
+  });
+}
+
+if (
+  payment.planType === "single" &&
+  paymentNotes.tournamentId &&
+  String(paymentNotes.tournamentId) !== String(payment.tournamentId)
+) {
+  logger.warn("Razorpay webhook tournament mismatch", {
+    paymentId: payment._id,
+    paymentTournamentId: payment.tournamentId,
+    notesTournamentId: paymentNotes.tournamentId,
+    razorpayOrderId: paymentEntity.order_id,
+    razorpayPaymentId: paymentEntity.id,
+  });
+
+  return res.status(400).json({
+    success: false,
+    message: "Webhook tournament mismatch",
+  });
+}
+
+let accessTournament = null;
+
+if (payment.planType === "single" && payment.tournamentId) {
+  accessTournament = await Tournament.findById(payment.tournamentId).lean();
+}
+
+    const accessFields = getPaymentAccessFields(
+  payment.planType,
+  new Date(),
+  accessTournament
+);
 
     payment.status = "paid";
     payment.razorpayPaymentId = paymentEntity.id;

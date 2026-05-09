@@ -22,6 +22,8 @@ import razorpayWebhookRoutes from "./routes/razorpayWebhookRoutes.js";
 import logger, { logMiddleware } from "./utils/logger.js";
 import { generalRateLimiter, authRateLimiter } from "./middleware/rateLimiter.js";
 
+console.log("SERVER FILE LOADED");
+
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
@@ -138,7 +140,10 @@ if (!mongoURI) {
 mongoose
   .connect(mongoURI)
   .then(() => {
+    console.log("MongoDB connected successfully");
+
     logger.info("MongoDB connected successfully");
+
     if (isDev) {
       logger.info("Development server MongoDB connection ready");
     }
@@ -198,7 +203,11 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 
 const server = app.listen(PORT, "0.0.0.0", () => {
-  logger.info(`Server running on port ${PORT} in ${process.env.NODE_ENV || "development"} mode`);
+  console.log(`Server running on port ${PORT}`);
+
+  logger.info(
+    `Server running on port ${PORT} in ${process.env.NODE_ENV || "development"} mode`
+  );
 });
 
 process.on("SIGTERM", shutDown);

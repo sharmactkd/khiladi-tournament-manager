@@ -10,7 +10,7 @@ export const CSRF_HEADER_NAME = "x-csrf-token";
 export const csrfCookieOptions = {
   httpOnly: false,
   secure: isProd,
-  sameSite: isProd ? "none" : "lax",
+  sameSite: "lax",
   path: "/",
   maxAge: 30 * 24 * 60 * 60 * 1000,
 };
@@ -25,11 +25,11 @@ export const setCsrfCookie = (res) => {
 
 export const clearCsrfCookie = (res) => {
   res.clearCookie(CSRF_COOKIE_NAME, {
-    httpOnly: false,
-    secure: isProd,
-    sameSite: isProd ? "none" : "lax",
-    path: "/",
-  });
+  httpOnly: false,
+  secure: isProd,
+  sameSite: "lax",
+  path: "/",
+});
 };
 
 export const requireCsrfToken = (req, res, next) => {
