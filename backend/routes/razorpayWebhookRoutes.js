@@ -2,20 +2,9 @@ import express from "express";
 import crypto from "crypto";
 import Payment from "../models/payment.js";
 import logger from "../utils/logger.js";
+import { getPaymentAccessFields } from "../services/subscriptionService.js";
 
 const router = express.Router();
-
-const addMonths = (date, months) => {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
-};
-
-const getAccessExpiry = (planType, now) => {
-  if (planType === "six_months") return addMonths(now, 6);
-  if (planType === "one_year") return addMonths(now, 12);
-  return null;
-};
 
 const verifyWebhookSignature = ({ rawBody, signature }) => {
   if (!process.env.RAZORPAY_WEBHOOK_SECRET) {
@@ -106,13 +95,14 @@ router.post("/", async (req, res) => {
       });
     }
 
-    const now = new Date();
+    const accessFields = getPaymentAccessFields(payment.planType, new Date());
 
     payment.status = "paid";
     payment.razorpayPaymentId = paymentEntity.id;
     payment.razorpaySignature = signature;
-    payment.accessStartsAt = now;
-    payment.accessExpiresAt = getAccessExpiry(payment.planType, now);
+    payment.accessType = accessFields.accessType;
+    payment.accessStartsAt = accessFields.accessStartsAt;
+    payment.accessExpiresAt = accessFields.accessExpiresAt;
 
     await payment.save();
 
@@ -123,6 +113,9 @@ router.post("/", async (req, res) => {
       planType: payment.planType,
       razorpayOrderId: payment.razorpayOrderId,
       razorpayPaymentId: payment.razorpayPaymentId,
+      accessType: payment.accessType,
+      accessStartsAt: payment.accessStartsAt,
+      accessExpiresAt: payment.accessExpiresAt,
     });
 
     return res.status(200).json({

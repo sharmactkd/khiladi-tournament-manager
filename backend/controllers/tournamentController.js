@@ -197,25 +197,7 @@ const buildResultStrictKey = (row) =>
     normalizeResultWeight(row?.weight),
   ].join("|||");
 
-const buildResultMediumKey = (row) =>
-  [
-    normalizeResultText(row?.name),
-    normalizeResultText(row?.team),
-    normalizeResultText(row?.gender),
-    normalizeResultText(row?.event),
-    normalizeResultText(row?.subEvent),
-    normalizeResultText(row?.ageCategory),
-    normalizeResultText(row?.weightCategory),
-  ].join("|||");
 
-const buildResultLooseKey = (row) =>
-  [
-    normalizeResultText(row?.name),
-    normalizeResultText(row?.team),
-    normalizeResultText(row?.gender),
-    normalizeResultText(row?.ageCategory),
-    normalizeResultText(row?.weightCategory),
-  ].join("|||");
 
 const getPlayerLikeValue = (obj, keys = []) => {
   if (!obj || typeof obj !== "object") return "";

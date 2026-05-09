@@ -2,23 +2,13 @@ import Razorpay from "razorpay";
 import crypto from "crypto";
 import mongoose from "mongoose";
 import logger from "../utils/logger.js";
+import {
+  getPlanConfig,
+  getPaymentAccessFields,
+  hasActiveAccess,
+} from "../services/subscriptionService.js";
 import Payment from "../models/payment.js";
 import Tournament from "../models/tournament.js";
-
-const PLANS = {
-  single: {
-    amount: 1000,
-    accessType: "tournament",
-  },
-  six_months: {
-    amount: 2000,
-    accessType: "unlimited",
-  },
-  one_year: {
-    amount: 3000,
-    accessType: "unlimited",
-  },
-};
 
 const getUserId = (req) => req.user?._id || req.user?.id || req.user?.userId;
 
@@ -31,18 +21,6 @@ const getRazorpayInstance = () => {
     key_id: process.env.RAZORPAY_KEY_ID,
     key_secret: process.env.RAZORPAY_KEY_SECRET,
   });
-};
-
-const addMonths = (date, months) => {
-  const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
-  return d;
-};
-
-const getAccessExpiry = (planType, now) => {
-  if (planType === "six_months") return addMonths(now, 6);
-  if (planType === "one_year") return addMonths(now, 12);
-  return null;
 };
 
 export const createPaymentOrder = async (req, res) => {
@@ -68,7 +46,7 @@ export const createPaymentOrder = async (req, res) => {
       });
     }
 
-    if (!PLANS[planType]) {
+    if (!getPlanConfig(planType)) {
       return res.status(400).json({
         success: false,
         message: "Invalid payment plan",
@@ -95,14 +73,12 @@ export const createPaymentOrder = async (req, res) => {
         });
       }
 
-      const existingAccess = await Payment.findOne({
+      const existingAccess = await hasActiveAccess({
         userId,
         tournamentId,
-        status: "paid",
-        accessType: "tournament",
-      }).lean();
+      });
 
-      if (existingAccess) {
+      if (existingAccess.hasAccess) {
         return res.status(200).json({
           success: true,
           alreadyPaid: true,
@@ -112,7 +88,7 @@ export const createPaymentOrder = async (req, res) => {
       }
     }
 
-    const selectedPlan = PLANS[planType];
+    const selectedPlan = getPlanConfig(planType);
     const amountInRupees = selectedPlan.amount;
     const amountInPaise = amountInRupees * 100;
 
@@ -185,7 +161,8 @@ export const verifyPayment = async (req, res) => {
   try {
     userId = getUserId(req);
 
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body || {};
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
+      req.body || {};
 
     if (!userId) {
       return res.status(401).json({
@@ -253,13 +230,14 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
-    const now = new Date();
+    const accessFields = getPaymentAccessFields(payment.planType, new Date());
 
     payment.status = "paid";
     payment.razorpayPaymentId = razorpay_payment_id;
     payment.razorpaySignature = razorpay_signature;
-    payment.accessStartsAt = now;
-    payment.accessExpiresAt = getAccessExpiry(payment.planType, now);
+    payment.accessType = accessFields.accessType;
+    payment.accessStartsAt = accessFields.accessStartsAt;
+    payment.accessExpiresAt = accessFields.accessExpiresAt;
 
     await payment.save();
 
@@ -313,52 +291,28 @@ export const getMyAccessStatus = async (req, res) => {
       });
     }
 
-    const now = new Date();
-
-    const unlimitedAccess = await Payment.findOne({
+    const access = await hasActiveAccess({
       userId,
-      status: "paid",
-      accessType: "unlimited",
-      accessStartsAt: { $ne: null },
-      accessExpiresAt: { $gt: now },
-    }).sort({ accessExpiresAt: -1 });
+      tournamentId,
+    });
 
-    if (unlimitedAccess) {
+    if (access.hasAccess) {
       return res.status(200).json({
         success: true,
         hasAccess: true,
-        accessType: "unlimited",
-        planType: unlimitedAccess.planType,
-        accessStartsAt: unlimitedAccess.accessStartsAt,
-        accessExpiresAt: unlimitedAccess.accessExpiresAt,
+        accessType: access.accessType,
+        planType: access.planType,
+        tournamentId: access.tournamentId,
+        accessStartsAt: access.accessStartsAt,
+        accessExpiresAt: access.accessExpiresAt,
       });
-    }
-
-    if (tournamentId && mongoose.Types.ObjectId.isValid(tournamentId)) {
-      const tournamentAccess = await Payment.findOne({
-        userId,
-        tournamentId,
-        status: "paid",
-        accessType: "tournament",
-      }).sort({ createdAt: -1 });
-
-      if (tournamentAccess) {
-        return res.status(200).json({
-          success: true,
-          hasAccess: true,
-          accessType: "tournament",
-          planType: tournamentAccess.planType,
-          tournamentId: tournamentAccess.tournamentId,
-          accessStartsAt: tournamentAccess.accessStartsAt,
-          accessExpiresAt: tournamentAccess.accessExpiresAt,
-        });
-      }
     }
 
     return res.status(200).json({
       success: true,
       hasAccess: false,
       paymentRequired: true,
+      reason: access.reason,
       message: "Premium access required",
     });
   } catch (error) {

@@ -1,5 +1,6 @@
 import express from "express";
 import multer from "multer";
+import mongoose from "mongoose";
 
 import {
   createTournament,
@@ -21,14 +22,13 @@ import {
   saveTeamPayments,
   saveTieSheetRecord,
   getWinnerAggregation,
-getTeamChampionshipAggregation,
+  getTeamChampionshipAggregation,
 } from "../controllers/tournamentController.js";
 
-import premiumAccess from "../middleware/premiumAccess.js";
+import premiumAccess, { PREMIUM_FEATURES } from "../middleware/premiumAccess.js";
 import optionalAuthMiddleware from "../middleware/optionalAuthMiddleware.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import { upload } from "../middleware/upload.js";
-import mongoose from "mongoose";
 import Tournament from "../models/tournament.js";
 import logger from "../utils/logger.js";
 
@@ -97,7 +97,7 @@ router.get("/my", authMiddleware, async (req, res) => {
 
     const normalized = tournaments.map((t) => ({
       ...t,
-      poster: t.poster ? t.poster : null,
+      poster: t.poster || null,
       logos: t.logos || [],
     }));
 
@@ -189,18 +189,32 @@ router.get(
   requireOwnership,
   getTeamChampionshipAggregation
 );
+
 // ================ PREMIUM PROTECTED ROUTES ================
 
 // Tie Sheet
-router.get("/:id/tiesheet", authMiddleware, requireOwnership, premiumAccess, getTieSheet);
-router.put("/:id/tiesheet", authMiddleware, requireOwnership, premiumAccess, saveTieSheet);
+router.get(
+  "/:id/tiesheet",
+  authMiddleware,
+  requireOwnership,
+  premiumAccess(PREMIUM_FEATURES.TIESHEET),
+  getTieSheet
+);
+
+router.put(
+  "/:id/tiesheet",
+  authMiddleware,
+  requireOwnership,
+  premiumAccess(PREMIUM_FEATURES.TIESHEET),
+  saveTieSheet
+);
 
 // Tie Sheet Outcomes
 router.patch(
   "/:id/tiesheet/outcomes",
   authMiddleware,
   requireOwnership,
-  premiumAccess,
+  premiumAccess(PREMIUM_FEATURES.TIESHEET),
   saveTieSheetOutcomes
 );
 
@@ -208,7 +222,7 @@ router.get(
   "/:id/tiesheet-outcomes",
   authMiddleware,
   requireOwnership,
-  premiumAccess,
+  premiumAccess(PREMIUM_FEATURES.TIESHEET),
   getTieSheetOutcomes
 );
 
@@ -216,20 +230,33 @@ router.put(
   "/:id/tiesheet-outcomes",
   authMiddleware,
   requireOwnership,
-  premiumAccess,
+  premiumAccess(PREMIUM_FEATURES.TIESHEET),
   saveTieSheetOutcomes
 );
 
 // Officials
-router.get("/:id/officials", authMiddleware, requireOwnership, premiumAccess, getOfficials);
-router.put("/:id/officials", authMiddleware, requireOwnership, premiumAccess, saveOfficials);
+router.get(
+  "/:id/officials",
+  authMiddleware,
+  requireOwnership,
+  premiumAccess(PREMIUM_FEATURES.OFFICIALS),
+  getOfficials
+);
+
+router.put(
+  "/:id/officials",
+  authMiddleware,
+  requireOwnership,
+  premiumAccess(PREMIUM_FEATURES.OFFICIALS),
+  saveOfficials
+);
 
 // Team Payments
 router.get(
   "/:id/team-payments",
   authMiddleware,
   requireOwnership,
-  premiumAccess,
+  premiumAccess(PREMIUM_FEATURES.TEAM_PAYMENTS),
   getTeamPayments
 );
 
@@ -237,7 +264,7 @@ router.put(
   "/:id/team-payments",
   authMiddleware,
   requireOwnership,
-  premiumAccess,
+  premiumAccess(PREMIUM_FEATURES.TEAM_PAYMENTS),
   saveTeamPayments
 );
 
@@ -246,7 +273,7 @@ router.post(
   "/:id/tiesheet-record",
   authMiddleware,
   requireOwnership,
-  premiumAccess,
+  premiumAccess(PREMIUM_FEATURES.TIESHEET_RECORD),
   saveTieSheetRecord
 );
 

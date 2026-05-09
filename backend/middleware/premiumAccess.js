@@ -1,6 +1,8 @@
-import mongoose from "mongoose";
 import logger from "../utils/logger.js";
-import Payment from "../models/payment.js";
+import {
+  hasActiveAccess,
+  PREMIUM_FEATURES,
+} from "../services/subscriptionService.js";
 
 const getUserId = (req) => {
   return req.user?._id || req.user?.id || req.user?.userId;
@@ -16,85 +18,56 @@ const getTournamentId = (req) => {
   );
 };
 
-const premiumAccess = async (req, res, next) => {
-  let userId;
-  let tournamentId;
+const premiumAccess = (feature = PREMIUM_FEATURES.TIESHEET) => {
+  return async (req, res, next) => {
+    let userId;
+    let tournamentId;
 
-  try {
-    userId = getUserId(req);
-    tournamentId = getTournamentId(req);
+    try {
+      userId = getUserId(req);
+      tournamentId = getTournamentId(req);
 
-    if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized user",
-      });
-    }
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          message: "Unauthorized user",
+        });
+      }
 
-    const now = new Date();
-
-    const unlimitedAccess = await Payment.findOne({
-      userId,
-      status: "paid",
-      accessType: "unlimited",
-      accessStartsAt: { $ne: null },
-      accessExpiresAt: { $gt: now },
-    }).sort({ accessExpiresAt: -1 });
-
-    if (unlimitedAccess) {
-      req.premiumAccess = {
-        hasAccess: true,
-        accessType: "unlimited",
-        planType: unlimitedAccess.planType,
-        paymentId: unlimitedAccess._id,
-        accessStartsAt: unlimitedAccess.accessStartsAt,
-        accessExpiresAt: unlimitedAccess.accessExpiresAt,
-      };
-
-      return next();
-    }
-
-    if (tournamentId && mongoose.Types.ObjectId.isValid(tournamentId)) {
-      const tournamentAccess = await Payment.findOne({
+      const access = await hasActiveAccess({
         userId,
         tournamentId,
-        status: "paid",
-        accessType: "tournament",
-      }).sort({ createdAt: -1 });
+        feature,
+      });
 
-      if (tournamentAccess) {
-        req.premiumAccess = {
-          hasAccess: true,
-          accessType: "tournament",
-          planType: tournamentAccess.planType,
-          paymentId: tournamentAccess._id,
-          tournamentId,
-          accessStartsAt: tournamentAccess.accessStartsAt,
-          accessExpiresAt: tournamentAccess.accessExpiresAt,
-        };
-
+      if (access.hasAccess) {
+        req.premiumAccess = access;
         return next();
       }
+
+      return res.status(402).json({
+        success: false,
+        paymentRequired: true,
+        feature,
+        reason: access.reason,
+        message: "Premium access required",
+      });
+    } catch (error) {
+      logger.error("Premium access verification failed", {
+        error: error.message,
+        stack: error.stack,
+        userId,
+        tournamentId,
+        feature,
+      });
+
+      return res.status(500).json({
+        success: false,
+        message: "Failed to verify premium access",
+      });
     }
-
-    return res.status(402).json({
-      success: false,
-      paymentRequired: true,
-      message: "Premium access required",
-    });
-  } catch (error) {
-    logger.error("Premium access verification failed", {
-      error: error.message,
-      stack: error.stack,
-      userId,
-      tournamentId,
-    });
-
-    return res.status(500).json({
-      success: false,
-      message: "Failed to verify premium access",
-    });
-  }
+  };
 };
 
+export { PREMIUM_FEATURES };
 export default premiumAccess;
