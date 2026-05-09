@@ -1,97 +1,160 @@
 // FILE: backend/middleware/upload.js
 
 import multer from "multer";
-import path from "path";
 import fs from "fs";
-import { fileURLToPath } from "url";
-import { dirname, join } from "path";
-
+import path from "path";
+import sharp from "sharp";
 import cloudinary from "cloudinary";
-import pkg from "multer-storage-cloudinary";
-const { CloudinaryStorage } = pkg;
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const uploadsDir = path.join(process.cwd(), "uploads");
 
-// Local fallback folder
-const uploadsDir = join(process.cwd(), "uploads");
-try {
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-    console.log(`Created uploads directory: ${uploadsDir}`);
-  }
-} catch (err) {
-  console.error("Failed to create uploads directory", err.message);
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
 }
 
-// Cloudinary Config
 const hasCloudinaryKeys =
   process.env.CLOUDINARY_CLOUD_NAME &&
   process.env.CLOUDINARY_API_KEY &&
   process.env.CLOUDINARY_API_SECRET;
 
-let storage;
-
 if (hasCloudinaryKeys) {
-  console.log("✅ Attempting Cloudinary storage setup");
-
-  try {
-    cloudinary.v2.config({
-      cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-      api_key: process.env.CLOUDINARY_API_KEY,
-      api_secret: process.env.CLOUDINARY_API_SECRET,
-    });
-
-    storage = new CloudinaryStorage({
-      cloudinary: cloudinary.v2,
-      params: {
-        folder: "khiladi-khoj/tournaments",
-        allowed_formats: ["jpg", "jpeg", "png", "webp"],
-        public_id: (req, file) => `${Date.now()}-${Math.round(Math.random() * 1e9)}`,
-        transformation: [
-          { width: 1200, height: 1600, crop: "limit" },
-          { quality: "auto:good" },
-          { format: "auto" },
-        ],
-      },
-    });
-
-    console.log("✅ Cloudinary storage configured successfully");
-  } catch (error) {
-    console.error("❌ Cloudinary setup failed:", error.message);
-    console.log("⚠️ Falling back to local storage");
-  }
-}
-
-// Fallback to local storage
-if (!storage) {
-  console.log("⚠️ Using local disk storage");
-
-  storage = multer.diskStorage({
-    destination: (req, file, cb) => cb(null, uploadsDir),
-    filename: (req, file, cb) => {
-      const uniqueName = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-      const ext = path.extname(file.originalname);
-      cb(null, `${uniqueName}${ext}`);
-    },
+  cloudinary.v2.config({
+    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+    api_key: process.env.CLOUDINARY_API_KEY,
+    api_secret: process.env.CLOUDINARY_API_SECRET,
   });
 }
 
-// File filter
-const fileFilter = (req, file, cb) => {
-  const allowedTypes = /jpeg|jpg|png|webp/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
+const multerUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+    files: 3,
+  },
+});
 
-  if (mimetype && extname) {
-    return cb(null, true);
+const validateAndProcessImage = async (file) => {
+  const allowedMimeTypes = ["image/jpeg", "image/png", "image/webp"];
+
+  if (!allowedMimeTypes.includes(file.mimetype)) {
+    throw new Error("Only JPG, PNG, and WebP images are allowed");
   }
 
-  cb(new Error("Only JPG, PNG, and WebP images are allowed!"));
+  let metadata;
+
+  try {
+    metadata = await sharp(file.buffer).metadata();
+  } catch {
+    throw new Error("Invalid or corrupted image file");
+  }
+
+  if (!["jpeg", "png", "webp"].includes(metadata.format)) {
+    throw new Error("Invalid image format");
+  }
+
+  return sharp(file.buffer)
+    .rotate()
+    .resize({
+      width: 1200,
+      height: 1600,
+      fit: "inside",
+      withoutEnlargement: true,
+    })
+    .webp({ quality: 82 })
+    .toBuffer();
 };
 
-export const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 },
-  fileFilter,
-});
+const uploadToCloudinary = (buffer) =>
+  new Promise((resolve, reject) => {
+    cloudinary.v2.uploader
+      .upload_stream(
+        {
+          folder: "khiladi-khoj/tournaments",
+          resource_type: "image",
+          format: "webp",
+        },
+        (error, result) => {
+          if (error) return reject(error);
+          resolve(result);
+        }
+      )
+      .end(buffer);
+  });
+
+const saveLocally = async (buffer) => {
+  const filename = `${Date.now()}-${Math.round(Math.random() * 1e9)}.webp`;
+  const filepath = path.join(uploadsDir, filename);
+
+  await fs.promises.writeFile(filepath, buffer);
+
+  return {
+    filename,
+    path: `/uploads/${filename}`,
+    url: `/uploads/${filename}`,
+  };
+};
+
+const secureImageUploadMiddleware = (fields) => {
+  const uploadFields = multerUpload.fields(fields);
+
+  return async (req, res, next) => {
+    uploadFields(req, res, async (err) => {
+      if (err) return next(err);
+
+      try {
+        if (!req.files) return next();
+
+        const processedFiles = {};
+
+        for (const [fieldName, files] of Object.entries(req.files)) {
+          processedFiles[fieldName] = [];
+
+          for (const file of files) {
+            const processedBuffer = await validateAndProcessImage(file);
+
+            let savedFile;
+
+            if (hasCloudinaryKeys) {
+              const uploaded = await uploadToCloudinary(processedBuffer);
+
+              savedFile = {
+                ...file,
+                filename: uploaded.public_id,
+                originalname: file.originalname,
+                mimetype: "image/webp",
+                size: processedBuffer.length,
+                path: uploaded.secure_url,
+                url: uploaded.secure_url,
+                secure_url: uploaded.secure_url,
+                public_id: uploaded.public_id,
+              };
+            } else {
+              const local = await saveLocally(processedBuffer);
+
+              savedFile = {
+                ...file,
+                filename: local.filename,
+                originalname: file.originalname,
+                mimetype: "image/webp",
+                size: processedBuffer.length,
+                path: local.path,
+                url: local.url,
+              };
+            }
+
+            processedFiles[fieldName].push(savedFile);
+          }
+        }
+
+        req.files = processedFiles;
+        next();
+      } catch (error) {
+        next(error);
+      }
+    });
+  };
+};
+
+export const upload = {
+  fields: secureImageUploadMiddleware,
+};

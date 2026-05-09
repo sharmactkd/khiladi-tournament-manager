@@ -25,6 +25,7 @@ import {
   getTeamChampionshipAggregation,
 } from "../controllers/tournamentController.js";
 
+import { sensitiveRateLimiter } from "../middleware/rateLimiter.js";
 import premiumAccess, { PREMIUM_FEATURES } from "../middleware/premiumAccess.js";
 import optionalAuthMiddleware from "../middleware/optionalAuthMiddleware.js";
 import authMiddleware from "../middleware/authMiddleware.js";
@@ -157,6 +158,7 @@ router.get("/:id/private", authMiddleware, requireOwnership, getPrivateTournamen
 router.post(
   "/",
   authMiddleware,
+  sensitiveRateLimiter,
   upload.fields([
     { name: "poster", maxCount: 1 },
     { name: "logos", maxCount: 2 },
@@ -169,6 +171,7 @@ router.put(
   "/:id",
   authMiddleware,
   requireOwnership,
+  sensitiveRateLimiter,
   upload.fields([
     { name: "poster", maxCount: 1 },
     { name: "logos", maxCount: 2 },
@@ -179,7 +182,7 @@ router.put(
 
 // ================ NON-PREMIUM PROTECTED ROUTES ================
 router.get("/:id/outcomes", authMiddleware, requireOwnership, getOutcomes);
-router.put("/:id/outcomes", authMiddleware, requireOwnership, saveOutcomes);
+router.put("/:id/outcomes", authMiddleware, requireOwnership, sensitiveRateLimiter,saveOutcomes);
 
 router.get("/:id/winners", authMiddleware, requireOwnership, getWinnerAggregation);
 
@@ -206,6 +209,7 @@ router.put(
   authMiddleware,
   requireOwnership,
   premiumAccess(PREMIUM_FEATURES.TIESHEET),
+   sensitiveRateLimiter,
   saveTieSheet
 );
 
@@ -215,6 +219,7 @@ router.patch(
   authMiddleware,
   requireOwnership,
   premiumAccess(PREMIUM_FEATURES.TIESHEET),
+   sensitiveRateLimiter,
   saveTieSheetOutcomes
 );
 
@@ -223,6 +228,7 @@ router.get(
   authMiddleware,
   requireOwnership,
   premiumAccess(PREMIUM_FEATURES.TIESHEET),
+   
   getTieSheetOutcomes
 );
 
@@ -231,6 +237,7 @@ router.put(
   authMiddleware,
   requireOwnership,
   premiumAccess(PREMIUM_FEATURES.TIESHEET),
+   sensitiveRateLimiter,
   saveTieSheetOutcomes
 );
 
@@ -248,6 +255,7 @@ router.put(
   authMiddleware,
   requireOwnership,
   premiumAccess(PREMIUM_FEATURES.OFFICIALS),
+   sensitiveRateLimiter,
   saveOfficials
 );
 
@@ -265,6 +273,7 @@ router.put(
   authMiddleware,
   requireOwnership,
   premiumAccess(PREMIUM_FEATURES.TEAM_PAYMENTS),
+   sensitiveRateLimiter,
   saveTeamPayments
 );
 
@@ -274,6 +283,7 @@ router.post(
   authMiddleware,
   requireOwnership,
   premiumAccess(PREMIUM_FEATURES.TIESHEET_RECORD),
+   sensitiveRateLimiter,
   saveTieSheetRecord
 );
 

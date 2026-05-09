@@ -66,4 +66,27 @@ export const superAdminMiddleware = (req, res, next) => {
   next();
 };
 
+export const requireAdminPermission = (permission) => {
+  return (req, res, next) => {
+    const role = req.user?.role;
+
+    if (role === "superadmin") {
+      return next();
+    }
+
+    const permissions = Array.isArray(req.user?.adminPermissions)
+      ? req.user.adminPermissions
+      : [];
+
+    if (!permissions.includes(permission)) {
+      return res.status(403).json({
+        success: false,
+        message: "You do not have permission to access this admin resource",
+      });
+    }
+
+    next();
+  };
+};
+
 export default adminMiddleware;

@@ -48,24 +48,32 @@ app.use(
   })
 );
 
+const parseAllowedOrigins = (value = "") =>
+  String(value)
+    .split(",")
+    .map((origin) => origin.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+
 const allowedOrigins = [
   "http://localhost:5173",
   "http://localhost:3000",
   "http://localhost:5174",
   "https://khiladi-khoj.vercel.app",
   "https://khiladi-khoj.com",
+  ...parseAllowedOrigins(process.env.CORS_ALLOWED_ORIGINS),
 ];
 
-const vercelPreviewRegex = /^https:\/\/.*\.vercel\.app$/;
 
 app.use(
   cors({
     origin: (origin, callback) => {
       if (!origin) return callback(null, true);
 
-      if (allowedOrigins.includes(origin) || vercelPreviewRegex.test(origin)) {
-        return callback(null, true);
-      }
+      const normalizedOrigin = String(origin || "").trim().replace(/\/+$/, "");
+
+if (allowedOrigins.includes(normalizedOrigin)) {
+  return callback(null, true);
+}
 
       return callback(new Error(`CORS blocked: ${origin}`));
     },

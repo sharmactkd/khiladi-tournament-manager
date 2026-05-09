@@ -180,6 +180,24 @@ const buildSearchRegex = (search) => {
   return new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i");
 };
 
+  const sanitizeEntry = (entry) => ({
+  _id: entry._id,
+  tournamentId: entry.tournamentId,
+  tournamentName: entry.tournamentName || "",
+  srNo: entry.srNo,
+  name: entry.name || "",
+  team: entry.team || "",
+  gender: entry.gender || "",
+  event: entry.event || "",
+  subEvent: entry.subEvent || "",
+  ageCategory: entry.ageCategory || "",
+  weightCategory: entry.weightCategory || "",
+  medal: entry.medal || "",
+  entrySource: entry.entrySource || "",
+  createdAt: entry.createdAt || null,
+  updatedAt: entry.updatedAt || null,
+});
+
 const assertNotSelfOrSuperadmin = async ({ targetUserId, currentUserId, action }) => {
   if (String(targetUserId) === String(currentUserId)) {
     return {
@@ -188,6 +206,8 @@ const assertNotSelfOrSuperadmin = async ({ targetUserId, currentUserId, action }
       message: `You cannot ${action} your own superadmin account`,
     };
   }
+
+
 
   const targetUser = await User.findById(targetUserId).setOptions({ includeDeleted: true });
 
@@ -524,12 +544,14 @@ entryRows.forEach((row) => {
         user: sanitizeUser(user),
         tournaments: tournaments.map(formatTournamentListItem),
       entries: tournaments.flatMap((tournament) =>
-  (entryRowsByTournament.get(String(tournament._id)) || []).map((entry, index) => ({
+  (entryRowsByTournament.get(String(tournament._id)) || []).map((entry, index) =>
+  sanitizeEntry({
     ...entry,
     _rowIndex: index + 1,
     tournamentId: tournament._id,
     tournamentName: tournament.tournamentName,
-  }))
+  })
+)
 ),
         payments,
         summary: {
@@ -767,12 +789,9 @@ export const getAdminTournamentDetails = async (req, res) => {
       success: true,
       data: {
         tournament: formatTournamentListItem(tournament),
-        rawTournament: {
-          ...tournament,
-          createdBy: sanitizeUser(tournament.createdBy),
-        },
+      
         owner: sanitizeUser(tournament.createdBy),
-        entries,
+        entries: entries.map(sanitizeEntry),
         payments,
         summary: {
           entriesCount: entries.length,
@@ -979,16 +998,16 @@ export const getAdminEntries = async (req, res) => {
     const data = rows.map((row, index) => {
       const tournament = row.tournamentId || {};
 
-      return {
-        ...row,
-        _id: row._id,
-        _rowIndex: skip + index + 1,
-        tournamentId: tournament._id || row.tournamentId,
-        tournamentName: tournament.tournamentName || "",
-        organizer: tournament.organizer || "",
-        owner: sanitizeUser(tournament.createdBy),
-        createdAt: row.createdAt,
-      };
+     return {
+  ...sanitizeEntry({
+    ...row,
+    tournamentId: tournament._id || row.tournamentId,
+    tournamentName: tournament.tournamentName || "",
+  }),
+  _rowIndex: skip + index + 1,
+  organizer: tournament.organizer || "",
+  owner: sanitizeUser(tournament.createdBy),
+};
     });
 
     return res.json({

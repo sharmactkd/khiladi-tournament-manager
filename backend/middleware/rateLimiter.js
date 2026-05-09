@@ -41,6 +41,6 @@ export const authRateLimiter = rateLimit({
 // 3. Sensitive Actions Limiter – For create/update/delete tournament, entries, etc.
 export const sensitiveRateLimiter = createRateLimiter({
   windowMs: 60 * 60 * 1000, // 1 hour
-  max: 15,                  // 15 sensitive actions per hour per user (prevents spam/abuse)
+  max: 100,                  // 15 sensitive actions per hour per user (prevents spam/abuse)
   message: "Too many actions performed. Please wait 1 hour before trying again.",
 });

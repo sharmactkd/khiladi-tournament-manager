@@ -558,9 +558,8 @@ if (entryRowBulkOps.length > 0) {
     });
 
     res.status(500).json({
-      message: "Failed to approve submission",
-      error: error.message,
-    });
+  message: "Failed to approve submission",
+});
   }
 };
 

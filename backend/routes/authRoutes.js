@@ -24,6 +24,7 @@ import {
 } from "../middleware/validationMiddleware.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import User from "../models/user.js";
+import { requireCsrfToken, setCsrfCookie } from "../middleware/csrfProtection.js";
 import jwt from "jsonwebtoken";
 import logger from "../utils/logger.js";
 
@@ -50,9 +51,9 @@ router.get("/me", authMiddleware, getMe);
 
 router.patch("/complete-profile", authMiddleware, completeProfile);
 
-router.post("/logout", logoutUser);
+router.post("/logout", requireCsrfToken, logoutUser);
 
-router.post("/refresh", async (req, res) => {
+router.post("/refresh", requireCsrfToken, async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken;
 
@@ -76,13 +77,27 @@ router.post("/refresh", async (req, res) => {
     const sessions = normalizeRefreshTokenSessions(user.refreshTokens);
     const matchedSession = sessions.find((session) => session.tokenHash === tokenHash);
 
-    if (!matchedSession) {
-      user.refreshTokens = sessions;
-      await user.save({ validateBeforeSave: false });
+   if (!matchedSession) {
+  // SECURITY: Refresh token reuse detected.
+  // Token JWT valid hai, lekin DB session me nahi mila.
+  // Iska matlab old/stolen/revoked refresh token reuse ho sakta hai.
+  // Isliye user ke sabhi refresh sessions revoke kar do.
+  user.refreshTokens = [];
+  await user.save({ validateBeforeSave: false });
 
-      res.clearCookie("refreshToken", cookieOptions);
-      return res.status(401).json({ message: "Invalid or revoked refresh token" });
-    }
+  res.clearCookie("refreshToken", cookieOptions);
+
+  logger.warn("REFRESH_REUSE_DETECTED", {
+    userId: user._id,
+    ip: req.ip,
+    userAgent: req.headers?.["user-agent"] || "",
+  });
+
+  return res.status(401).json({
+    message: "Session security issue detected. Please login again.",
+    code: "REFRESH_REUSE_DETECTED",
+  });
+}
 
     if (user.isDeleted) {
       user.refreshTokens = [];
@@ -112,6 +127,8 @@ router.post("/refresh", async (req, res) => {
       ...cookieOptions,
       maxAge: REFRESH_COOKIE_MAX_AGE,
     });
+
+    setCsrfCookie(res);
 
     res.json({
       accessToken: newAccessToken,

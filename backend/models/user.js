@@ -8,6 +8,41 @@ const ACTIVE_ROLES = ["organizer", "coach", "player"];
 const ADMIN_ROLES = ["admin", "superadmin"];
 const LEGACY_ROLES = ["user"];
 
+const refreshTokenSessionSchema = new mongoose.Schema(
+  {
+    tokenHash: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+    expiresAt: {
+      type: Date,
+      required: true,
+    },
+    userAgent: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    ip: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    lastUsedAt: {
+      type: Date,
+      default: null,
+    },
+  },
+  {
+    _id: false,
+  }
+);
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -53,6 +88,20 @@ const userSchema = new mongoose.Schema(
       enum: [...ACTIVE_ROLES, ...ADMIN_ROLES, ...LEGACY_ROLES],
       default: "player",
     },
+
+    adminPermissions: {
+  type: [String],
+  default: [],
+  enum: [
+    "dashboard:read",
+    "users:read",
+    "users:manage",
+    "tournaments:read",
+    "tournaments:manage",
+    "payments:read",
+    "entries:read",
+  ],
+},
 
     loginProvider: {
       type: String,
@@ -100,11 +149,11 @@ const userSchema = new mongoose.Schema(
 
     lastLogin: Date,
 
-    refreshTokens: {
-      type: [mongoose.Schema.Types.Mixed],
-      default: [],
-      select: false,
-    },
+   refreshTokens: {
+  type: [refreshTokenSessionSchema],
+  default: [],
+  select: false,
+},
 
     resetPasswordToken: {
       type: String,
@@ -124,6 +173,7 @@ const userSchema = new mongoose.Schema(
 
 userSchema.index({ loginProvider: 1 });
 userSchema.index({ role: 1 });
+userSchema.index({ adminPermissions: 1 });
 userSchema.index({ isVerified: 1 });
 userSchema.index({ isSuspended: 1 });
 userSchema.index({ isDeleted: 1 });

@@ -6,6 +6,7 @@ dotenv.config();
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import User from "../models/user.js";
+import logger from "../utils/logger.js";
 
 const backendUrl = process.env.BACKEND_URL || "http://localhost:5000";
 
@@ -32,16 +33,43 @@ passport.use(
       try {
         const googleId = profile.id;
         const email = profile.emails?.[0]?.value?.toLowerCase();
+
+        const isEmailVerified =
+  profile.emails?.[0]?.verified === true ||
+  profile._json?.email_verified === true;
+
+if (!email || !isEmailVerified) {
+ logger.warn("Google auth rejected - unverified email", {
+  googleId: profile.id,
+  email,
+});
+
+  return done(null, false, {
+    message: "Google account email is not verified",
+  });
+}
+
         const name = profile.displayName || "Google User";
         const profilePicture = profile.photos?.[0]?.value || null;
 
-        if (!email) {
-          return done(new Error("Google email not found"));
-        }
+      
 
         let user = await User.findOne({
           $or: [{ email }, { googleId }],
         }).select("+refreshTokens");
+
+        if (user && user.googleId && user.googleId !== googleId) {
+  logger.warn("Google account mismatch detected", {
+    userId: user._id,
+    existingGoogleId: user.googleId,
+    incomingGoogleId: googleId,
+    email,
+  });
+
+  return done(null, false, {
+    message: "Google account mismatch",
+  });
+}
 
         if (!user) {
           user = new User({

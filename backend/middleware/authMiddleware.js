@@ -38,7 +38,9 @@ const authMiddleware = async (req, res, next) => {
       decoded = jwt.verify(token, process.env.JWT_SECRET, jwtVerifyOptions);
     }
 
-    const user = await User.findById(decoded.id).select("-password -refreshTokens");
+    const user = await User.findById(decoded.id).select(
+  "-password -refreshTokens -resetPasswordToken -resetPasswordExpire"
+);
 
     if (!user) {
       logger.warn("User not found for valid token", {
@@ -69,14 +71,13 @@ const authMiddleware = async (req, res, next) => {
 
     next();
   } catch (error) {
-    logger.error("Authentication failed", {
-      error: error.message,
-      name: error.name,
-      path: req.path,
-      ip: req.ip,
-      token: token ? `${token.substring(0, 20)}...` : "none",
-      stack: error.stack,
-    });
+ logger.error("Authentication failed", {
+  error: error.message,
+  name: error.name,
+  path: req.path,
+  ip: req.ip,
+  tokenPresent: Boolean(token),
+});
 
     if (error.name === "TokenExpiredError") {
       return res

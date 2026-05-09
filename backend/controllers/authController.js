@@ -5,6 +5,7 @@ import User from "../models/user.js";
 import bcrypt from "bcryptjs";
 import { generateToken, generateRefreshToken } from "../utils/generateToken.js";
 import logger from "../utils/logger.js";
+import { setCsrfCookie, clearCsrfCookie } from "../middleware/csrfProtection.js";
 import sendEmail from "../utils/emailSender.js";
 import {
   getPasswordResetEmailHtml,
@@ -234,6 +235,7 @@ export const registerUser = async (req, res) => {
     await user.save({ validateBeforeSave: false });
 
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
+setCsrfCookie(res);
 
     logger.info("User registered successfully", {
       userId: user._id,
@@ -332,6 +334,7 @@ export const loginUser = async (req, res) => {
     await user.save({ validateBeforeSave: false });
 
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
+setCsrfCookie(res);
 
     logger.info("User logged in successfully", {
       userId: user._id,
@@ -607,6 +610,7 @@ export const logoutUser = async (req, res) => {
       sameSite: isProd ? "none" : "lax",
       path: "/",
     });
+clearCsrfCookie(res);
 
     logger.info("User logged out successfully", { userId: req.user?._id });
 
@@ -644,6 +648,7 @@ export const socialAuthSuccess = (req, res) => {
     );
 
     res.cookie("refreshToken", refreshToken, refreshCookieOptions);
+setCsrfCookie(res);
 
     logger.info("Social auth successful", {
       userId: req.user._id,

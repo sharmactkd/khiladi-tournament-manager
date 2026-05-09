@@ -1,0 +1,11 @@
+process.env.NODE_ENV = "test";
+process.env.JWT_SECRET = "test_access_secret";
+process.env.JWT_REFRESH_SECRET = "test_refresh_secret";
+process.env.JWT_ACCESS_EXPIRES_IN = "15m";
+process.env.FRONTEND_URL = "http://localhost:5173";
+process.env.RAZORPAY_KEY_ID = "test_key";
+process.env.RAZORPAY_KEY_SECRET = "test_secret";
+process.env.RAZORPAY_WEBHOOK_SECRET = "test_webhook_secret";
+process.env.GOOGLE_CLIENT_ID = "test_google_id";
+process.env.GOOGLE_CLIENT_SECRET = "test_google_secret";
+process.env.MONGO_URI = "mongodb://127.0.0.1:27017/khiladi_test";

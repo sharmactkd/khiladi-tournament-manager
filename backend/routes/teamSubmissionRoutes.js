@@ -7,6 +7,7 @@ import {
   rejectTeamSubmission,
   getPendingTeamSubmissionCount,
 } from "../controllers/teamSubmissionController.js";
+import { sensitiveRateLimiter } from "../middleware/rateLimiter.js";  
 
 const router = express.Router();
 
@@ -14,6 +15,7 @@ router.post(
   "/:tournamentId/submit",
   authMiddleware,
   authorizeRoles("organizer", "coach", "player"),
+  sensitiveRateLimiter,
   submitTeamSubmission
 );
 
@@ -35,6 +37,7 @@ router.patch(
   "/:submissionId/approve",
   authMiddleware,
   authorizeRoles("organizer"),
+  sensitiveRateLimiter,
   approveTeamSubmission
 );
 
@@ -42,6 +45,7 @@ router.patch(
   "/:submissionId/reject",
   authMiddleware,
   authorizeRoles("organizer"),
+  sensitiveRateLimiter,
   rejectTeamSubmission
 );
 

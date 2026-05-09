@@ -2,6 +2,23 @@
 
 import axios from "axios";
 
+const getCookieValue = (name) => {
+  if (typeof document === "undefined") return "";
+
+  return document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${name}=`))
+    ?.split("=")[1] || "";
+};
+
+const getCsrfHeaders = () => {
+  const csrfToken = getCookieValue("csrfToken");
+
+  return csrfToken
+    ? { "x-csrf-token": decodeURIComponent(csrfToken) }
+    : {};
+};
+
 const normalizeBase = (v) => String(v || "").trim().replace(/\/+$/, "");
 
 const resolveApiBaseUrl = () => {
@@ -77,6 +94,13 @@ api.interceptors.request.use((config) => {
     config.headers.Authorization = `Bearer ${token}`;
   }
 
+  const csrfHeaders = getCsrfHeaders();
+
+if (Object.keys(csrfHeaders).length > 0) {
+  config.headers = config.headers || {};
+  Object.assign(config.headers, csrfHeaders);
+}
+
   return config;
 });
 
@@ -95,7 +119,14 @@ api.interceptors.response.use(
       try {
         if (!refreshPromise) {
           refreshPromise = axios
-            .post(`${API_URL}/auth/refresh`, {}, { withCredentials: true })
+            .post(
+  `${API_URL}/auth/refresh`,
+  {},
+  {
+    withCredentials: true,
+ headers: getCsrfHeaders(),
+  }
+)
             .then((refreshRes) => {
               const { accessToken } = refreshRes.data || {};
 

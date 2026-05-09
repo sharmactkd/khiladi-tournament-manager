@@ -140,15 +140,7 @@ persistUser(finalUser);
 
   useEffect(() => {
     const restoreAuth = async () => {
-     const hasRefreshCookie =
-  typeof document !== "undefined" &&
-  document.cookie.split(";").some((cookie) => cookie.trim().startsWith("refreshToken="));
-
-if (!hasRefreshCookie) {
-  clearAuthState();
-  setLoading(false);
-  return;
-}
+    
 
       try {
         const response = await api.post("/auth/refresh", {}, { withCredentials: true });
