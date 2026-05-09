@@ -10,6 +10,7 @@ import {
   deleteSingleEntry,
   createBulkEntries,
 } from "../controllers/entryController.js";
+import { requireCsrfToken } from "../middleware/csrfProtection.js";
 import { sensitiveRateLimiter } from "../middleware/rateLimiter.js";
 import Tournament from "../models/tournament.js";
 import mongoose from "mongoose";
@@ -86,6 +87,7 @@ router.post(
   "/:id/entries",
   authMiddleware,
   validateTournamentOwnership,
+  requireCsrfToken,
   sensitiveRateLimiter,
   saveEntries
 );
@@ -95,6 +97,7 @@ router.post(
   "/:id/entries/row",
   authMiddleware,
   validateTournamentOwnership,
+  requireCsrfToken,
   sensitiveRateLimiter,
   createSingleEntry
 );
@@ -104,6 +107,7 @@ router.patch(
   "/:id/entries/:entryId",
   authMiddleware,
   validateTournamentOwnership,
+  requireCsrfToken,
   sensitiveRateLimiter,
   updateSingleEntry
 );
@@ -113,6 +117,7 @@ router.delete(
   "/:id/entries/:entryId",
   authMiddleware,
   validateTournamentOwnership,
+  requireCsrfToken,
   sensitiveRateLimiter,
   deleteSingleEntry
 );
@@ -120,6 +125,7 @@ router.post(
   "/:id/entries/bulk",
   authMiddleware,
   validateTournamentOwnership,
+  requireCsrfToken,
   sensitiveRateLimiter,
   createBulkEntries
 );

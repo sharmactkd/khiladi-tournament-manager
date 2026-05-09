@@ -162,11 +162,16 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/payment", paymentRoutes);
 
 app.get("/health", (req, res) => {
-  res.status(200).json({
+  if (process.env.NODE_ENV === "production") {
+    return res.status(200).json({
+      status: "OK",
+    });
+  }
+
+  return res.status(200).json({
     status: "OK",
+    env: process.env.NODE_ENV,
     uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || "development",
   });
 });
 

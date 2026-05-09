@@ -1,12 +1,13 @@
 import express from "express";
 import authMiddleware from "../middleware/authMiddleware.js";
 import User from "../models/user.js";
+import { requireCsrfToken } from "../middleware/csrfProtection.js";
 import logger from "../utils/logger.js";
 
 const router = express.Router();
 
 // POST /api/weight-presets → Save new preset
-router.post("/", authMiddleware, async (req, res) => {
+router.post("/", authMiddleware, requireCsrfToken, async (req, res) => {
   try {
     const { name, data } = req.body;
 
@@ -96,7 +97,7 @@ router.get("/:id", authMiddleware, async (req, res) => {
 });
 
 // DELETE /api/weight-presets/:id → Delete preset
-router.delete("/:id", authMiddleware, async (req, res) => {
+router.delete("/:id", authMiddleware, requireCsrfToken, async (req, res) => {
   try {
     const user = await User.findById(req.user._id);
     if (!user) return res.status(404).json({ message: "User not found" });
@@ -106,8 +107,8 @@ router.delete("/:id", authMiddleware, async (req, res) => {
       return res.status(404).json({ message: "Preset not found" });
     }
 
-    preset.remove();
-    user.markModified('weightPresets');
+    user.weightPresets.pull({ _id: req.params.id });
+    user.markModified("weightPresets");
     await user.save();
 
     res.json({ message: "Preset deleted successfully" });

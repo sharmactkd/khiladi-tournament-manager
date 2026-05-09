@@ -230,6 +230,102 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
+    const razorpay = getRazorpayInstance();
+
+const [razorpayPayment, razorpayOrder] = await Promise.all([
+  razorpay.payments.fetch(razorpay_payment_id),
+  razorpay.orders.fetch(razorpay_order_id),
+]);
+
+const expectedAmountInPaise = Number(payment.amount || 0) * 100;
+
+const isValidRazorpayPayment =
+  razorpayPayment &&
+  razorpayPayment.id === razorpay_payment_id &&
+  razorpayPayment.order_id === razorpay_order_id &&
+  razorpayPayment.status === "captured" &&
+  Number(razorpayPayment.amount) === expectedAmountInPaise &&
+  String(razorpayPayment.currency || "").toUpperCase() === "INR";
+
+const isValidRazorpayOrder =
+  razorpayOrder &&
+  razorpayOrder.id === razorpay_order_id &&
+  Number(razorpayOrder.amount) === expectedAmountInPaise &&
+  String(razorpayOrder.currency || "").toUpperCase() === "INR";
+
+if (!isValidRazorpayPayment || !isValidRazorpayOrder) {
+  payment.status = "failed";
+  payment.razorpayPaymentId = razorpay_payment_id;
+  payment.razorpaySignature = razorpay_signature;
+  await payment.save();
+
+  logger.warn("Razorpay server verification failed", {
+    paymentId: payment._id,
+    userId,
+    razorpayOrderId: razorpay_order_id,
+    razorpayPaymentId: razorpay_payment_id,
+    razorpayPaymentStatus: razorpayPayment?.status,
+    razorpayPaymentAmount: razorpayPayment?.amount,
+    expectedAmountInPaise,
+    razorpayPaymentCurrency: razorpayPayment?.currency,
+    razorpayOrderAmount: razorpayOrder?.amount,
+    razorpayOrderCurrency: razorpayOrder?.currency,
+  });
+
+  return res.status(400).json({
+    success: false,
+    message: "Payment could not be verified with Razorpay",
+  });
+}
+
+const orderNotes = razorpayOrder.notes || {};
+
+if (
+  orderNotes.userId &&
+  String(orderNotes.userId) !== String(userId)
+) {
+  payment.status = "failed";
+  payment.razorpayPaymentId = razorpay_payment_id;
+  payment.razorpaySignature = razorpay_signature;
+  await payment.save();
+
+  logger.warn("Razorpay order user mismatch", {
+    paymentId: payment._id,
+    userId,
+    orderUserId: orderNotes.userId,
+    razorpayOrderId: razorpay_order_id,
+  });
+
+  return res.status(400).json({
+    success: false,
+    message: "Payment order ownership mismatch",
+  });
+}
+
+if (
+  payment.planType === "single" &&
+  orderNotes.tournamentId &&
+  String(orderNotes.tournamentId) !== String(payment.tournamentId)
+) {
+  payment.status = "failed";
+  payment.razorpayPaymentId = razorpay_payment_id;
+  payment.razorpaySignature = razorpay_signature;
+  await payment.save();
+
+  logger.warn("Razorpay order tournament mismatch", {
+    paymentId: payment._id,
+    userId,
+    orderTournamentId: orderNotes.tournamentId,
+    paymentTournamentId: payment.tournamentId,
+    razorpayOrderId: razorpay_order_id,
+  });
+
+  return res.status(400).json({
+    success: false,
+    message: "Payment tournament mismatch",
+  });
+}
+
     const accessFields = getPaymentAccessFields(payment.planType, new Date());
 
     payment.status = "paid";

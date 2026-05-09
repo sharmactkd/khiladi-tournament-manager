@@ -7,6 +7,14 @@ import logger from "../utils/logger.js";
 
 const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
 
+const getAuditMeta = (req, extra = {}) => ({
+  adminId: req.user?._id,
+  adminRole: req.user?.role,
+  ip: req.ip,
+  userAgent: req.headers?.["user-agent"] || "",
+  ...extra,
+});
+
 const sanitizeUser = (user) => {
   if (!user) return null;
 
@@ -234,6 +242,7 @@ const assertNotSelfOrSuperadmin = async ({ targetUserId, currentUserId, action }
 };
 
 export const getAdminDashboard = async (req, res) => {
+  logger.info("ADMIN_READ_DASHBOARD", getAuditMeta(req));
   try {
     const [totalUsers, totalTournaments, recentUsers, recentTournaments] =
       await Promise.all([
@@ -394,6 +403,13 @@ const recentPayments = recentRazorpayPayments.map((payment) => ({
 };
 
 export const getAdminUsers = async (req, res) => {
+  logger.info("ADMIN_READ_USERS", getAuditMeta(req, {
+  query: {
+    page: req.query?.page,
+    limit: req.query?.limit,
+    search: req.query?.search ? "[REDACTED]" : "",
+  },
+}));
   try {
     const { page, limit, skip } = getPagination(req.query);
     const searchRegex = buildSearchRegex(req.query.search);
@@ -491,6 +507,9 @@ const entryCountMap = new Map(
 };
 
 export const getAdminUserDetails = async (req, res) => {
+  logger.info("ADMIN_READ_USER_DETAILS", getAuditMeta(req, {
+  targetUserId: req.params.userId,
+}));
   try {
     const { userId } = req.params;
 
@@ -601,11 +620,10 @@ export const suspendAdminUser = async (req, res) => {
 
     await check.targetUser.save({ validateBeforeSave: false });
 
-    logger.info("User suspended by superadmin", {
-      targetUserId: check.targetUser._id,
-      superadminId: req.user._id,
-      reason,
-    });
+    logger.warn("ADMIN_SUSPEND_USER", getAuditMeta(req, {
+  targetUserId: check.targetUser._id,
+  reason: reason ? "[REDACTED]" : "",
+}));
 
     return res.json({
       success: true,
@@ -646,10 +664,9 @@ export const unsuspendAdminUser = async (req, res) => {
 
     await user.save({ validateBeforeSave: false });
 
-    logger.info("User unsuspended by superadmin", {
-      targetUserId: user._id,
-      superadminId: req.user._id,
-    });
+    logger.warn("ADMIN_UNSUSPEND_USER", getAuditMeta(req, {
+  targetUserId: user._id,
+}));
 
     return res.json({
       success: true,
@@ -692,10 +709,9 @@ export const deleteAdminUser = async (req, res) => {
 
     await check.targetUser.save({ validateBeforeSave: false });
 
-    logger.info("User soft deleted by superadmin", {
-      targetUserId: check.targetUser._id,
-      superadminId: req.user._id,
-    });
+   logger.warn("ADMIN_DELETE_USER", getAuditMeta(req, {
+  targetUserId: check.targetUser._id,
+}));
 
     return res.json({
       success: true,
@@ -709,6 +725,13 @@ export const deleteAdminUser = async (req, res) => {
 };
 
 export const getAdminTournaments = async (req, res) => {
+  logger.info("ADMIN_READ_TOURNAMENTS", getAuditMeta(req, {
+  query: {
+    page: req.query?.page,
+    limit: req.query?.limit,
+    search: req.query?.search ? "[REDACTED]" : "",
+  },
+}));
   try {
     const { page, limit, skip } = getPagination(req.query);
     const searchRegex = buildSearchRegex(req.query.search);
@@ -758,6 +781,9 @@ export const getAdminTournaments = async (req, res) => {
 };
 
 export const getAdminTournamentDetails = async (req, res) => {
+  logger.info("ADMIN_READ_TOURNAMENT_DETAILS", getAuditMeta(req, {
+  tournamentId: req.params.tournamentId,
+}));
   try {
     const { tournamentId } = req.params;
 
@@ -830,10 +856,10 @@ export const deleteAdminTournament = async (req, res) => {
 
     await tournament.save({ validateBeforeSave: false });
 
-    logger.info("Tournament soft deleted by superadmin", {
-      tournamentId: tournament._id,
-      superadminId: req.user._id,
-    });
+  logger.warn("ADMIN_DELETE_TOURNAMENT", getAuditMeta(req, {
+  tournamentId: tournament._id,
+  ownerId: tournament.createdBy,
+}));
 
     return res.json({
       success: true,
@@ -847,6 +873,15 @@ export const deleteAdminTournament = async (req, res) => {
 };
 
 export const getAdminPayments = async (req, res) => {
+  logger.info("ADMIN_READ_PAYMENTS", getAuditMeta(req, {
+  query: {
+    page: req.query?.page,
+    limit: req.query?.limit,
+    status: req.query?.status || "",
+    planType: req.query?.planType || "",
+    search: req.query?.search ? "[REDACTED]" : "",
+  },
+}));
   try {
     const { page, limit, skip } = getPagination(req.query);
     const searchRegex = buildSearchRegex(req.query.search);
@@ -959,6 +994,13 @@ export const getAdminPayments = async (req, res) => {
 };
 
 export const getAdminEntries = async (req, res) => {
+  logger.info("ADMIN_READ_ENTRIES", getAuditMeta(req, {
+  query: {
+    page: req.query?.page,
+    limit: req.query?.limit,
+    search: req.query?.search ? "[REDACTED]" : "",
+  },
+}));
   try {
     const { page, limit, skip } = getPagination(req.query);
     const searchRegex = buildSearchRegex(req.query.search);

@@ -22,6 +22,12 @@ import {
   validateRegister,
   validateLogin,
 } from "../middleware/validationMiddleware.js";
+
+import {
+  generateOAuthState,
+  verifyOAuthState,
+} from "../middleware/oauthState.js";
+
 import authMiddleware from "../middleware/authMiddleware.js";
 import User from "../models/user.js";
 import { requireCsrfToken, setCsrfCookie } from "../middleware/csrfProtection.js";
@@ -144,11 +150,18 @@ router.post("/refresh", requireCsrfToken, async (req, res) => {
 
 router.get(
   "/google",
-  passport.authenticate("google", { scope: ["profile", "email"], session: false })
+  generateOAuthState,
+  (req, res, next) =>
+    passport.authenticate("google", {
+      scope: ["profile", "email"],
+      session: false,
+      state: req.oauthState,
+    })(req, res, next)
 );
 
 router.get(
   "/google/callback",
+  verifyOAuthState,
   passport.authenticate("google", {
     failureRedirect: `${process.env.FRONTEND_URL}/login?error=auth_failed`,
     session: false,

@@ -4,7 +4,8 @@ import logger from "../utils/logger.js";
 import { logActivitySafe } from "../utils/activityLogger.js";
 import mongoose from "mongoose";
 
-const isDev = process.env.NODE_ENV !== "production";
+const isProd = process.env.NODE_ENV === "production";
+
 const MAX_ENTRY_SAVE_BYTES = 10 * 1024 * 1024;
 
 const allowedMedals = ["Gold", "Silver", "Bronze", "X-X-X-X", ""];
@@ -669,10 +670,11 @@ pagination: {
       userId: req.user?._id,
     });
 
-    return res.status(500).json({
-      error: "Failed to retrieve entries",
-      details: error.message,
-    });
+   return res.status(500).json({
+  message: isProd
+    ? "Failed to load entries"
+    : error.message,
+});
   }
 };
 
@@ -784,10 +786,11 @@ const updated = await mirrorEntryRowsToLegacyEntry({
       userId: req.user?._id,
     });
 
-    return res.status(500).json({
-      error: "Failed to save changes",
-      details: error.message,
-    });
+   return res.status(500).json({
+  message: isProd
+    ? "Failed to save entries"
+    : error.message,
+});
   }
 };
 
@@ -867,10 +870,11 @@ export const createSingleEntry = async (req, res) => {
       userId: req.user?._id,
     });
 
-    return res.status(500).json({
-      success: false,
-      message: "Failed to create entry",
-    });
+   return res.status(500).json({
+  message: isProd
+    ? "Failed to create entry"
+    : error.message,
+});
   }
 };
 
@@ -950,10 +954,11 @@ export const updateSingleEntry = async (req, res) => {
       userId: req.user?._id,
     });
 
-    return res.status(500).json({
-      success: false,
-      message: "Failed to update entry",
-    });
+   return res.status(500).json({
+  message: isProd
+    ? "Failed to update entry"
+    : error.message,
+});
   }
 };
 
@@ -1020,10 +1025,11 @@ export const deleteSingleEntry = async (req, res) => {
       userId: req.user?._id,
     });
 
-    return res.status(500).json({
-      success: false,
-      message: "Failed to delete entry",
-    });
+  return res.status(500).json({
+  message: isProd
+    ? "Failed to delete entry"
+    : error.message,
+});
   }
 };
 export const createBulkEntries = async (req, res) => {
@@ -1152,8 +1158,9 @@ export const createBulkEntries = async (req, res) => {
     });
 
     return res.status(500).json({
-      success: false,
-      message: "Failed to add entries",
-    });
+  message: isProd
+    ? "Failed to create entries"
+    : error.message,
+});
   }
 };
