@@ -58,6 +58,22 @@ if (!email || !isEmailVerified) {
           $or: [{ email }, { googleId }],
         }).select("+refreshTokens");
 
+        if (
+  user &&
+  user.email === email &&
+  !user.googleId &&
+  user.loginProvider === "email"
+) {
+  logger.warn("Google login rejected - explicit account linking required", {
+    userId: user._id,
+    email: email ? `${email.slice(0, 2)}***@${email.split("@")[1] || ""}` : "",
+  });
+
+  return done(null, false, {
+    message: "Please login with password first, then link Google from account settings.",
+  });
+}
+
         if (user && user.googleId && user.googleId !== googleId) {
   logger.warn("Google account mismatch detected", {
     userId: user._id,

@@ -7,6 +7,36 @@ import logger from "../utils/logger.js";
 
 const isValidObjectId = (value) => mongoose.Types.ObjectId.isValid(value);
 
+const hasAdminPermission = (req, permission) => {
+  if (req.user?.role === "superadmin") return true;
+
+  return Array.isArray(req.user?.adminPermissions)
+    ? req.user.adminPermissions.includes(permission)
+    : false;
+};
+
+const maskEmail = (email = "") => {
+  const value = String(email || "");
+  const [name, domain] = value.split("@");
+
+  if (!name || !domain) return value ? "[REDACTED_EMAIL]" : null;
+
+  return `${name.slice(0, 2)}***@${domain}`;
+};
+
+const maskPhone = (phone = "") => {
+  const value = String(phone || "").replace(/\s+/g, "");
+  if (!value) return null;
+  return value.length <= 4 ? "****" : `****${value.slice(-4)}`;
+};
+
+const canReadSensitiveUserData = (req) => {
+  return (
+    req.user?.role === "superadmin" ||
+    hasAdminPermission(req, "users:read_sensitive")
+  );
+};
+
 const getAuditMeta = (req, extra = {}) => ({
   adminId: req.user?._id,
   adminRole: req.user?.role,
@@ -15,21 +45,22 @@ const getAuditMeta = (req, extra = {}) => ({
   ...extra,
 });
 
-const sanitizeUser = (user) => {
+const sanitizeUser = (user, { includeSensitive = false } = {}) => {
   if (!user) return null;
 
   return {
     _id: user._id,
     id: user._id,
     name: user.name || "",
-    email: user.email || null,
-    phone: user.phone || null,
+    email: includeSensitive ? user.email || null : maskEmail(user.email),
+    phone: includeSensitive ? user.phone || null : maskPhone(user.phone),
     role: user.role || "player",
     loginProvider: user.loginProvider || "email",
     profilePicture: user.profilePicture || null,
     isVerified: Boolean(user.isVerified),
     phoneVerified: Boolean(user.phoneVerified),
-    isProfileComplete: user.isProfileComplete === undefined ? true : Boolean(user.isProfileComplete),
+    isProfileComplete:
+      user.isProfileComplete === undefined ? true : Boolean(user.isProfileComplete),
     isSuspended: Boolean(user.isSuspended),
     suspendedAt: user.suspendedAt || null,
     suspendedBy: user.suspendedBy || null,
@@ -161,7 +192,7 @@ const formatTournamentListItem = (tournament) => {
     venue: tournament.venue || null,
     tournamentLevel: tournament.tournamentLevel || null,
     tournamentType: tournament.tournamentType || [],
-    createdBy: sanitizeUser(tournament.createdBy),
+    createdBy: sanitizeUser(tournament.createdBy, { includeSensitive: false }),
     entriesCount: getEntryCount(tournament),
     isPaidTournament: paidStatus.isPaidTournament,
     hasCollectedPayment: paidStatus.hasCollectedPayment,
@@ -250,7 +281,7 @@ export const getAdminDashboard = async (req, res) => {
         Tournament.countDocuments({ isDeleted: { $ne: true } }),
     
         User.find({ isDeleted: { $ne: true } })
-          .select("-password -refreshTokens -weightPresets -resetPasswordToken -resetPasswordExpire -googleId -facebookId")
+          .select("-password -refreshTokens -weightPresets -resetPasswordToken -resetPasswordExpire -googleId")
           .sort({ createdAt: -1 })
           .limit(8)
           .lean(),
@@ -341,6 +372,7 @@ const recentRazorpayPayments = await Payment.find({ status: "paid" })
   .limit(8)
   .lean();
 
+  const includeSensitive = canReadSensitiveUserData(req);
 const recentPayments = recentRazorpayPayments.map((payment) => ({
   _id: payment._id,
   id: payment._id,
@@ -350,8 +382,13 @@ const recentPayments = recentRazorpayPayments.map((payment) => ({
         _id: payment.userId._id,
         id: payment.userId._id,
         name: payment.userId.name || "",
-        email: payment.userId.email || null,
-        phone: payment.userId.phone || null,
+        email: includeSensitive
+  ? payment.userId.email || null
+  : maskEmail(payment.userId.email),
+
+phone: includeSensitive
+  ? payment.userId.phone || null
+  : maskPhone(payment.userId.phone),
         role: payment.userId.role || "player",
         isSuspended: Boolean(payment.userId.isSuspended),
         isDeleted: Boolean(payment.userId.isDeleted),
@@ -387,7 +424,9 @@ const recentPayments = recentRazorpayPayments.map((payment) => ({
         totalEntries,
         totalPaidUsers,
         totalRevenue,
-        recentUsers: recentUsers.map(sanitizeUser),
+       recentUsers: recentUsers.map((user) =>
+  sanitizeUser(user, { includeSensitive })
+),
         recentTournaments: recentTournaments.map(formatTournamentListItem),
         recentPayments,
         monthlyRevenue,
@@ -430,7 +469,7 @@ export const getAdminUsers = async (req, res) => {
 
     const [users, total, tournaments] = await Promise.all([
       User.find(filter)
-        .select("-password -refreshTokens -weightPresets -resetPasswordToken -resetPasswordExpire -googleId -facebookId")
+        .select("-password -refreshTokens -weightPresets -resetPasswordToken -resetPasswordExpire -googleId")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -477,8 +516,10 @@ const entryCountMap = new Map(
       statsByUser.set(userId, current);
     });
 
-    const data = users.map((user) => ({
-      ...sanitizeUser(user),
+    const includeSensitive = canReadSensitiveUserData(req);
+
+const data = users.map((user) => ({
+  ...sanitizeUser(user, { includeSensitive }),
       ...(statsByUser.get(String(user._id)) || {
         totalTournaments: 0,
         totalEntries: 0,
@@ -522,7 +563,7 @@ export const getAdminUserDetails = async (req, res) => {
 
     const [user, tournaments] = await Promise.all([
       User.findOne({ _id: userId, isDeleted: { $ne: true } })
-        .select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire -googleId -facebookId")
+        .select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire -googleId")
         .lean(),
       Tournament.find({ createdBy: userId })
         .populate("createdBy", "name email phone role createdAt isSuspended isDeleted")
@@ -560,7 +601,9 @@ entryRows.forEach((row) => {
     return res.json({
       success: true,
       data: {
-        user: sanitizeUser(user),
+      user: sanitizeUser(user, {
+  includeSensitive: canReadSensitiveUserData(req),
+}),
         tournaments: tournaments.map(formatTournamentListItem),
       entries: tournaments.flatMap((tournament) =>
   (entryRowsByTournament.get(String(tournament._id)) || []).map((entry, index) =>
@@ -816,7 +859,9 @@ export const getAdminTournamentDetails = async (req, res) => {
       data: {
         tournament: formatTournamentListItem(tournament),
       
-        owner: sanitizeUser(tournament.createdBy),
+       owner: sanitizeUser(tournament.createdBy, {
+  includeSensitive: canReadSensitiveUserData(req),
+}),
         entries: entries.map(sanitizeEntry),
         payments,
         summary: {
@@ -903,6 +948,8 @@ export const getAdminPayments = async (req, res) => {
 
     const payments = await query.lean();
 
+    const includeSensitive = canReadSensitiveUserData(req);
+
     let rows = payments.map((payment) => ({
       _id: payment._id,
       id: payment._id,
@@ -912,8 +959,13 @@ export const getAdminPayments = async (req, res) => {
             _id: payment.userId._id,
             id: payment.userId._id,
             name: payment.userId.name || "",
-            email: payment.userId.email || null,
-            phone: payment.userId.phone || null,
+            email: includeSensitive
+  ? payment.userId.email || null
+  : maskEmail(payment.userId.email),
+
+phone: includeSensitive
+  ? payment.userId.phone || null
+  : maskPhone(payment.userId.phone),
             role: payment.userId.role || "player",
             isSuspended: Boolean(payment.userId.isSuspended),
             isDeleted: Boolean(payment.userId.isDeleted),
@@ -1048,7 +1100,9 @@ export const getAdminEntries = async (req, res) => {
   }),
   _rowIndex: skip + index + 1,
   organizer: tournament.organizer || "",
-  owner: sanitizeUser(tournament.createdBy),
+  owner: sanitizeUser(tournament.createdBy, {
+  includeSensitive: canReadSensitiveUserData(req),
+}),
 };
     });
 

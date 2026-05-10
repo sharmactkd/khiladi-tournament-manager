@@ -89,15 +89,20 @@ const userSchema = new mongoose.Schema(
       default: "player",
     },
 
-    adminPermissions: {
+adminPermissions: {
   type: [String],
   default: [],
   enum: [
     "dashboard:read",
+
+    "users:read_basic",
+    "users:read_sensitive",
     "users:read",
     "users:manage",
+
     "tournaments:read",
     "tournaments:manage",
+
     "payments:read",
     "entries:read",
   ],
@@ -115,11 +120,6 @@ const userSchema = new mongoose.Schema(
       sparse: true,
     },
 
-    facebookId: {
-      type: String,
-      unique: true,
-      sparse: true,
-    },
 
     profilePicture: {
       type: String,

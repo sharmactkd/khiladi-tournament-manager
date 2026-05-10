@@ -30,11 +30,16 @@ router.get(
   getAdminDashboard,
 );
 
-router.get("/users", requireAdminPermission("users:read"), getAdminUsers);
+router.get(
+  "/users",
+  requireAdminPermission("users:read_basic"),
+  getAdminUsers
+);
+
 router.get(
   "/users/:userId",
-  requireAdminPermission("users:read"),
-  getAdminUserDetails,
+  requireAdminPermission("users:read_basic"),
+  getAdminUserDetails
 );
 
 router.patch(

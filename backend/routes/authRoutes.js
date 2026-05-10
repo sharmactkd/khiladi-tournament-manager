@@ -31,7 +31,11 @@ import {
 
 import authMiddleware from "../middleware/authMiddleware.js";
 import User from "../models/user.js";
-import { requireCsrfToken, setCsrfCookie } from "../middleware/csrfProtection.js";
+import {
+  requireCsrfToken,
+  requireRefreshCsrfToken,
+  setCsrfCookie,
+} from "../middleware/csrfProtection.js";
 import jwt from "jsonwebtoken";
 import logger from "../utils/logger.js";
 
@@ -59,7 +63,12 @@ router.get("/me", authMiddleware, getMe);
 router.patch("/complete-profile", authMiddleware, completeProfile);
 
 
-router.post("/logout", requireCsrfToken, logoutUser);
+router.post(
+  "/logout",
+  authMiddleware,
+  requireCsrfToken,
+  logoutUser
+);
 
 router.post(
   "/logout-all",
@@ -68,7 +77,7 @@ router.post(
   logoutAllUser
 );
 
-router.post("/refresh", requireCsrfToken, async (req, res) => {
+router.post("/refresh", requireRefreshCsrfToken, async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken;
 
@@ -143,7 +152,10 @@ router.post("/refresh", requireCsrfToken, async (req, res) => {
       maxAge: REFRESH_COOKIE_MAX_AGE,
     });
 
-    setCsrfCookie(res);
+    setCsrfCookie(res, {
+  userId: user._id,
+  rawRefreshToken: newRefreshToken,
+});
 
     res.json({
       accessToken: newAccessToken,
