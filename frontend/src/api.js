@@ -44,6 +44,7 @@ const resolveApiBaseUrl = () => {
 };
 
 const API_URL = resolveApiBaseUrl();
+const isDev = import.meta.env.DEV;
 
 let memoryAccessToken = null;
 
@@ -149,7 +150,9 @@ api.interceptors.response.use(
 
         return api(originalRequest);
       } catch (refreshError) {
-        console.error("Token refresh failed:", refreshError);
+      if (isDev) {
+  console.error("Token refresh failed:", refreshError);
+}
 
         clearAccessToken();
      
@@ -164,7 +167,9 @@ sessionStorage.removeItem("userSnapshot");
     }
 
     if (error.response?.status === 429) {
-      console.warn("Rate limited (429)", error.response.data);
+  if (isDev) {
+  console.warn("Rate limited (429)", error.response.data);
+}
 
       if (!isImageAnalyzeRequest(originalRequest)) {
         alert("Too many requests. Please slow down and try again in a minute.");
@@ -201,9 +206,9 @@ const apiCall = async (method, url, data = null, config = {}) => {
       String(url || "").includes("/team-submissions/") &&
       String(url || "").includes("/pending-count");
 
-    if (!shouldSuppressLog) {
-      console.error(`API ${method.toUpperCase()} ${url} error:`, { status, msg });
-    }
+   if (isDev && !shouldSuppressLog) {
+  console.error(`API ${method.toUpperCase()} ${url} error:`, { status, msg });
+}
 
     const err = new Error(msg);
     err.status = status;

@@ -126,11 +126,17 @@ const finalUser = normalizeUserData(userRes.data);
 persistUser(finalUser);
 
         return accessToken;
-      } catch (error) {
-        console.error("Token refresh failed:", error);
-        clearAuthState();
-        throw error;
-      } finally {
+   } catch (error) {
+  const status = error?.response?.status;
+
+  // 401/403 are normal when session expired or user not logged in
+  if (status && ![401, 403].includes(status)) {
+    console.error("Token refresh failed:", error);
+  }
+
+  clearAuthState();
+  throw error;
+}finally {
         refreshInFlightRef.current = null;
       }
     })();
@@ -138,40 +144,26 @@ persistUser(finalUser);
     return refreshInFlightRef.current;
   }, [clearAuthState, persistUser]);
 
-  useEffect(() => {
-    const restoreAuth = async () => {
-    
+ useEffect(() => {
+  const restoreAuth = async () => {
+    try {
+      await refreshToken();
+    } catch (error) {
+      const status = error?.response?.status;
 
-      try {
-        const response = await api.post("/auth/refresh", {}, { withCredentials: true });
-        const { accessToken } = response.data || {};
+      // 401/403 expected when no valid refresh cookie exists
+      if (status && ![401, 403].includes(status)) {
+        console.error("Auth restore failed:", error);
+      }
 
-        if (!accessToken) {
-          throw new Error("Refresh did not return accessToken");
-        }
+      clearAuthState();
+    } finally {
+      setLoading(false);
+    }
+  };
 
-        setAccessToken(accessToken);
-        setToken(accessToken);
-
-      const res = await api.get("/auth/me");
-const userData = normalizeUserData(res.data);
-
-setUser(userData);
-      } catch (error) {
-  const status = error?.response?.status;
-
-  if (status && status !== 401) {
-    console.error("Auth restore failed:", error);
-  }
-
-  clearAuthState();
-} finally {
-  setLoading(false);
-}
-    };
-
-    restoreAuth();
-  }, [clearAuthState]);
+  restoreAuth();
+}, [clearAuthState, refreshToken]);
 
   useEffect(() => {
     if (!token) return;
