@@ -84,6 +84,55 @@ const requireOwnership = async (req, res, next) => {
   }
 };
 
+const requireTournamentAccess = async (req, res, next) => {
+  const { id } = req.params;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({ message: "Invalid tournament ID format" });
+  }
+
+  try {
+    const tournament = await Tournament.findById(id).select("createdBy visibility");
+
+    if (!tournament) {
+      return res.status(404).json({ message: "Tournament not found" });
+    }
+
+    const isAdminUser = ["admin", "superadmin"].includes(req.user?.role);
+    const isOwner = tournament.createdBy?.toString() === req.user?._id?.toString();
+
+    if (!isAdminUser && !isOwner) {
+      return res.status(403).json({
+        message: "Access denied: You do not have access to this tournament",
+      });
+    }
+
+    req.tournament = tournament;
+    next();
+  } catch (error) {
+    logger.error("Tournament access check failed", {
+      tournamentId: id,
+      userId: req.user?._id,
+      error: error.message,
+      stack: error.stack,
+    });
+
+    return res.status(500).json({ message: "Server error during authorization" });
+  }
+};
+
+const premiumAccessUnlessAdmin = (feature) => {
+  return (req, res, next) => {
+    const isAdminUser = ["admin", "superadmin"].includes(req.user?.role);
+
+    if (isAdminUser) {
+      return next();
+    }
+
+    return premiumAccess(feature)(req, res, next);
+  };
+};
+
 // ================ PUBLIC ROUTES ================
 router.get("/", getAllTournaments);
 router.get("/ongoing", getOngoingTournaments);
@@ -195,12 +244,12 @@ router.put(
   saveOutcomes
 );
 
-router.get("/:id/winners", authMiddleware, requireOwnership, getWinnerAggregation);
+router.get("/:id/winners", authMiddleware, requireTournamentAccess, getWinnerAggregation);
 
 router.get(
   "/:id/team-championship",
   authMiddleware,
-  requireOwnership,
+  requireTournamentAccess,
   getTeamChampionshipAggregation
 );
 
@@ -210,8 +259,8 @@ router.get(
 router.get(
   "/:id/tiesheet",
   authMiddleware,
-  requireOwnership,
-  premiumAccess(PREMIUM_FEATURES.TIESHEET),
+  requireTournamentAccess,
+  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET),
   getTieSheet
 );
 
@@ -239,8 +288,8 @@ router.patch(
 router.get(
   "/:id/tiesheet-outcomes",
   authMiddleware,
-  requireOwnership,
-  premiumAccess(PREMIUM_FEATURES.TIESHEET),
+  requireTournamentAccess,
+  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET),
   getTieSheetOutcomes
 );
 
@@ -258,8 +307,8 @@ router.put(
 router.get(
   "/:id/officials",
   authMiddleware,
-  requireOwnership,
-  premiumAccess(PREMIUM_FEATURES.OFFICIALS),
+  requireTournamentAccess,
+  premiumAccessUnlessAdmin(PREMIUM_FEATURES.OFFICIALS),
   getOfficials
 );
 
@@ -277,8 +326,8 @@ router.put(
 router.get(
   "/:id/team-payments",
   authMiddleware,
-  requireOwnership,
-  premiumAccess(PREMIUM_FEATURES.TEAM_PAYMENTS),
+  requireTournamentAccess,
+  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TEAM_PAYMENTS),
   getTeamPayments
 );
 

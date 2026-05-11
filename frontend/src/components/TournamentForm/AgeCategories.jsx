@@ -52,11 +52,17 @@ const AgeCategories = ({ values, setFieldValue }) => {
               {MAIN_AGE_CATEGORIES.map((age) => (
                 <div key={`open-${age}`} className={styles.ageContainer}>
                   <button
-                    type="button"
+                    type="button"disabled={values.ageCategories?.official?.includes(age)}
                     className={`${styles.ageButton} ${
                       values.ageCategories?.open?.includes(age) ? styles.selectedAge : ''
                     }`}
-                    onClick={() => handleAgeToggle(values, setFieldValue, age, 'open')}
+                    onClick={() => {
+  if (values.ageCategories?.official?.includes(age)) {
+    return;
+  }
+
+  handleAgeToggle(values, setFieldValue, age, 'open');
+}}
                   >
                     {age}
                   </button>
@@ -95,15 +101,24 @@ const AgeCategories = ({ values, setFieldValue }) => {
             <div className={styles.underAgeContainer}>
               {UNDER_AGE_CATEGORIES.map((age) => (
                 <div key={`open-${age}`} className={styles.ageContainer}>
-                  <button
-                    type="button"
-                    className={`${styles.ageButton} ${
-                      values.ageCategories?.open?.includes(age) ? styles.selectedAge : ''
-                    }`}
-                    onClick={() => handleAgeToggle(values, setFieldValue, age, 'open')}
-                  >
-                    {age}
-                  </button>
+               <button
+  type="button"
+  disabled={values.ageCategories?.official?.includes(age)}
+  className={`${styles.ageButton} ${
+    values.ageCategories?.open?.includes(age)
+      ? styles.selectedAge
+      : ''
+  }`}
+  onClick={() => {
+    if (values.ageCategories?.official?.includes(age)) {
+      return;
+    }
+
+    handleAgeToggle(values, setFieldValue, age, 'open');
+  }}
+>
+  {age}
+</button>
 
                   {values.ageCategories?.open?.includes(age) && (
                     <div className={styles.individualGenderSelection}>
@@ -163,15 +178,24 @@ const AgeCategories = ({ values, setFieldValue }) => {
             <div className={styles.regularAgeContainer}>
               {MAIN_AGE_CATEGORIES.map((age) => (
                 <div key={`official-${age}`} className={styles.ageContainer}>
-                  <button
-                    type="button"
-                    className={`${styles.ageButton} ${
-                      values.ageCategories?.official?.includes(age) ? styles.selectedAge : ''
-                    }`}
-                    onClick={() => handleAgeToggle(values, setFieldValue, age, 'official')}
-                  >
-                    {age}
-                  </button>
+                 <button
+  type="button"
+  disabled={values.ageCategories?.open?.includes(age)}
+  className={`${styles.ageButton} ${
+    values.ageCategories?.official?.includes(age)
+      ? styles.selectedAge
+      : ''
+  }`}
+  onClick={() => {
+    if (values.ageCategories?.open?.includes(age)) {
+      return;
+    }
+
+    handleAgeToggle(values, setFieldValue, age, 'official');
+  }}
+>
+  {age}
+</button>
 
                   {values.ageCategories?.official?.includes(age) && (
                     <div className={styles.individualGenderSelection}>
@@ -207,15 +231,24 @@ const AgeCategories = ({ values, setFieldValue }) => {
             <div className={styles.underAgeContainer}>
               {UNDER_AGE_CATEGORIES.map((age) => (
                 <div key={`official-${age}`} className={styles.ageContainer}>
-                  <button
-                    type="button"
-                    className={`${styles.ageButton} ${
-                      values.ageCategories?.official?.includes(age) ? styles.selectedAge : ''
-                    }`}
-                    onClick={() => handleAgeToggle(values, setFieldValue, age, 'official')}
-                  >
-                    {age}
-                  </button>
+                <button
+  type="button"
+  disabled={values.ageCategories?.open?.includes(age)}
+  className={`${styles.ageButton} ${
+    values.ageCategories?.official?.includes(age)
+      ? styles.selectedAge
+      : ''
+  }`}
+  onClick={() => {
+    if (values.ageCategories?.open?.includes(age)) {
+      return;
+    }
+
+    handleAgeToggle(values, setFieldValue, age, 'official');
+  }}
+>
+  {age}
+</button>
 
                   {values.ageCategories?.official?.includes(age) && (
                     <div className={styles.individualGenderSelection}>

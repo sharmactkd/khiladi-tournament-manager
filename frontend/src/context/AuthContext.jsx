@@ -13,6 +13,16 @@ import api, { setAccessToken, getAccessToken, clearAccessToken } from "../api";
 
 const AuthContext = createContext();
 
+const getCookieValue = (name) => {
+  if (typeof document === "undefined") return "";
+
+  return (
+    document.cookie
+      .split("; ")
+      .find((row) => row.startsWith(`${name}=`))
+      ?.split("=")[1] || ""
+  );
+};
 const normalizeUserData = (data) => {
   if (!data) return null;
 
@@ -144,14 +154,22 @@ persistUser(finalUser);
     return refreshInFlightRef.current;
   }, [clearAuthState, persistUser]);
 
- useEffect(() => {
+ 
+
+useEffect(() => {
   const restoreAuth = async () => {
     try {
+      const csrfToken = getCookieValue("csrfToken");
+
+      if (!csrfToken) {
+        clearAuthState();
+        return;
+      }
+
       await refreshToken();
     } catch (error) {
       const status = error?.response?.status;
 
-      // 401/403 expected when no valid refresh cookie exists
       if (status && ![401, 403].includes(status)) {
         console.error("Auth restore failed:", error);
       }
@@ -189,9 +207,13 @@ persistUser(finalUser);
         if (Date.now() >= expiryTime - 60000) {
           await refreshToken();
         }
-      } catch (error) {
-        console.error("Token check failed:", error);
-      }
+   } catch (error) {
+  const status = error?.response?.status;
+
+  if (status && ![401, 403].includes(status)) {
+    console.error("Token check failed:", error);
+  }
+}
     };
 
     checkAndRefreshToken();

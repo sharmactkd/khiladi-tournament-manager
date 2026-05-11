@@ -290,11 +290,19 @@ setEntryPagination(
         finalEntries = localEntries;
       }
 
-      if (!finalEntries || finalEntries.length === 0) {
-        finalEntries = [emptyRow];
-      }
+     let hasServerRows = usedSource === "server" && finalEntries.length > 0;
 
-      finalEntries = regenerateSrNumbers(finalEntries.map(ensureEntryId));
+if (!finalEntries || finalEntries.length === 0) {
+  finalEntries = [emptyRow];
+  hasServerRows = false;
+}
+
+finalEntries = regenerateSrNumbers(
+  finalEntries.map((row) => ({
+    ...ensureEntryId(row),
+    entrySource: hasServerRows ? "server" : row.entrySource || "local",
+  }))
+);
 
       React.startTransition(() => {
         setData(finalEntries);
@@ -323,7 +331,11 @@ setEntryPagination(
 
   const patchEntryRowDebounced = useCallback(
   (row, columnId, value) => {
-    if (!token || !id || !row?.entryId) return;
+   if (!token || !id || !row?.entryId) return;
+
+if (row.entrySource !== "server") {
+  return;
+}
 
     const timerKey = `${row.entryId}:${columnId}`;
 

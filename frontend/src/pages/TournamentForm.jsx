@@ -395,27 +395,37 @@ const highlightTarget = isGroupError
             setFieldValue("venue.district", "");
           };
 
-          const handleAgeChange = (e, age, type) => {
-            e.preventDefault();
+         const handleAgeChange = (e, age, type) => {
+  e.preventDefault();
 
-            const isSelected = values.ageCategories[type].includes(age);
+  const oppositeType = type === "open" ? "official" : "open";
+  const isSelected = values.ageCategories[type].includes(age);
+  const isSelectedInOpposite = values.ageCategories[oppositeType].includes(age);
 
-            const newAges = isSelected
-              ? values.ageCategories[type].filter((a) => a !== age)
-              : [...values.ageCategories[type], age];
+  if (!isSelected && isSelectedInOpposite) {
+    setServerError(
+      `${age} age category Open aur Official dono me select nahi ho sakti.`
+    );
+    return;
+  }
 
-            const newGender = { ...values.ageGender[type] };
+  setServerError("");
 
-            if (isSelected) {
-              delete newGender[age];
-            } else {
-              newGender[age] = ["Male", "Female"];
-            }
+  const newAges = isSelected
+    ? values.ageCategories[type].filter((a) => a !== age)
+    : [...values.ageCategories[type], age];
 
-            setFieldValue(`ageCategories.${type}`, newAges);
-            setFieldValue(`ageGender.${type}`, newGender);
-          };
+  const newGender = { ...values.ageGender[type] };
 
+      if (isSelected) {
+    delete newGender[age];
+  } else {
+    newGender[age] = ["Male", "Female"];
+  }
+
+  setFieldValue(`ageCategories.${type}`, newAges);
+  setFieldValue(`ageGender.${type}`, newGender);
+};
           const handleAgeGenderChange = (e, age, gender, type) => {
             e.preventDefault();
 
@@ -428,28 +438,49 @@ const highlightTarget = isGroupError
             setFieldValue(`ageGender.${type}.${age}`, newGenders);
           };
 
-          const handleSelectAllAges = (type) => {
-            const allSelected = MAIN_AGE_CATEGORIES.every((age) =>
-              values.ageCategories[type].includes(age)
-            );
+         const handleSelectAllAges = (type) => {
+  const oppositeType = type === "open" ? "official" : "open";
+  const oppositeAges = values.ageCategories[oppositeType] || [];
 
-            const newAges = allSelected
-              ? values.ageCategories[type].filter((a) => !MAIN_AGE_CATEGORIES.includes(a))
-              : [...new Set([...values.ageCategories[type], ...MAIN_AGE_CATEGORIES])];
+  const allowedAges = MAIN_AGE_CATEGORIES.filter(
+    (age) => !oppositeAges.includes(age)
+  );
 
-            const newGender = { ...values.ageGender[type] };
+  const blockedAges = MAIN_AGE_CATEGORIES.filter((age) =>
+    oppositeAges.includes(age)
+  );
 
-            MAIN_AGE_CATEGORIES.forEach((age) => {
-              if (newAges.includes(age)) {
-                newGender[age] = ["Male", "Female"];
-              } else {
-                delete newGender[age];
-              }
-            });
+  if (blockedAges.length > 0) {
+    setServerError(
+      `Ye age categories already ${
+        oppositeType === "open" ? "Open" : "Official"
+      } me selected hain: ${blockedAges.join(", ")}`
+    );
+  } else {
+    setServerError("");
+  }
 
-            setFieldValue(`ageCategories.${type}`, newAges);
-            setFieldValue(`ageGender.${type}`, newGender);
-          };
+  const allSelected = allowedAges.every((age) =>
+    values.ageCategories[type].includes(age)
+  );
+
+  const newAges = allSelected
+    ? values.ageCategories[type].filter((a) => !allowedAges.includes(a))
+    : [...new Set([...values.ageCategories[type], ...allowedAges])];
+
+  const newGender = { ...values.ageGender[type] };
+
+  MAIN_AGE_CATEGORIES.forEach((age) => {
+    if (newAges.includes(age)) {
+      newGender[age] = ["Male", "Female"];
+    } else {
+      delete newGender[age];
+    }
+  });
+
+  setFieldValue(`ageCategories.${type}`, newAges);
+  setFieldValue(`ageGender.${type}`, newGender);
+};
 
           const handleKyorugiSubEventToggle = (subKey) => {
             const currentSub = values.eventCategories.kyorugi.sub;

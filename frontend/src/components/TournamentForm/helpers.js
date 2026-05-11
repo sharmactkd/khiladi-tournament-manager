@@ -39,23 +39,33 @@ const handleGenderToggleCore = (values, setFieldValue, age, gender, type) => {
 /**
  * Core handler: Select all ages
  */
-const handleSelectAllAgesCore = (values, setFieldValue, type) => {
-  const currentAges = values.ageCategories[type] || [];
-  const allSelected = MAIN_AGE_CATEGORIES.every((age) => currentAges.includes(age));
+export const handleSelectAllAges = (values, setFieldValue, type) => {
+  const oppositeType = type === "open" ? "official" : "open";
 
-  let newAges;
-  let newGender = { ...values.ageGender[type] };
+  const currentAges = values.ageCategories?.[type] || [];
+  const oppositeAges = values.ageCategories?.[oppositeType] || [];
 
-  if (allSelected) {
-    newAges = currentAges.filter((age) => !MAIN_AGE_CATEGORIES.includes(age));
-    MAIN_AGE_CATEGORIES.forEach((age) => delete newGender[age]);
-  } else {
-    const agesToAdd = MAIN_AGE_CATEGORIES.filter((age) => !currentAges.includes(age));
-    newAges = [...currentAges, ...agesToAdd];
-    agesToAdd.forEach((age) => {
-      newGender[age] = ["Male", "Female"];
-    });
-  }
+  const allowedAges = MAIN_AGE_CATEGORIES.filter(
+    (age) => !oppositeAges.includes(age)
+  );
+
+  const allAllowedSelected =
+    allowedAges.length > 0 &&
+    allowedAges.every((age) => currentAges.includes(age));
+
+  const newAges = allAllowedSelected
+    ? currentAges.filter((age) => !allowedAges.includes(age))
+    : [...new Set([...currentAges, ...allowedAges])];
+
+  const newGender = { ...(values.ageGender?.[type] || {}) };
+
+  MAIN_AGE_CATEGORIES.forEach((age) => {
+    if (newAges.includes(age)) {
+      newGender[age] = newGender[age] || ["Male", "Female"];
+    } else {
+      delete newGender[age];
+    }
+  });
 
   setFieldValue(`ageCategories.${type}`, newAges);
   setFieldValue(`ageGender.${type}`, newGender);
@@ -108,9 +118,7 @@ export const handleGenderToggle = (values, setFieldValue, age, gender, type) => 
   handleGenderToggleCore(values, setFieldValue, age, gender, type);
 };
 
-export const handleSelectAllAges = (values, setFieldValue, type) => {
-  handleSelectAllAgesCore(values, setFieldValue, type);
-};
+
 
 export const handleAgeChange = (setFieldValue, e, age, type) => {
   e?.preventDefault();

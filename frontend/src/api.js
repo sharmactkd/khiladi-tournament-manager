@@ -297,10 +297,12 @@ export const getTournamentTeamSubmissions = (tournamentId) =>
 
 export const getPendingTeamSubmissionCount = async (tournamentId) => {
   try {
-    return await apiCall("get", `/team-submissions/${tournamentId}/pending-count`);
+    return await apiCall(`/team-submissions/${tournamentId}/pending-count`);
   } catch (error) {
-    if (error?.status === 403) {
-      return { pendingCount: 0 };
+    const status = error?.response?.status || error?.status;
+
+    if (status === 403) {
+      return { pendingCount: 0, count: 0 };
     }
 
     throw error;

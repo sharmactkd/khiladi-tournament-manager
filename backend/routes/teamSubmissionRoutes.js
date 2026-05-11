@@ -27,7 +27,6 @@ router.get(
   "/:tournamentId/pending-count",
   authMiddleware,
   authorizeRoles("organizer", "admin", "superadmin"),
-  requireCsrfToken,
   getPendingTeamSubmissionCount
 );
 

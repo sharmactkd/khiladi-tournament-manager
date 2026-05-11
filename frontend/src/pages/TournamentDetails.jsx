@@ -212,6 +212,25 @@ const TournamentDetails = () => {
     };
   }, [tournament]);
 
+  const AGE_DISPLAY_ORDER = [
+  "Sub-Junior",
+  "Cadet",
+  "Junior",
+  "Senior",
+  "Under - 14",
+  "Under - 17",
+  "Under - 19",
+];
+
+const sortAgeCategories = (ages = []) => {
+  return [...ages].sort((a, b) => {
+    return (
+      AGE_DISPLAY_ORDER.indexOf(a) -
+      AGE_DISPLAY_ORDER.indexOf(b)
+    );
+  });
+};
+
   if (loading) return <div className={styles.container}>Loading...</div>;
   if (error)
     return (
@@ -407,7 +426,9 @@ const TournamentDetails = () => {
           </p>
 
           {["open", "official"].map((type) => {
-            const ages = tournament.ageCategories?.[type] || [];
+            const ages = sortAgeCategories(
+  tournament.ageCategories?.[type] || []
+);
             if (ages.length === 0) return null;
 
             return (
@@ -550,22 +571,23 @@ const TournamentDetails = () => {
                     let maleWeights = [];
                     let femaleWeights = [];
 
-                    if (standard === "WT") {
-                      if (ageGroup === "Cadet") {
-                        const cadetData =
-                          tournament.cadetCategoryType === "height"
-                            ? WT_WEIGHTS.Cadet.height
-                            : WT_WEIGHTS.Cadet.weight;
-                        maleWeights = cadetData.Male || [];
-                        femaleWeights = cadetData.Female || [];
-                      } else {
-                        maleWeights = WT_WEIGHTS[ageGroup]?.Male || [];
-                        femaleWeights = WT_WEIGHTS[ageGroup]?.Female || [];
-                      }
-                    } else if (standard === "SGFI") {
-                      maleWeights = SGFI_WEIGHTS[ageGroup]?.Male || [];
-                      femaleWeights = SGFI_WEIGHTS[ageGroup]?.Female || [];
-                    }
+                if (standard === "WT") {
+  if (ageGroup === "Cadet") {
+    const cadetData =
+      tournament.cadetCategoryType === "height"
+        ? WT_WEIGHTS.Cadet.height
+        : WT_WEIGHTS.Cadet.weight;
+
+    maleWeights = cadetData.Male || [];
+    femaleWeights = cadetData.Female || [];
+  } else {
+    maleWeights = WT_WEIGHTS[ageGroup]?.Male || [];
+    femaleWeights = WT_WEIGHTS[ageGroup]?.Female || [];
+  }
+} else if (standard === "SGFI") {
+  maleWeights = SGFI_WEIGHTS[ageGroup]?.Male || [];
+  femaleWeights = SGFI_WEIGHTS[ageGroup]?.Female || [];
+}
 
                     const parseWeight = (str) => {
                       const parts = String(str).split(" (");

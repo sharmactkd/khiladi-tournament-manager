@@ -136,6 +136,8 @@ const buildPublicTournamentResponse = (tournament) => ({
   ageGender: tournament.ageGender,
   eventCategories: tournament.eventCategories,
   entryFees: tournament.entryFees,
+  weightCategories: tournament.weightCategories,
+cadetCategoryType: tournament.cadetCategoryType,
   foodAndLodging: tournament.foodAndLodging,
   medalPoints: tournament.medalPoints,
   description: tournament.description,

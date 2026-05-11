@@ -42,9 +42,11 @@ const SubNavBar = ({
     }
 
     const response = await getPendingTeamSubmissionCount(id);
-    setPendingCount(Number(response?.pendingCount || 0));
+    setPendingCount(Number(response?.pendingCount || response?.count || 0));
   } catch (error) {
-    if (error?.status !== 403) {
+    const status = error?.response?.status || error?.status;
+
+    if (status !== 403) {
       console.error("Failed to load pending team submission count:", error);
     }
 

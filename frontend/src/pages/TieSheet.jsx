@@ -3,7 +3,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useParams, useLocation, useNavigate, useOutletContext } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useSelector, useDispatch } from 'react-redux';
-import axios from 'axios';
+import api from '../api';
 import debounce from 'lodash/debounce';
 import BracketPrintPage from '../components/TieSheet/BracketPrintPage';
 import { setPrintData, clearPrintData } from '../store/bracketsSlice';
@@ -308,18 +308,6 @@ const TieSheet = () => {
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  const getApiBaseUrl = useCallback(() => {
-    const raw = (import.meta.env.VITE_API_URL || '').trim();
-    const fallback = 'http://localhost:5000/api';
-    const base = raw || fallback;
-    const normalized = base.replace(/\/+$/, '');
-    return normalized.endsWith('/api') ? normalized : `${normalized}/api`;
-  }, []);
-
-  const getAuthConfig = useCallback(() => {
-    return token ? { headers: { Authorization: `Bearer ${token}` } } : {};
-  }, [token]);
-
   const normalizeAgeCategoryForCompare = (value) => {
   return String(value || "")
     .trim()
@@ -480,43 +468,41 @@ if (isDev) console.log('🧬 [TieSheet] cleaned[0].gender:', cleaned?.[0]?.gende
   }, []);
 
   const fetchTournamentFromServer = useCallback(
-    async (signal) => {
-      const baseUrl = getApiBaseUrl();
-      const config = { ...getAuthConfig(), signal };
-      const response = await axios.get(`${baseUrl}/tournament/${id}`, config);
+  async (signal) => {
+    const response = await api.get(`/tournament/${id}`, { signal });
 
-      const tournamentData = {
-        tournamentName: response.data.tournamentName || 'Unnamed Tournament',
-        federation: response.data.federation || 'N/A',
-        ageCategories: response.data.ageCategories || {},
-        ageGender: response.data.ageGender || {},
-        weightCategories: response.data.weightCategories || {},
-      };
+    const tournamentData = {
+      tournamentName: response.data.tournamentName || 'Unnamed Tournament',
+      federation: response.data.federation || 'N/A',
+      ageCategories: response.data.ageCategories || {},
+      ageGender: response.data.ageGender || {},
+      weightCategories: response.data.weightCategories || {},
+    };
 
-      const logos = response.data.logos || [];
-      setLogoLeft(logos[0] ? getFullImageUrl(logos[0]) : null);
-      setLogoRight(logos.length > 1 ? getFullImageUrl(logos[1]) : logos[0] ? getFullImageUrl(logos[0]) : null);
+    const logos = response.data.logos || [];
+    setLogoLeft(logos[0] ? getFullImageUrl(logos[0]) : null);
+    setLogoRight(logos.length > 1 ? getFullImageUrl(logos[1]) : logos[0] ? getFullImageUrl(logos[0]) : null);
 
-      setTournament(tournamentData);
-      setTournamentName(tournamentData.tournamentName);
-      setFederation(tournamentData.federation);
+    setTournament(tournamentData);
+    setTournamentName(tournamentData.tournamentName);
+    setFederation(tournamentData.federation);
 
-      return tournamentData;
-    },
-    [getApiBaseUrl, getAuthConfig, id]
-  );
+    return tournamentData;
+  },
+  [id]
+);
 
   const fetchEntriesFromServer = useCallback(
     async (attempts = 4, delayMs = 700, signal) => {
-      const baseUrl = getApiBaseUrl();
-      const config = { ...getAuthConfig(), signal };
-
+    
       let lastErr = null;
 
       for (let i = 0; i < attempts; i += 1) {
         try {
-          const url = `${baseUrl}/tournaments/${id}/entries?ts=${Date.now()}`;
-          const resp = await axios.get(url, config);
+          
+          const resp = await api.get(`/tournaments/${id}/entries?ts=${Date.now()}`, {
+  signal,
+});
 
           const payload = resp?.data || {};
           const shape = Array.isArray(payload?.entries) ? 'entries' : 'unknown';
@@ -548,29 +534,31 @@ if (isDev) console.log('🧬 [TieSheet] cleaned[0].gender:', cleaned?.[0]?.gende
 
       throw lastErr || new Error('Failed to fetch entries from server');
     },
-    [getApiBaseUrl, getAuthConfig, id]
+    [ id]
   );
 
-  const fetchLatestTieSheetFromServer = useCallback(
-    async (signal) => {
-      const baseUrl = getApiBaseUrl();
-      const config = { ...getAuthConfig(), signal };
-      const resp = await axios.get(`${baseUrl}/tournament/${id}/tiesheet?ts=${Date.now()}`, config);
-      return resp?.data?.tiesheet || null;
-    },
-    [id, getApiBaseUrl, getAuthConfig]
-  );
+ const fetchLatestTieSheetFromServer = useCallback(
+  async (signal) => {
+    const resp = await api.get(`/tournament/${id}/tiesheet?ts=${Date.now()}`, {
+      signal,
+    });
+
+    return resp?.data?.tiesheet || null;
+  },
+  [id]
+);
 
   // ✅ Lightweight outcomes-only endpoint (authoritative)
-  const fetchTieSheetOutcomesFromServer = useCallback(
-    async (signal) => {
-      const baseUrl = getApiBaseUrl();
-      const config = { ...getAuthConfig(), signal };
-      const resp = await axios.get(`${baseUrl}/tournament/${id}/tiesheet-outcomes?ts=${Date.now()}`, config);
-      return resp?.data || null; // { outcomes, outcomesUpdatedAt }
-    },
-    [id, getApiBaseUrl, getAuthConfig]
-  );
+ const fetchTieSheetOutcomesFromServer = useCallback(
+  async (signal) => {
+    const resp = await api.get(`/tournament/${id}/tiesheet-outcomes?ts=${Date.now()}`, {
+      signal,
+    });
+
+    return resp?.data || null;
+  },
+  [id]
+);
 
 const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesSnapshot = {}) => {
   const extractSideTeam = (side, bracketKey) => {
@@ -644,29 +632,26 @@ const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesS
   
 const saveTieSheetOutcomesToServer = useCallback(
   async (outcomes, signal, bracketsSnapshot = []) => {
-    const baseUrl = getApiBaseUrl();
-    const config = {
-      ...getAuthConfig(),
-      signal,
-      timeout: 20000,
-      headers: {
-        ...(getAuthConfig()?.headers || {}),
-        'Content-Type': 'application/json',
-      },
+    if (isAdminReadOnly || (isAdminUser && !adminEditMode)) {
+      return null;
+    }
+
+    const safeBrackets = Array.isArray(bracketsSnapshot) ? bracketsSnapshot : [];
+
+    const payload = {
+      outcomes: outcomes || {},
+      brackets: safeBrackets,
+      medals: collectBracketMedalPayload(safeBrackets, outcomes || {}),
     };
 
-   const safeBrackets = Array.isArray(bracketsSnapshot) ? bracketsSnapshot : [];
+    const resp = await api.put(`/tournament/${id}/tiesheet-outcomes`, payload, {
+      signal,
+      timeout: 20000,
+    });
 
-const payload = {
-  outcomes: outcomes || {},
-  brackets: safeBrackets,
-  medals: collectBracketMedalPayload(safeBrackets, outcomes || {}),
-};
-
-    const resp = await axios.put(`${baseUrl}/tournament/${id}/tiesheet-outcomes`, payload, config);
     return resp?.data || null;
   },
-[id, getApiBaseUrl, getAuthConfig, collectBracketMedalPayload]
+  [id, collectBracketMedalPayload, isAdminReadOnly, isAdminUser, adminEditMode]
 );
 
   const shouldRestoreSavedBrackets = useCallback((serverTieSheet, currentEntriesMeta) => {
@@ -753,10 +738,8 @@ const payload = {
         localStorage.setItem(key, JSON.stringify(existing));
 
         try {
-          const baseUrl = getApiBaseUrl();
-          await axios.post(`${baseUrl}/tournament/${id}/tiesheet-record`, newRecord, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
+          
+        await api.post(`/tournament/${id}/tiesheet-record`, newRecord);
         } catch (err) {
           console.error('Failed to save record on server', err);
         }
@@ -768,7 +751,7 @@ const payload = {
     return () => {
       delete window.saveTieSheetRecord;
     };
-  }, [id, token, getApiBaseUrl]);
+  }, [id,]);
 
   // ✅ Helper: log records for multiple brackets (Print All / Save All)
   const buildBracketInfo = useCallback((br) => {
@@ -1253,40 +1236,48 @@ const payload = {
 
   // Debounced auto-save (kept as-is for full tiesheet snapshot; outcomes are now saved separately in real-time)
   const debouncedSaveTieSheet = useMemo(
-    () =>
-      debounce(async () => {
-        try {
-          const safeBrackets = Array.isArray(brackets) ? brackets : [];
-          if (!safeBrackets.length || !id || isLoading) return;
-
-          const baseUrl = getApiBaseUrl();
-          const config = {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json',
-            },
-            timeout: 30000,
-          };
-
-          const meta = entriesMetaRef.current || {};
-          const dataToSave = {
-            tiesheet: {
-              brackets: safeBrackets,
-              outcomes: bracketsOutcomes || {},
-              filters: { selectedGenders, selectedAgeCategories },
-              entriesCount: typeof meta.count === 'number' ? meta.count : undefined,
-              entriesLastUpdated: meta.lastUpdated || null,
-            },
-          };
-
-          await axios.put(`${baseUrl}/tournament/${id}/tiesheet`, dataToSave, config);
-          if (isDev) console.log('TieSheet auto-saved');
-        } catch (err) {
-          console.error('Auto-save failed:', err);
+  () =>
+    debounce(async () => {
+      try {
+        if (isAdminReadOnly || (isAdminUser && !adminEditMode)) {
+          return;
         }
-      }, 8000),
-    [brackets, bracketsOutcomes, selectedGenders, selectedAgeCategories, id, token, isLoading, getApiBaseUrl]
-  );
+
+        const safeBrackets = Array.isArray(brackets) ? brackets : [];
+        if (!safeBrackets.length || !id || isLoading) return;
+
+        const meta = entriesMetaRef.current || {};
+        const dataToSave = {
+          tiesheet: {
+            brackets: safeBrackets,
+            outcomes: bracketsOutcomes || {},
+            filters: { selectedGenders, selectedAgeCategories },
+            entriesCount: typeof meta.count === "number" ? meta.count : undefined,
+            entriesLastUpdated: meta.lastUpdated || null,
+          },
+        };
+
+        await api.put(`/tournament/${id}/tiesheet`, dataToSave, {
+          timeout: 30000,
+        });
+
+        if (isDev) console.log("TieSheet auto-saved");
+      } catch (err) {
+        console.error("Auto-save failed:", err);
+      }
+    }, 8000),
+  [
+    brackets,
+    bracketsOutcomes,
+    selectedGenders,
+    selectedAgeCategories,
+    id,
+    isLoading,
+    isAdminReadOnly,
+    isAdminUser,
+    adminEditMode,
+  ]
+);
 
   useEffect(() => {
     debouncedSaveTieSheet();

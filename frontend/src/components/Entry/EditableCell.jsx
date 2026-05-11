@@ -726,8 +726,16 @@ if (autofillSuggestion && autofillColumns.includes(column.id)) {
     );
   }
 
-  return (
-    <div style={{ position: 'relative' }}>
+return (
+  <div
+    style={{
+      position: 'relative',
+      width: '100%',
+      height: '100%',
+      display: 'flex',
+      alignItems: 'center',
+    }}
+  >
       <input
       
         ref={inputRef}
