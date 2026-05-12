@@ -2,7 +2,7 @@
 import React, { memo } from 'react';
 import styles from '../../pages/TieSheet.module.css';
 
-const APP_NAME = 'EVOLVE - Tournament Manager';
+const APP_NAME = 'KHILADI - Tournament Manager';
 const WEBSITE_URL = import.meta.env.VITE_WEBSITE_URL || 'https://khiladi-khoj.com';
 const WEBSITE_TEXT = WEBSITE_URL.replace(/^https?:\/\//, '');
 

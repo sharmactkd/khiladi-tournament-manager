@@ -157,7 +157,7 @@ cadetCategoryType: tournament.cadetCategoryType,
   updatedAt: tournament.updatedAt,
 });
 
-const allowedResultMedals = ["Gold", "Silver", "Bronze"];
+const allowedResultMedals = ["Gold", "Silver", "Bronze", "X-X-X-X"];
 
 const normalizeResultText = (value) =>
   String(value || "")
@@ -170,7 +170,9 @@ const normalizeResultMedal = (value) => {
 
   if (["g", "gold", "1", "first"].includes(medal.toLowerCase())) return "Gold";
   if (["s", "silver", "2", "second"].includes(medal.toLowerCase())) return "Silver";
-  if (["b", "bronze", "3", "third"].includes(medal.toLowerCase())) return "Bronze";
+  if (["x", "xxxx", "x-x-x-x", "no medal", "nomedal"].includes(medal.toLowerCase())) {
+  return "X-X-X-X";
+}
 
   return allowedResultMedals.includes(medal) ? medal : "";
 };
@@ -713,6 +715,112 @@ const normalizeAgeCategoryForAggregation = {
   },
 };
 
+const normalizeCategoryTextForResult = (value = "") =>
+  String(value || "")
+    .normalize("NFKC")
+    .replace(/\u00A0/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[–—−]/g, "-")
+    .trim()
+    .toLowerCase()
+    .replace(/\bkilograms?\b/g, "kg")
+    .replace(/\bkgs\b/g, "kg")
+    .replace(/\s+/g, " ")
+    .replace(/\s*-\s*/g, " - ");
+
+const normalizeWeightCategoryForWinnerDisplay = (value = "") => {
+  const text = normalizeCategoryTextForResult(value);
+
+  if (!text) return "";
+
+  return text
+    .replace(/^under\s*-?\s*(\d+).*$/i, "Under - $1 KG")
+    .replace(/^over\s*-?\s*(\d+).*$/i, "Over - $1 KG")
+    .replace(/\bkg\b/gi, "KG")
+    .replace(/\s+/g, " ")
+    .replace(/\s*-\s*/g, " - ")
+    .trim();
+};
+
+const getWinnerWeightKey = (value = "") => {
+  const text = normalizeCategoryTextForResult(value);
+
+  if (!text) return "";
+
+  const underMatch = text.match(/under\s*-?\s*(\d+)/i);
+  if (underMatch) return `under_${underMatch[1]}_kg`;
+
+  const overMatch = text.match(/over\s*-?\s*(\d+)/i);
+  if (overMatch) return `over_${overMatch[1]}_kg`;
+
+  return text.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+};
+
+const sortWinnerWeightGroups = (a, b) => {
+  const getSortValue = (weightCategory = "") => {
+    const text = String(weightCategory || "").toLowerCase();
+
+    const underMatch = text.match(/under\s*-?\s*(\d+)/i);
+    if (underMatch) return Number(underMatch[1]);
+
+    const overMatch = text.match(/over\s*-?\s*(\d+)/i);
+    if (overMatch) return Number(overMatch[1]) + 1000;
+
+    const anyNumber = text.match(/(\d+)/);
+    if (anyNumber) return Number(anyNumber[1]);
+
+    return 9999;
+  };
+
+  return getSortValue(a.weightCategory) - getSortValue(b.weightCategory);
+};
+
+const normalizeWinnerPages = (pages = []) => {
+  return (Array.isArray(pages) ? pages : []).map((page) => {
+    const groupedWeights = new Map();
+
+    (page.weights || []).forEach((weightGroup) => {
+      const cleanWeight = normalizeWeightCategoryForWinnerDisplay(
+        weightGroup.weightCategory
+      );
+      const key = getWinnerWeightKey(cleanWeight);
+
+      if (!key) return;
+
+      if (!groupedWeights.has(key)) {
+        groupedWeights.set(key, {
+          weightCategory: cleanWeight,
+          rows: [],
+        });
+      }
+
+      const existing = groupedWeights.get(key);
+
+      (weightGroup.rows || []).forEach((row) => {
+        existing.rows.push({
+          ...row,
+          weightCategory: cleanWeight,
+        });
+      });
+    });
+
+    const weights = [...groupedWeights.values()]
+      .map((group) => ({
+        ...group,
+        rows: group.rows.sort((a, b) => {
+          const order = { Gold: 1, Silver: 2, Bronze: 3 };
+          return (order[a.medal] || 99) - (order[b.medal] || 99);
+        }),
+      }))
+      .sort(sortWinnerWeightGroups);
+
+    return {
+      ...page,
+      weights,
+    };
+  });
+};
+
 const buildEventMatch = (selectedEvent) => {
   const value = String(selectedEvent || "").trim().toUpperCase();
   if (!value || value === "OVERALL") return {};
@@ -849,13 +957,15 @@ export const getWinnerAggregation = async (req, res) => {
         .filter((event) => ["KYORUGI", "POOMSAE", "FRESHER", "TAG TEAM"].includes(event)),
     ];
 
-    return res.status(200).json({
-      success: true,
-      selectedEvent,
-      availableEvents: [...new Set(availableEvents)],
-      pages,
-      count: pages.length,
-    });
+   const normalizedPages = normalizeWinnerPages(pages);
+
+return res.status(200).json({
+  success: true,
+  selectedEvent,
+  availableEvents: [...new Set(availableEvents)],
+  pages: normalizedPages,
+  count: normalizedPages.length,
+});
   } catch (error) {
     logger.error("Winner aggregation failed", {
       error: error.message,

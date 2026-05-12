@@ -317,17 +317,38 @@ const TieSheet = () => {
 };
 
 const normalizeWeightCategoryForDisplay = (value = "") => {
-  const raw = String(value || "").trim();
+  const raw = String(value || "")
+    .normalize("NFKC")
+    .replace(/\u00A0/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[–—−]/g, "-")
+    .trim();
 
   if (!raw) return "";
 
   return raw
+    .replace(/\bkilograms?\b/gi, "kg")
+    .replace(/\bkgs\b/gi, "kg")
     .replace(/\s+/g, " ")
     .replace(/\s*-\s*/g, " - ")
-    .replace(/^under\s*-?\s*(\d+)\s*kg$/i, "Under - $1 KG")
-    .replace(/^over\s*-?\s*(\d+)\s*kg$/i, "Over - $1 KG")
+    .replace(/^under\s*-?\s*(\d+).*$/i, "Under - $1 KG")
+    .replace(/^over\s*-?\s*(\d+).*$/i, "Over - $1 KG")
     .replace(/\bkg\b/gi, "KG")
     .trim();
+};
+
+const getCanonicalWeightCategoryKey = (value = "") => {
+  const text = normalizeWeightCategoryForDisplay(value).toLowerCase();
+
+  if (!text) return "";
+
+  const underMatch = text.match(/under\s*-?\s*(\d+)/i);
+  if (underMatch) return `under_${underMatch[1]}_kg`;
+
+  const overMatch = text.match(/over\s*-?\s*(\d+)/i);
+  if (overMatch) return `over_${overMatch[1]}_kg`;
+
+  return text.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 };
 
 const getUniqueAgeCategories = (rows = []) => {
@@ -464,7 +485,11 @@ if (isDev) console.log('🧬 [TieSheet] cleaned[0].gender:', cleaned?.[0]?.gende
       const weightOk =
         allowedWeightCategories.size === 0
           ? !!p.weightCategory
-          : [...allowedWeightCategories].some((wc) => normalizeString(wc) === normalizeString(p.weightCategory));
+          : [...allowedWeightCategories].some(
+    (wc) =>
+      getCanonicalWeightCategoryKey(wc) ===
+      getCanonicalWeightCategoryKey(p.weightCategory)
+  );
       return genderOk && ageOk && weightOk;
     });
 
@@ -578,9 +603,7 @@ const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesS
   const extractSideTeam = (side, bracketKey) => {
     if (!side) return null;
 
-    if (side.team) {
-      return side.team;
-    }
+    if (side.team) return side.team;
 
     if (side.sourceGame) {
       const sourceGame = side.sourceGame;
@@ -595,55 +618,129 @@ const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesS
     return null;
   };
 
+  const pushMedal = (medals, team, medal, bracket) => {
+    if (
+      !team?.name ||
+      team.name === "BYE" ||
+      !team.entryId ||
+      String(team.entryId).startsWith("pool-winner-")
+    ) {
+      return;
+    }
+
+    medals.push({
+      ...team,
+      medal,
+      gender: team.gender || bracket.gender || "",
+      ageCategory: team.ageCategory || bracket.ageCategory || "",
+      weightCategory: team.weightCategory || bracket.weightCategory || "",
+    });
+  };
+
   const medals = [];
 
   (Array.isArray(bracketsSnapshot) ? bracketsSnapshot : []).forEach((bracket) => {
-    const finalGame = bracket?.game;
-    const bracketOutcomes = outcomesSnapshot?.[bracket?.key] || {};
+    if (!bracket || bracket.pool === "Final") return;
+
+    const bracketKey = bracket.key;
+    const finalGame = bracket.game;
+    const bracketOutcomes = outcomesSnapshot?.[bracketKey] || {};
     const winnerSide = bracketOutcomes?.[finalGame?.id];
 
     if (!finalGame || !winnerSide) return;
 
-    const goldTeam = extractSideTeam(finalGame.sides?.[winnerSide], bracket.key);
+    const goldTeam = extractSideTeam(finalGame.sides?.[winnerSide], bracketKey);
     const silverTeam = extractSideTeam(
       finalGame.sides?.[winnerSide === "home" ? "away" : "home"],
-      bracket.key
+      bracketKey
     );
 
-    if (
-  goldTeam?.name &&
-  goldTeam.name !== "BYE" &&
-  goldTeam.entryId &&
-  !String(goldTeam.entryId).startsWith("pool-winner-")
-) {
-      medals.push({
-        ...goldTeam,
-        medal: "Gold",
-        gender: goldTeam.gender || bracket.gender || "",
-        ageCategory: goldTeam.ageCategory || bracket.ageCategory || "",
-        weightCategory: goldTeam.weightCategory || bracket.weightCategory || "",
+    pushMedal(medals, goldTeam, "Gold", bracket);
+    pushMedal(medals, silverTeam, "Silver", bracket);
+
+    const categoryPlayerCount = Number(
+      bracket.categoryPlayerCount || bracket.playerCount || 0
+    );
+
+    if (categoryPlayerCount === 3 && bracket.gamesByRound?.[0]?.length === 1) {
+      const match = bracket.gamesByRound[0][0];
+      const matchWinnerSide = bracketOutcomes?.[match.id];
+
+      if (matchWinnerSide) {
+        const bronzeSide = matchWinnerSide === "home" ? "away" : "home";
+        const bronzeTeam = extractSideTeam(match.sides?.[bronzeSide], bracketKey);
+        pushMedal(medals, bronzeTeam, "Bronze", bracket);
+      }
+    }
+
+    if (categoryPlayerCount >= 4 && bracket.gamesByRound?.length >= 2) {
+      const semifinals = bracket.gamesByRound[bracket.gamesByRound.length - 2] || [];
+
+      semifinals.slice(0, 2).forEach((semi) => {
+        const semiWinnerSide = bracketOutcomes?.[semi.id];
+        if (!semiWinnerSide) return;
+
+        const bronzeSide = semiWinnerSide === "home" ? "away" : "home";
+        const bronzeTeam = extractSideTeam(semi.sides?.[bronzeSide], bracketKey);
+        pushMedal(medals, bronzeTeam, "Bronze", bracket);
       });
     }
 
-    if (
-  silverTeam?.name &&
-  silverTeam.name !== "BYE" &&
-  silverTeam.entryId &&
-  !String(silverTeam.entryId).startsWith("pool-winner-")
-) {
-      medals.push({
-        ...silverTeam,
-        medal: "Silver",
-        gender: silverTeam.gender || bracket.gender || "",
-        ageCategory: silverTeam.ageCategory || bracket.ageCategory || "",
-        weightCategory: silverTeam.weightCategory || bracket.weightCategory || "",
-      });
+    const expectedMedalCount =
+      categoryPlayerCount >= 4
+        ? 4
+        : categoryPlayerCount === 3
+          ? 3
+          : categoryPlayerCount === 2
+            ? 2
+            : 1;
+
+    const currentBracketMedalEntryIds = new Set(
+      medals
+        .filter(
+          (item) =>
+            ["Gold", "Silver", "Bronze"].includes(item.medal) &&
+            item.gender === bracket.gender &&
+            item.ageCategory === bracket.ageCategory &&
+            item.weightCategory === bracket.weightCategory
+        )
+        .map((item) => String(item.entryId || "").trim())
+        .filter(Boolean)
+    );
+
+    if (currentBracketMedalEntryIds.size < expectedMedalCount) {
+      return;
     }
+
+    const players = Array.isArray(bracket.shuffledPlayers)
+      ? bracket.shuffledPlayers
+      : [];
+
+    players.forEach((player) => {
+      const entryId = String(player?.entryId || "").trim();
+
+      if (!entryId || currentBracketMedalEntryIds.has(entryId)) return;
+
+      medals.push({
+        ...player,
+        medal: "X-X-X-X",
+        gender: player.gender || bracket.gender || "",
+        ageCategory: player.ageCategory || bracket.ageCategory || "",
+        weightCategory: player.weightCategory || bracket.weightCategory || "",
+      });
+    });
   });
 
-  return medals;
+  const seen = new Set();
+
+  return medals.filter((item) => {
+    const key = `${item.entryId}_${item.medal}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }, []);
-  
+
 const saveTieSheetOutcomesToServer = useCallback(
   async (outcomes, signal, bracketsSnapshot = []) => {
     if (isAdminReadOnly || (isAdminUser && !adminEditMode)) {

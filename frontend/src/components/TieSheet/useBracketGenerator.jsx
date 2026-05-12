@@ -395,13 +395,13 @@ const lastPlayerCategorySignatureRef = useRef("");
     debounce(async () => {
       // Skip if we just performed a manual operation (like shuffle)
       if (skipGenerationRef.current) {
-        console.log('⏸️ Skipping generator - manual operation detected');
+       
         skipGenerationRef.current = false;
         return;
       }
       
       if (players.length === 0) {
-        console.log('⏸️ Skipping generator - no players');
+       
         return;
       }
       
@@ -432,7 +432,7 @@ lastPlayerCountRef.current = players.length;
 lastPlayerCategorySignatureRef.current = currentCategorySignature;
 
 if (brackets.length > 0 && !playerCountChanged && !categorySignatureChanged) {
-  console.log("⏸️ Skipping generator - no player/category change and brackets exist");
+  
   return;
 }
 
@@ -440,7 +440,7 @@ if (brackets.length > 0 && !playerCountChanged && !categorySignatureChanged) {
       setGenerationError(null);
 
       try {
-        console.log('Bracket generation started...');
+      
 
         // Preserve locked brackets & outcomes
         const preservedLocked = brackets.filter(b => {
@@ -487,19 +487,7 @@ if (brackets.length > 0 && !playerCountChanged && !categorySignatureChanged) {
   return acc;
 }, {});
 
-console.log("GROUP DEBUG:", players.map((p) => ({
-  name: p.name,
-  gender: p.gender,
-  ageCategory: p.ageCategory,
-  weightCategory: p.weightCategory,
-  rawKey: `${p.gender}_${p.ageCategory}_${p.weightCategory}`,
-  weightLength: String(p.weightCategory || "").length,
-  weightChars: [...String(p.weightCategory || "")].map((ch) => ({
-    ch,
-    code: ch.charCodeAt(0),
-    hex: ch.charCodeAt(0).toString(16),
-  })),
-})));
+
 
         const generatedBrackets = [];
 

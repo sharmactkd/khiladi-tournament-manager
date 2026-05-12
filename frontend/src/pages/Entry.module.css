@@ -406,18 +406,16 @@
 .editableInput {
   width: 100%;
   height: 100%;
-  padding: 0 !important;
-  border: none;
+  padding: 0 8px;
+  border: 1px solid #cf0006;
   outline: none;
   box-sizing: border-box;
-  background: transparent;
+  background: white;
   font-family: inherit;
   font-size: inherit;
-  line-height: inherit;
   color: black;
   user-select: text;
   pointer-events: auto;
-  text-align: inherit;
 }
 
 /* Highlighted Row (modifier) */

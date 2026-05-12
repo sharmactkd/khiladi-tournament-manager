@@ -684,9 +684,17 @@ export const saveEntries = async (req, res) => {
     const {
   entries,
   state,
+  userState,
   isFullSnapshot = false,
   confirmReplaceAll = "",
 } = req.body || {};
+
+const resolvedUserState =
+  userState && typeof userState === "object"
+    ? userState
+    : state && typeof state === "object"
+      ? state
+      : {};
 
 const allowDeleteMissingRows =
   isFullSnapshot === true && confirmReplaceAll === "REPLACE_ALL_ENTRIES";
@@ -738,7 +746,7 @@ const allowDeleteMissingRows =
 
 const updated = await mirrorEntryRowsToLegacyEntry({
   tournamentId: id,
-  userState: state,
+  userState: resolvedUserState,
   userId: req.user._id,
 });
 

@@ -314,7 +314,7 @@ setEntryPagination(
       let localEntries = [];
       let localParsedOk = false;
 
-      if (usedSource !== 'server' || serverEntries.length === 0) {
+      if (usedSource !== 'server') {
         const saved = localStorage.getItem(`entryData_${id}`);
         if (saved) {
           try {
@@ -614,10 +614,12 @@ const handleClearAll = useCallback(async () => {
       window.dispatchEvent(new Event(`entryDataUpdated_${id}`));
     }
 
-    const finalRows = regenerateSrNumbers([emptyRow]);
+    localStorage.removeItem(`entryData_${id}`);
 
-    localStorage.setItem(`entryData_${id}`, JSON.stringify(finalRows));
-    setData(finalRows);
+const finalRows = regenerateSrNumbers([emptyRow]);
+
+localStorage.setItem(`entryData_${id}`, JSON.stringify(finalRows));
+setData(finalRows);
     setSorting([]);
     setFilters({});
     setSearchTerm("");
