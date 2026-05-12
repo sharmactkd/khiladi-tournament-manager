@@ -89,6 +89,54 @@ const ensureEntryId = (row = {}) => ({
   ...row,
   entryId: String(row.entryId || "").trim() || createEntryId(),
 });
+ 
+const normalizeEntryCategoryValue = (value = "", fieldId = "") => {
+  const raw = String(value || "")
+    .normalize("NFKC")
+    .replace(/\u00A0/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[–—−]/g, "-")
+    .trim();
+
+  if (!raw) return "";
+
+  let normalized = raw
+    .replace(/\s+/g, " ")
+    .replace(/\s*-\s*/g, " - ")
+    .trim();
+
+  if (fieldId === "ageCategory") {
+    normalized = normalized.replace(/^under\s*-?\s*(\d+)$/i, "Under - $1");
+    normalized = normalized.replace(/^over\s*-?\s*(\d+)$/i, "Over - $1");
+
+    return normalized
+      .toLowerCase()
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+      .replace(/\s-\s/g, " - ")
+      .trim();
+  }
+
+  if (fieldId === "weightCategory") {
+    normalized = normalized
+      .replace(/^under\s*-?\s*(\d+)\s*kg$/i, "Under - $1 KG")
+      .replace(/^over\s*-?\s*(\d+)\s*kg$/i, "Over - $1 KG")
+      .replace(/\bkg\b/gi, "KG");
+
+    return normalized
+      .replace(/\s+/g, " ")
+      .replace(/\s*-\s*/g, " - ")
+      .trim();
+  }
+
+  if (["event", "subEvent"].includes(fieldId)) {
+    return normalized
+      .toLowerCase()
+      .replace(/\b\w/g, (char) => char.toUpperCase())
+      .trim();
+  }
+
+  return normalized;
+};
 
 const Entry = () => {
   const { id: rawId } = useParams();
@@ -420,11 +468,15 @@ if (row.entrySource !== "server") {
         else if (['f', 'female'].includes(v)) finalValue = 'Female';
       }
 
-      if (columnId === 'weight') {
-        finalValue = String(value || '').replace(/[^0-9.]/g, '');
-      }
+    if (columnId === 'weight') {
+  finalValue = String(value || '').replace(/[^0-9.]/g, '');
+}
 
-     saveToHistory();
+if (["event", "subEvent", "ageCategory", "weightCategory"].includes(columnId)) {
+  finalValue = normalizeEntryCategoryValue(finalValue, columnId);
+}
+
+saveToHistory();
 
 setData((prev) => {
   const newData = [...prev];
@@ -530,37 +582,116 @@ if (token && rowToDelete?.entryId) {
     [id, guardAdminReadOnly]
   );
 
-  const handleClearAll = useCallback(() => {
-    if (guardAdminReadOnly()) return;
+const handleClearAll = useCallback(async () => {
+  if (guardAdminReadOnly()) return;
 
-    if (window.confirm('Are you sure you want to delete ALL entries? This cannot be undone.')) {
-      saveToHistory();
-      const emptyRow = ensureEntryId(
-  Object.fromEntries(columnsDef.map((col) => [col.id, col.id === "actions" ? "" : ""]))
-);
-      setData(regenerateSrNumbers([emptyRow]));
+  const confirmed = window.confirm(
+    "Are you sure you want to delete ALL entries? This cannot be undone."
+  );
+
+  if (!confirmed) return;
+
+  if (isAdminUser && !confirmAdminSaveIfNeeded()) {
+    return;
+  }
+
+  saveToHistory();
+
+  const emptyRow = ensureEntryId(
+    Object.fromEntries(
+      columnsDef.map((col) => [col.id, col.id === "actions" ? "" : ""])
+    )
+  );
+
+  try {
+    if (token && id) {
+      await saveEntries(id, {
+        entries: [],
+        userState: createEmptyEntryState(),
+        isFullSnapshot: true,
+      });
+
+      window.dispatchEvent(new Event(`entryDataUpdated_${id}`));
     }
-  }, [columnsDef, saveToHistory, regenerateSrNumbers, guardAdminReadOnly]);
 
-  const handleCleanEmptyRows = useCallback(() => {
-    if (guardAdminReadOnly()) return;
+    const finalRows = regenerateSrNumbers([emptyRow]);
 
-    saveToHistory();
-    setData((prev) => {
-      const filtered = prev.filter((row) =>
-        Object.entries(row).some(([key, val]) => key !== 'sr' && key !== 'actions' && val !== '' && val !== undefined && val !== null)
-      );
-      const final =
-        filtered.length > 0
-          ? filtered
-          : [
-    ensureEntryId(
-      Object.fromEntries(columnsDef.map((col) => [col.id, col.id === "actions" ? "" : ""]))
-    ),
-  ];
-      return regenerateSrNumbers(final);
-    });
-  }, [columnsDef, saveToHistory, regenerateSrNumbers, guardAdminReadOnly]);
+    localStorage.setItem(`entryData_${id}`, JSON.stringify(finalRows));
+    setData(finalRows);
+    setSorting([]);
+    setFilters({});
+    setSearchTerm("");
+
+    exitAdminEditModeIfNeeded();
+  } catch (error) {
+    console.error("Clear all entries failed:", error);
+    alert("Failed to clear entries from server. Please try again.");
+  }
+}, [
+  id,
+  token,
+  columnsDef,
+  saveToHistory,
+  regenerateSrNumbers,
+  guardAdminReadOnly,
+  isAdminUser,
+  confirmAdminSaveIfNeeded,
+  exitAdminEditModeIfNeeded,
+]);
+
+const handleCleanEmptyRows = useCallback(() => {
+  if (guardAdminReadOnly()) return;
+
+  saveToHistory();
+
+  setData((prev) => {
+    const ignoredKeys = new Set([
+      "sr",
+      "actions",
+      "entryId",
+      "entrySource",
+      "sourceSubmissionId",
+      "sourcePlayerId",
+      "_id",
+      "__v",
+    ]);
+
+    const filtered = prev.filter((row) =>
+      Object.entries(row || {}).some(([key, value]) => {
+        if (ignoredKeys.has(key)) {
+          return false;
+        }
+
+        if (typeof value === "string") {
+          return value.trim() !== "";
+        }
+
+        return value !== null && value !== undefined;
+      })
+    );
+
+    const final =
+      filtered.length > 0
+        ? filtered
+        : [
+            ensureEntryId(
+              Object.fromEntries(
+                columnsDef.map((col) => [
+                  col.id,
+                  col.id === "actions" ? "" : "",
+                ])
+              )
+            ),
+          ];
+
+    return regenerateSrNumbers(final);
+  });
+}, [
+  columnsDef,
+  saveToHistory,
+  regenerateSrNumbers,
+  guardAdminReadOnly,
+]);
 
   const handleFileUpload = useCallback((e) => {
     if (guardAdminReadOnly()) return;
@@ -584,7 +715,8 @@ if (token && rowToDelete?.entryId) {
         if (cleaned.name) cleaned.name = String(cleaned.name).trim().toUpperCase();
         if (cleaned.team) cleaned.team = String(cleaned.team).trim().toUpperCase();
 
-        const titleCaseFields = ['event', 'subEvent', 'ageCategory', 'weightCategory', 'coach', 'manager'];
+        const titleCaseFields = ['coach', 'manager'];
+const categoryFields = ['event', 'subEvent', 'ageCategory', 'weightCategory'];
 
         if (cleaned.medal) {
           const medalValue = String(cleaned.medal).trim().toLowerCase();
@@ -599,14 +731,20 @@ if (token && rowToDelete?.entryId) {
           }
         }
 
-        titleCaseFields.forEach((field) => {
-          if (cleaned[field]) {
-            cleaned[field] = String(cleaned[field])
-              .trim()
-              .toLowerCase()
-              .replace(/(^|\s)\w/g, (letter) => letter.toUpperCase());
-          }
-        });
+      titleCaseFields.forEach((field) => {
+  if (cleaned[field]) {
+    cleaned[field] = String(cleaned[field])
+      .trim()
+      .toLowerCase()
+      .replace(/(^|\s)\w/g, (letter) => letter.toUpperCase());
+  }
+});
+
+categoryFields.forEach((field) => {
+  if (cleaned[field]) {
+    cleaned[field] = normalizeEntryCategoryValue(cleaned[field], field);
+  }
+});
 
         if (cleaned.gender) {
           const g = String(cleaned.gender).trim().toLowerCase();

@@ -297,7 +297,14 @@ export const getTournamentTeamSubmissions = (tournamentId) =>
 
 export const getPendingTeamSubmissionCount = async (tournamentId) => {
   try {
-    return await apiCall(`/team-submissions/${tournamentId}/pending-count`);
+    if (!tournamentId) {
+      return { pendingCount: 0, count: 0 };
+    }
+
+    return await apiCall(
+      "get",
+      `/team-submissions/${encodeURIComponent(tournamentId)}/pending-count`
+    );
   } catch (error) {
     const status = error?.response?.status || error?.status;
 

@@ -225,20 +225,10 @@ function App() {
 <Route path="team-championship" element={requireTournamentLogin(<TeamChampionship />)} />
 <Route path="official" element={requireTournamentLogin(<Official />)} />
 <Route path="team" element={requireTournamentLogin(<Team />)} />
-            <Route
-              path="team-submissions"
-              element={
-                isAuthenticated &&
-                !needsProfileCompletion &&
-                user?.role === "organizer" ? (
-                  <TeamSubmissions />
-                ) : needsProfileCompletion ? (
-                  <Navigate to="/complete-profile" replace />
-                ) : (
-                  <Navigate to="/" replace />
-                )
-              }
-            />
+           <Route
+  path="team-submissions"
+  element={requireTournamentLogin(<TeamSubmissions />)}
+/>
           </Route>
 
           <Route path="/about" element={<About />} />

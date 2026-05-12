@@ -18,6 +18,13 @@ const getTournamentId = (req) => {
   );
 };
 
+const isLocalPremiumBypassEnabled = () => {
+  return (
+    process.env.NODE_ENV !== "production" &&
+    process.env.LOCAL_PREMIUM_BYPASS === "true"
+  );
+};
+
 const premiumAccess = (feature = PREMIUM_FEATURES.TIESHEET) => {
   return async (req, res, next) => {
     let userId;
@@ -32,6 +39,22 @@ const premiumAccess = (feature = PREMIUM_FEATURES.TIESHEET) => {
           success: false,
           message: "Unauthorized user",
         });
+      }
+
+      if (isLocalPremiumBypassEnabled()) {
+        req.premiumAccess = {
+          hasAccess: true,
+          accessType: "local-dev-bypass",
+          planType: "local-dev",
+          paymentId: null,
+          tournamentId,
+          accessStartsAt: new Date(),
+          accessExpiresAt: null,
+          feature,
+          reason: "LOCAL_PREMIUM_BYPASS enabled",
+        };
+
+        return next();
       }
 
       const access = await hasActiveAccess({

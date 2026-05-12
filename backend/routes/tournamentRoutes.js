@@ -255,6 +255,8 @@ router.get(
 
 // ================ PREMIUM PROTECTED ROUTES ================
 
+// ================ PREMIUM PROTECTED ROUTES ================
+
 // Tie Sheet
 router.get(
   "/:id/tiesheet",
@@ -267,9 +269,9 @@ router.get(
 router.put(
   "/:id/tiesheet",
   authMiddleware,
-  requireOwnership,
+  requireTournamentAccess,
   requireCsrfToken,
-  premiumAccess(PREMIUM_FEATURES.TIESHEET),
+  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET),
   sensitiveRateLimiter,
   saveTieSheet
 );
@@ -278,9 +280,9 @@ router.put(
 router.patch(
   "/:id/tiesheet/outcomes",
   authMiddleware,
-  requireOwnership,
+  requireTournamentAccess,
   requireCsrfToken,
-  premiumAccess(PREMIUM_FEATURES.TIESHEET),
+  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET),
   sensitiveRateLimiter,
   saveTieSheetOutcomes
 );
@@ -296,9 +298,9 @@ router.get(
 router.put(
   "/:id/tiesheet-outcomes",
   authMiddleware,
-  requireOwnership,
+  requireTournamentAccess,
   requireCsrfToken,
-  premiumAccess(PREMIUM_FEATURES.TIESHEET),
+  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET),
   sensitiveRateLimiter,
   saveTieSheetOutcomes
 );
@@ -315,9 +317,9 @@ router.get(
 router.put(
   "/:id/officials",
   authMiddleware,
-  requireOwnership,
+  requireTournamentAccess,
   requireCsrfToken,
-  premiumAccess(PREMIUM_FEATURES.OFFICIALS),
+  premiumAccessUnlessAdmin(PREMIUM_FEATURES.OFFICIALS),
   sensitiveRateLimiter,
   saveOfficials
 );
@@ -334,9 +336,9 @@ router.get(
 router.put(
   "/:id/team-payments",
   authMiddleware,
-  requireOwnership,
+  requireTournamentAccess,
   requireCsrfToken,
-  premiumAccess(PREMIUM_FEATURES.TEAM_PAYMENTS),
+  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TEAM_PAYMENTS),
   sensitiveRateLimiter,
   saveTeamPayments
 );
@@ -345,9 +347,9 @@ router.put(
 router.post(
   "/:id/tiesheet-record",
   authMiddleware,
-  requireOwnership,
+  requireTournamentAccess,
   requireCsrfToken,
-  premiumAccess(PREMIUM_FEATURES.TIESHEET_RECORD),
+  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET_RECORD),
   sensitiveRateLimiter,
   saveTieSheetRecord
 );

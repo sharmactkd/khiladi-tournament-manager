@@ -316,6 +316,20 @@ const TieSheet = () => {
     .replace(/under\s*-?\s*(\d+)/g, "under - $1");
 };
 
+const normalizeWeightCategoryForDisplay = (value = "") => {
+  const raw = String(value || "").trim();
+
+  if (!raw) return "";
+
+  return raw
+    .replace(/\s+/g, " ")
+    .replace(/\s*-\s*/g, " - ")
+    .replace(/^under\s*-?\s*(\d+)\s*kg$/i, "Under - $1 KG")
+    .replace(/^over\s*-?\s*(\d+)\s*kg$/i, "Over - $1 KG")
+    .replace(/\bkg\b/gi, "KG")
+    .trim();
+};
+
 const getUniqueAgeCategories = (rows = []) => {
   return [
     ...new Set(
@@ -358,7 +372,7 @@ const getUniqueAgeCategories = (rows = []) => {
   entryId: String(p?.entryId || "").trim(),
   gender: normalizeGender(p?.gender),
   ageCategory: ageCategoryMapping[normalizeString(p?.ageCategory)] || p?.ageCategory,
-  weightCategory: p?.weightCategory,
+  weightCategory: normalizeWeightCategoryForDisplay(p?.weightCategory),
   name: p?.name || "",
   team: p?.team || "",
 }));

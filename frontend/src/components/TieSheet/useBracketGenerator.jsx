@@ -15,6 +15,77 @@ const AGE_CATEGORY_ORDER = [
   'Under - 19',
 ];
 
+
+const normalizeCategoryText = (value = "") => {
+  return String(value || "")
+    .normalize("NFKC")
+    .replace(/\u00A0/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[–—−]/g, "-")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\s*-\s*/g, " - ");
+};
+
+const getCanonicalAgeCategoryKey = (value = "") => {
+  const text = normalizeCategoryText(value);
+
+  if (!text) return "";
+
+  const underMatch = text.match(/under\s*-?\s*(\d+)/i);
+  if (underMatch) return `under_${underMatch[1]}`;
+
+  const overMatch = text.match(/over\s*-?\s*(\d+)/i);
+  if (overMatch) return `over_${overMatch[1]}`;
+
+  return text.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+};
+
+const getCanonicalWeightCategoryKey = (value = "") => {
+  const text = normalizeCategoryText(value)
+    .replace(/\bkilograms?\b/g, "kg")
+    .replace(/\bkgs\b/g, "kg")
+    .replace(/\bkg\b/g, "kg");
+
+  if (!text) return "";
+
+  const underMatch = text.match(/under\s*-?\s*(\d+)/i);
+  if (underMatch) return `under_${underMatch[1]}_kg`;
+
+  const overMatch = text.match(/over\s*-?\s*(\d+)/i);
+  if (overMatch) return `over_${overMatch[1]}_kg`;
+
+  return text.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+};
+
+const normalizeAgeCategoryForDisplay = (value = "") => {
+  const text = normalizeCategoryText(value);
+
+  if (!text) return "";
+
+  return text
+    .replace(/^under\s*-?\s*(\d+).*$/i, "Under - $1")
+    .replace(/^over\s*-?\s*(\d+).*$/i, "Over - $1")
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .replace(/\s-\s/g, " - ")
+    .trim();
+};
+
+const normalizeWeightCategoryForDisplay = (value = "") => {
+  const text = normalizeCategoryText(value);
+
+  if (!text) return "";
+
+  return text
+    .replace(/^under\s*-?\s*(\d+).*$/i, "Under - $1 KG")
+    .replace(/^over\s*-?\s*(\d+).*$/i, "Over - $1 KG")
+    .replace(/\bkg\b/gi, "KG")
+    .replace(/\s+/g, " ")
+    .replace(/\s*-\s*/g, " - ")
+    .trim();
+};
+
 const getWeightSortValue = (weightCategory = "") => {
   const text = String(weightCategory).toLowerCase();
 
@@ -316,7 +387,8 @@ export default function useBracketGenerator({
   
   // Add a ref to track manual updates
   const skipGenerationRef = useRef(false);
-  const lastPlayerCountRef = useRef(0);
+ const lastPlayerCountRef = useRef(0);
+const lastPlayerCategorySignatureRef = useRef("");
 
   // Debounced generation to prevent UI freeze during rapid changes
   const generateBrackets = useCallback(
@@ -334,14 +406,35 @@ export default function useBracketGenerator({
       }
       
       // Check if player count actually changed
-      const playerCountChanged = players.length !== lastPlayerCountRef.current;
-      lastPlayerCountRef.current = players.length;
-      
-      // If brackets already exist and player count didn't change, skip
-      if (brackets.length > 0 && !playerCountChanged) {
-        console.log('⏸️ Skipping generator - no player count change and brackets exist');
-        return;
-      }
+const buildPlayerCategorySignature = (playersList = []) => {
+  return JSON.stringify(
+    playersList
+      .map((p) => ({
+        entryId: String(p?.entryId || "").trim(),
+       gender: normalizeCategoryText(p?.gender),
+ageCategory: getCanonicalAgeCategoryKey(p?.ageCategory),
+weightCategory: getCanonicalWeightCategoryKey(p?.weightCategory),
+      }))
+      .sort((a, b) =>
+        `${a.entryId}_${a.gender}_${a.ageCategory}_${a.weightCategory}`.localeCompare(
+          `${b.entryId}_${b.gender}_${b.ageCategory}_${b.weightCategory}`
+        )
+      )
+  );
+};
+
+const playerCountChanged = players.length !== lastPlayerCountRef.current;
+const currentCategorySignature = buildPlayerCategorySignature(players);
+const categorySignatureChanged =
+  currentCategorySignature !== lastPlayerCategorySignatureRef.current;
+
+lastPlayerCountRef.current = players.length;
+lastPlayerCategorySignatureRef.current = currentCategorySignature;
+
+if (brackets.length > 0 && !playerCountChanged && !categorySignatureChanged) {
+  console.log("⏸️ Skipping generator - no player/category change and brackets exist");
+  return;
+}
 
       setIsGenerating(true);
       setGenerationError(null);
@@ -361,18 +454,59 @@ export default function useBracketGenerator({
           preservedOutcomes[b.key] = { ...(bracketsOutcomes[b.key] || {}) };
         });
 
-        const grouped = players.reduce((acc, p) => {
-          const key = `${p.gender}_${p.ageCategory}_${p.weightCategory}`;
-          if (!acc[key]) acc[key] = [];
-          acc[key].push(p);
-          return acc;
-        }, {});
+      const grouped = players.reduce((acc, p) => {
+  const genderDisplay = String(p?.gender || "").trim();
+  const ageDisplay = normalizeAgeCategoryForDisplay(p?.ageCategory);
+  const weightDisplay = normalizeWeightCategoryForDisplay(p?.weightCategory);
+
+  const genderKey = normalizeCategoryText(genderDisplay)
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  const ageKey = getCanonicalAgeCategoryKey(p?.ageCategory);
+  const weightKey = getCanonicalWeightCategoryKey(p?.weightCategory);
+
+  const key = `${genderKey}_${ageKey}_${weightKey}`;
+
+  if (!acc[key]) {
+    acc[key] = {
+      gender: genderDisplay,
+      ageCategory: ageDisplay,
+      weightCategory: weightDisplay,
+      players: [],
+    };
+  }
+
+  acc[key].players.push({
+    ...p,
+    gender: genderDisplay,
+    ageCategory: ageDisplay,
+    weightCategory: weightDisplay,
+  });
+
+  return acc;
+}, {});
+
+console.log("GROUP DEBUG:", players.map((p) => ({
+  name: p.name,
+  gender: p.gender,
+  ageCategory: p.ageCategory,
+  weightCategory: p.weightCategory,
+  rawKey: `${p.gender}_${p.ageCategory}_${p.weightCategory}`,
+  weightLength: String(p.weightCategory || "").length,
+  weightChars: [...String(p.weightCategory || "")].map((ch) => ({
+    ch,
+    code: ch.charCodeAt(0),
+    hex: ch.charCodeAt(0).toString(16),
+  })),
+})));
 
         const generatedBrackets = [];
 
-        Object.entries(grouped).forEach(([key, groupPlayers]) => {
-          const [gender, ageCategory, weightCategory] = key.split('_');
-          const categoryPlayerCount = groupPlayers.length;
+        Object.entries(grouped).forEach(([key, group]) => {
+  const { gender, ageCategory, weightCategory } = group;
+  const groupPlayers = group.players;
+  const categoryPlayerCount = groupPlayers.length;
 
           if (categoryPlayerCount <= 16) {
             const seededPlayers = smartSeedPlayers([...groupPlayers]);
