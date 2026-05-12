@@ -270,14 +270,18 @@ const syncEntryRowsFromEntries = async ({
 
   const entryIds = normalizedRows.map((row) => row.entryId);
 
-  const bulkOps = normalizedRows.map((row) => ({
-    updateOne: {
-      filter: {
-        tournamentId: row.tournamentId,
-        entryId: row.entryId,
-      },
-      update: {
+ const bulkOps = normalizedRows.map((row) => ({
+  updateOne: {
+    filter: {
+      tournamentId: row.tournamentId,
+      entryId: row.entryId,
+    },
+    update: [
+      {
         $set: {
+          tournamentId: row.tournamentId,
+          entryId: row.entryId,
+
           srNo: row.srNo,
           title: row.title,
           name: row.name,
@@ -293,9 +297,29 @@ const syncEntryRowsFromEntries = async ({
           subEvent: row.subEvent,
           ageCategory: row.ageCategory,
           weightCategory: row.weightCategory,
-          medal: row.medal,
-          medalSource: row.medalSource,
-          medalUpdatedAt: row.medalUpdatedAt,
+
+          medal: {
+            $cond: [
+              { $eq: ["$medalSource", "tiesheet"] },
+              "$medal",
+              row.medal,
+            ],
+          },
+          medalSource: {
+            $cond: [
+              { $eq: ["$medalSource", "tiesheet"] },
+              "$medalSource",
+              row.medalSource,
+            ],
+          },
+          medalUpdatedAt: {
+            $cond: [
+              { $eq: ["$medalSource", "tiesheet"] },
+              "$medalUpdatedAt",
+              row.medalUpdatedAt,
+            ],
+          },
+
           entrySource: row.entrySource,
           sourceSubmissionId: row.sourceSubmissionId,
           sourcePlayerId: row.sourcePlayerId,
@@ -303,17 +327,17 @@ const syncEntryRowsFromEntries = async ({
           coachContact: row.coachContact,
           manager: row.manager,
           managerContact: row.managerContact,
+
+          createdBy: {
+            $ifNull: ["$createdBy", row.createdBy],
+          },
           updatedBy: row.updatedBy,
         },
-        $setOnInsert: {
-          tournamentId: row.tournamentId,
-          entryId: row.entryId,
-          createdBy: row.createdBy,
-        },
       },
-      upsert: true,
-    },
-  }));
+    ],
+    upsert: true,
+  },
+}));
 
   let bulkResult = null;
 
@@ -639,7 +663,15 @@ const [rows, total, legacyMeta] = await Promise.all([
 ]);
 
     const mappedEntries = rows.map(mapEntryRowForResponse);
-
+console.log(
+  "💾 ENTRY SAVE mappedEntries",
+  mappedEntries.map((e) => ({
+    entryId: e.entryId,
+    name: e.name,
+    medal: e.medal,
+    medalSource: e.medalSource,
+  }))
+);
     return res.status(200).json({
       success: true,
       entries: mappedEntries,

@@ -371,25 +371,46 @@ const collectMedalsFromObject = (node, fallback = {}, output = [], visited = new
 };
 
 const buildUniqueMedalList = (items = []) => {
-  const result = [];
-  const seen = new Set();
+  const medalPriority = {
+    Gold: 4,
+    Silver: 3,
+    Bronze: 2,
+    "X-X-X-X": 1,
+  };
+
+  const map = new Map();
 
   items.forEach((item) => {
     const normalized = normalizeMedalPayloadItem(item);
+
     if (!normalized) return;
 
-    const key = [
-  normalized.entryId || buildResultStrictKey(normalized),
-  normalized.medal,
-].join("###");
+    const entryId = String(normalized.entryId || "").trim();
 
-    if (seen.has(key)) return;
+    const strictKey =
+      entryId || buildResultStrictKey(normalized);
 
-    seen.add(key);
-    result.push(normalized);
+    if (!strictKey) return;
+
+    const existing = map.get(strictKey);
+
+    if (!existing) {
+      map.set(strictKey, normalized);
+      return;
+    }
+
+    const existingPriority =
+      medalPriority[existing.medal] || 0;
+
+    const incomingPriority =
+      medalPriority[normalized.medal] || 0;
+
+    if (incomingPriority >= existingPriority) {
+      map.set(strictKey, normalized);
+    }
   });
 
-  return result;
+  return [...map.values()];
 };
 
 const extractMedalsFromTieSheetPayload = ({ medals, brackets, outcomes, tiesheet }) => {
@@ -449,16 +470,6 @@ const extractMedalsFromTieSheetPayload = ({ medals, brackets, outcomes, tiesheet
 const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => {
   const validMedals = buildUniqueMedalList(medals || []);
 
-  if (!validMedals.length) {
-    return {
-      attempted: false,
-      matchedCount: 0,
-      clearedCount: 0,
-      medalsReceived: 0,
-      reason: "no-valid-medals",
-    };
-  }
-
   const rows = await EntryRow.find({ tournamentId }).sort({ srNo: 1, createdAt: 1 }).lean();
 
   if (!rows.length) {
@@ -471,21 +482,19 @@ const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => 
     };
   }
 
-const targetByEntryId = new Map();
-const skippedWithoutEntryId = [];
+  const targetByEntryId = new Map();
+  const skippedWithoutEntryId = [];
 
-validMedals.forEach((item) => {
-  const entryId = String(item.entryId || "").trim();
+  validMedals.forEach((item) => {
+    const entryId = String(item.entryId || "").trim();
 
-  if (!entryId) {
-    skippedWithoutEntryId.push(item);
-    return;
-  }
+    if (!entryId) {
+      skippedWithoutEntryId.push(item);
+      return;
+    }
 
-  if (!targetByEntryId.has(entryId)) {
     targetByEntryId.set(entryId, item);
-  }
-});
+  });
 
   const now = new Date();
   let matchedCount = 0;
@@ -495,11 +504,17 @@ validMedals.forEach((item) => {
 
   rows.forEach((row) => {
     const currentEntryId = String(row.entryId || "").trim();
-
-   const matched = currentEntryId ? targetByEntryId.get(currentEntryId) : null;
+    const matched = currentEntryId ? targetByEntryId.get(currentEntryId) : null;
 
     if (matched) {
       matchedCount += 1;
+
+      console.log("📝 Updating EntryRow", {
+  entryId: row.entryId,
+  oldMedal: row.medal,
+  newMedal: matched?.medal,
+  medalSource: matched ? "tiesheet" : "",
+});
 
       bulkOps.push({
         updateOne: {
@@ -542,36 +557,36 @@ validMedals.forEach((item) => {
   }
 
   await Entry.findOneAndUpdate(
-  { tournamentId },
-  {
-    $set: {
-      updatedBy: userId || null,
+    { tournamentId },
+    {
+      $set: {
+        updatedBy: userId || null,
+      },
+      $unset: {
+        entries: "",
+      },
+      $setOnInsert: {
+        tournamentId,
+      },
     },
-    $unset: {
-      entries: "",
-    },
-    $setOnInsert: {
-      tournamentId,
-    },
-  },
-  {
-    upsert: true,
-    new: true,
-    runValidators: true,
-    setDefaultsOnInsert: true,
-  }
-);
+    {
+      upsert: true,
+      new: true,
+      runValidators: true,
+      setDefaultsOnInsert: true,
+    }
+  );
 
- return {
-  attempted: true,
-  matchedCount,
-  clearedCount,
-  medalsReceived: validMedals.length,
-  skippedWithoutEntryId: skippedWithoutEntryId.length,
-  strictEntryIdOnly: true,
-  lastUpdated: now,
-  reason: null,
-};
+  return {
+    attempted: true,
+    matchedCount,
+    clearedCount,
+    medalsReceived: validMedals.length,
+    skippedWithoutEntryId: skippedWithoutEntryId.length,
+    strictEntryIdOnly: true,
+    lastUpdated: now,
+    reason: null,
+  };
 }; 
 
 const normalizeEventTypeForAggregation = {
@@ -1415,6 +1430,25 @@ export const saveTieSheetOutcomes = async (req, res) => {
       outcomes,
       tiesheet,
     });
+    console.log("📥 BACKEND medalsToSync", medalsToSync);
+
+    console.log("🏅 [TieSheet] GENERATED MEDALS PAYLOAD", {
+  medals,
+  total: medals?.length || 0,
+});
+
+if (Array.isArray(medals)) {
+  medals.forEach((m, i) => {
+    console.log(`🏅 Medal ${i + 1}`, {
+      entryId: m?.entryId,
+      name: m?.name,
+      medal: m?.medal,
+      team: m?.team,
+      weightCategory: m?.weightCategory,
+      ageCategory: m?.ageCategory,
+    });
+  });
+}
 
     let syncResult = {
       attempted: false,
@@ -1424,7 +1458,7 @@ export const saveTieSheetOutcomes = async (req, res) => {
       reason: "no-medal-payload",
     };
 
-    if (medalsToSync.length > 0) {
+    if (Array.isArray(medals)) {
       syncResult = await syncTieSheetMedalsToEntries({
         tournamentId: req.params.id,
         userId: req.user?._id,
