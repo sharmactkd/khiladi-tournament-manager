@@ -1425,11 +1425,35 @@ export const saveTieSheetOutcomes = async (req, res) => {
     const saved = updated?.tiesheet?.outcomes || {};
 
     const medalsToSync = extractMedalsFromTieSheetPayload({
+      
       medals,
       brackets,
       outcomes,
       tiesheet,
     });
+
+    console.group("🔥 [BACKEND] TieSheet outcomes received");
+console.log("Tournament:", req.params.id);
+console.log("Raw medals from frontend:", medals);
+console.log("Extracted medalsToSync:", medalsToSync);
+console.log("Outcomes keys:", Object.keys(outcomes || {}));
+console.log(
+  "Bracket summary:",
+  Array.isArray(brackets)
+    ? brackets.map((b) => ({
+        key: b.key,
+        pool: b.pool,
+        playerCount: b.playerCount,
+        categoryPlayerCount: b.categoryPlayerCount,
+        finalGameId: b.game?.id,
+        finalWinner:
+          outcomes?.[b.key]?.[String(b.game?.id)] ??
+          outcomes?.[b.key]?.[Number(b.game?.id)] ??
+          null,
+      }))
+    : []
+);
+console.groupEnd();
     console.log("📥 BACKEND medalsToSync", medalsToSync);
 
     console.log("🏅 [TieSheet] GENERATED MEDALS PAYLOAD", {

@@ -373,6 +373,7 @@ finalEntries = regenerateSrNumbers(
     loadEntries();
   }, [id, token, authLoading, columnsDef, regenerateSrNumbers]);
 
+  
   useEffect(() => {
     dataRef.current = data;
   }, [data]);

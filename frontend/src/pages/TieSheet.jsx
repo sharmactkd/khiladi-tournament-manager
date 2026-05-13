@@ -603,10 +603,132 @@ if (isDev) console.log('🧬 [TieSheet] cleaned[0].gender:', cleaned?.[0]?.gende
 );
 
 const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesSnapshot = {}) => {
+  console.group("🧪 [MEDAL CALC] collectBracketMedalPayload START");
+console.log("bracketsSnapshot count:", Array.isArray(bracketsSnapshot) ? bracketsSnapshot.length : "not-array");
+console.log("outcomesSnapshot:", outcomesSnapshot);
+console.log(
+  "all brackets:",
+  (Array.isArray(bracketsSnapshot) ? bracketsSnapshot : []).map((b) => ({
+    key: b.key,
+    pool: b.pool,
+    playerCount: b.playerCount,
+    categoryPlayerCount: b.categoryPlayerCount,
+    finalGameId: b.game?.id,
+    finalWinner:
+      outcomesSnapshot?.[b.key]?.[String(b.game?.id)] ??
+      outcomesSnapshot?.[b.key]?.[Number(b.game?.id)] ??
+      null,
+  }))
+);
+console.groupEnd();
+
   const safeBrackets = Array.isArray(bracketsSnapshot) ? bracketsSnapshot : [];
 
   const getBaseKey = (key = "") =>
     String(key || "").replace(/_Pool.*$/, "");
+
+  const isPoolFinalBracket = (bracket) =>
+    String(bracket?.pool || "").toLowerCase() === "final" ||
+    String(bracket?.key || "").toLowerCase().includes("poolfinal");
+
+  const getOutcomeWinnerSide = (bracketKey, gameId) => {
+    const outcomes = outcomesSnapshot?.[bracketKey] || {};
+
+    return (
+      outcomes?.[String(gameId)] ??
+      outcomes?.[Number(gameId)] ??
+      null
+    );
+  };
+
+  const extractSideTeam = (side, bracketKey, depth = 0) => {
+    console.log("🔎 [RESOLVE PLAYER]", {
+  bracketKey,
+  depth,
+  hasTeam: Boolean(side?.team),
+  teamName: side?.team?.name,
+  teamEntryId: side?.team?.entryId,
+  hasSourceGame: Boolean(side?.sourceGame),
+  sourceGameId: side?.sourceGame?.id,
+  pool: side?.pool,
+});
+
+    if (!side || depth > 30) return null;
+
+    if (side.team) return side.team;
+
+    if (!side.sourceGame) return null;
+
+    const sourceGame = side.sourceGame;
+    let sourceBracketKey = bracketKey;
+
+    if (
+      String(bracketKey || "").toLowerCase().includes("poolfinal") &&
+      side.pool
+    ) {
+      const baseKey = String(bracketKey).replace(/_PoolFinal$/i, "");
+      sourceBracketKey = `${baseKey}_Pool${side.pool}`;
+    }
+
+    const winnerSide = getOutcomeWinnerSide(sourceBracketKey, sourceGame.id);
+console.log("🔁 [SOURCE GAME WINNER]", {
+  sourceBracketKey,
+  sourceGameId: sourceGame.id,
+  winnerSide,
+  availableOutcomes: outcomesSnapshot?.[sourceBracketKey],
+});
+
+    if (!winnerSide) return null;
+
+    return extractSideTeam(
+      sourceGame.sides?.[winnerSide],
+      sourceBracketKey,
+      depth + 1
+    );
+  };
+
+  const isValidPlayer = (team) =>
+    team?.name &&
+    team.name !== "BYE" &&
+    team.entryId &&
+    !String(team.entryId).startsWith("pool-winner-");
+
+  const makeMedal = (team, medal, bracket) => ({
+    ...team,
+    medal,
+    gender: team.gender || bracket.gender || "",
+    ageCategory: team.ageCategory || bracket.ageCategory || "",
+    weightCategory: team.weightCategory || bracket.weightCategory || "",
+  });
+
+  const pushUniqueMedalist = (list, item) => {
+    if (!item?.entryId) return;
+
+    const entryId = String(item.entryId || "").trim();
+    if (!entryId) return;
+
+    const alreadyExists = list.some(
+      (existing) => String(existing.entryId || "").trim() === entryId
+    );
+
+    if (!alreadyExists) {
+      list.push(item);
+    }
+  };
+
+  const pushUniquePlayer = (map, player, bracket) => {
+    if (!isValidPlayer(player)) return;
+
+    const entryId = String(player.entryId || "").trim();
+    if (!entryId || map.has(entryId)) return;
+
+    map.set(entryId, {
+      ...player,
+      gender: player.gender || bracket.gender || "",
+      ageCategory: player.ageCategory || bracket.ageCategory || "",
+      weightCategory: player.weightCategory || bracket.weightCategory || "",
+    });
+  };
 
   const grouped = new Map();
 
@@ -624,400 +746,245 @@ const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesS
 
   const result = [];
 
-  const getOutcomeWinnerSide = (bracketKey, gameId) => {
-    const outcomes = outcomesSnapshot?.[bracketKey] || {};
-
-    return (
-      outcomes?.[String(gameId)] ??
-      outcomes?.[Number(gameId)] ??
-      null
-    );
-  };
-
-const extractSideTeam = (side, bracketKey, depth = 0) => {
-  if (!side || depth > 20) return null;
-
-  if (side.team) return side.team;
-
-  if (!side.sourceGame) return null;
-
-  const sourceGame = side.sourceGame;
-
-  let sourceBracketKey = bracketKey;
-
-  if (
-    String(bracketKey || "").toLowerCase().includes("poolfinal") &&
-    side.pool
-  ) {
-    const baseKey = String(bracketKey).replace(/_PoolFinal$/i, "");
-    sourceBracketKey = `${baseKey}_Pool${side.pool}`;
-  }
-
-  const winnerSide =
-    outcomesSnapshot?.[sourceBracketKey]?.[String(sourceGame.id)] ??
-    outcomesSnapshot?.[sourceBracketKey]?.[Number(sourceGame.id)] ??
-    null;
-
-  if (!winnerSide) return null;
-
-  return extractSideTeam(
-    sourceGame.sides?.[winnerSide],
-    sourceBracketKey,
-    depth + 1
-  );
-};
-
-  const isValidPlayer = (team) => {
-    return (
-      team?.name &&
-      team.name !== "BYE" &&
-      team.entryId &&
-      !String(team.entryId).startsWith("pool-winner-")
-    );
-  };
-
-  const medalEntry = (team, medal, bracket) => ({
-    ...team,
-    medal,
-    gender: team.gender || bracket.gender || "",
-    ageCategory: team.ageCategory || bracket.ageCategory || "",
-    weightCategory:
-      team.weightCategory || bracket.weightCategory || "",
-  });
-
-  const pushUnique = (arr, item) => {
-    if (!item?.entryId) return;
-
-    const exists = arr.some(
-      (x) => String(x.entryId) === String(item.entryId)
-    );
-
-    if (!exists) {
-      arr.push(item);
-    }
-  };
-
   grouped.forEach((groupBrackets) => {
-    const medalists = [];
-
-    const playersMap = new Map();
+    const playerMap = new Map();
 
     groupBrackets.forEach((bracket) => {
-      (bracket?.shuffledPlayers || []).forEach((p) => {
-        if (
-          p?.entryId &&
-          p.name &&
-          p.name !== "BYE"
-        ) {
-          playersMap.set(String(p.entryId), p);
-        }
-      });
+      if (Array.isArray(bracket.shuffledPlayers)) {
+        bracket.shuffledPlayers.forEach((player) =>
+          pushUniquePlayer(playerMap, player, bracket)
+        );
+      }
     });
 
-    const allPlayers = [...playersMap.values()];
+    const allPlayers = [...playerMap.values()];
 
     const categoryPlayerCount = Math.max(
-      ...groupBrackets.map((b) =>
-        Number(
-          b.categoryPlayerCount ||
-            b.playerCount ||
-            0
-        )
+      ...groupBrackets.map((bracket) =>
+        Number(bracket.categoryPlayerCount || bracket.playerCount || 0)
       ),
       allPlayers.length
     );
 
     if (categoryPlayerCount <= 0) return;
 
-    const hasPoolFinal = groupBrackets.some(
-      (b) =>
-        String(b?.pool || "").toLowerCase() === "final" ||
-        String(b?.key || "")
-          .toLowerCase()
-          .includes("poolfinal")
-    );
-
-    let categoryComplete = false;
+    const hasPoolFinal = groupBrackets.some(isPoolFinalBracket);
+    const medalists = [];
 
     if (hasPoolFinal) {
-      const finalBracket = groupBrackets.find(
-        (b) =>
-          String(b?.pool || "").toLowerCase() === "final" ||
-          String(b?.key || "")
-            .toLowerCase()
-            .includes("poolfinal")
-      );
-
+      console.group("🏊 [POOL CATEGORY DETECTED]");
+console.log("Group brackets:", groupBrackets.map((b) => ({
+  key: b.key,
+  pool: b.pool,
+  playerCount: b.playerCount,
+  categoryPlayerCount: b.categoryPlayerCount,
+  finalGameId: b.game?.id,
+  finalWinner:
+    outcomesSnapshot?.[b.key]?.[String(b.game?.id)] ??
+    outcomesSnapshot?.[b.key]?.[Number(b.game?.id)] ??
+    null,
+})));
+console.groupEnd();
+      const finalBracket = groupBrackets.find(isPoolFinalBracket);
       const finalGame = finalBracket?.game;
 
-      const finalWinner = finalGame
-        ? getOutcomeWinnerSide(
-            finalBracket.key,
-            finalGame.id
-          )
-        : null;
-
-      if (finalWinner) {
-        categoryComplete = true;
-
-        const goldTeam = extractSideTeam(
-          finalGame.sides?.[finalWinner],
-          finalBracket.key
-        );
-
-        const silverTeam = extractSideTeam(
-          finalGame.sides?.[
-            finalWinner === "home"
-              ? "away"
-              : "home"
-          ],
-          finalBracket.key
-        );
-
-        if (isValidPlayer(goldTeam)) {
-          pushUnique(
-            medalists,
-            medalEntry(
-              goldTeam,
-              "Gold",
-              finalBracket
-            )
-          );
-        }
-
-        if (
-          categoryPlayerCount >= 2 &&
-          isValidPlayer(silverTeam)
-        ) {
-          pushUnique(
-            medalists,
-            medalEntry(
-              silverTeam,
-              "Silver",
-              finalBracket
-            )
-          );
-        }
-
-        groupBrackets
-          .filter((b) => b !== finalBracket)
-          .forEach((poolBracket) => {
-            const poolGame = poolBracket?.game;
-
-            const poolWinner = poolGame
-              ? getOutcomeWinnerSide(
-                  poolBracket.key,
-                  poolGame.id
-                )
-              : null;
-
-            if (!poolWinner) {
-              categoryComplete = false;
-              return;
-            }
-
-            const bronzeSide =
-              poolWinner === "home"
-                ? "away"
-                : "home";
-
-            const bronzeTeam = extractSideTeam(
-              poolGame.sides?.[bronzeSide],
-              poolBracket.key
-            );
-
-            if (isValidPlayer(bronzeTeam)) {
-              pushUnique(
-                medalists,
-                medalEntry(
-                  bronzeTeam,
-                  "Bronze",
-                  poolBracket
-                )
-              );
-            }
-          });
-      }
-    } else {
-      const bracket = groupBrackets[0];
-
-      const finalGame = bracket?.game;
-
-      const finalWinner = finalGame
-        ? getOutcomeWinnerSide(
-            bracket.key,
-            finalGame.id
-          )
-        : null;
-
-      if (categoryPlayerCount === 1) {
-        const singlePlayer =
-          allPlayers[0];
-
-        if (isValidPlayer(singlePlayer)) {
-          categoryComplete = true;
-
-          pushUnique(
-            medalists,
-            medalEntry(
-              singlePlayer,
-              "Gold",
-              bracket
-            )
-          );
-        }
+      if (!finalBracket || !finalGame?.id) {
+        return;
       }
 
-      else if (finalWinner) {
-        categoryComplete = true;
+      const finalWinnerSide = getOutcomeWinnerSide(finalBracket.key, finalGame.id);
+console.log("🏁 [POOL FINAL CHECK]", {
+  finalBracketKey: finalBracket.key,
+  finalGameId: finalGame.id,
+  finalWinnerSide,
+  shouldGenerateMedals: Boolean(finalWinnerSide),
+});
 
-        const goldTeam = extractSideTeam(
-          finalGame.sides?.[finalWinner],
-          bracket.key
-        );
+      // ✅ IMPORTANT:
+      // Pool A / Pool B complete hone par yahan return ho jayega.
+      // Medals sirf PoolFinal winner declare hone ke baad generate honge.
+      if (!finalWinnerSide) {
+        return;
+      }
 
-        const silverTeam = extractSideTeam(
-          finalGame.sides?.[
-            finalWinner === "home"
-              ? "away"
-              : "home"
-          ],
-          bracket.key
-        );
+      const goldTeam = extractSideTeam(
+        finalGame.sides?.[finalWinnerSide],
+        finalBracket.key
+      );
 
-        if (isValidPlayer(goldTeam)) {
-          pushUnique(
-            medalists,
-            medalEntry(
-              goldTeam,
-              "Gold",
-              bracket
-            )
-          );
-        }
+      const silverTeam = extractSideTeam(
+        finalGame.sides?.[finalWinnerSide === "home" ? "away" : "home"],
+        finalBracket.key
+      );
 
-        if (
-          categoryPlayerCount >= 2 &&
-          isValidPlayer(silverTeam)
-        ) {
-          pushUnique(
-            medalists,
-            medalEntry(
-              silverTeam,
-              "Silver",
-              bracket
-            )
-          );
-        }
+      if (isValidPlayer(goldTeam)) {
+        pushUniqueMedalist(medalists, makeMedal(goldTeam, "Gold", finalBracket));
+      }
 
-        if (
-          categoryPlayerCount === 3 &&
-          bracket.gamesByRound?.[0]?.length === 1
-        ) {
-          const bronzeGame =
-            bracket.gamesByRound[0][0];
+      if (categoryPlayerCount >= 2 && isValidPlayer(silverTeam)) {
+        pushUniqueMedalist(medalists, makeMedal(silverTeam, "Silver", finalBracket));
+      }
 
-          const bronzeWinner =
-            getOutcomeWinnerSide(
-              bracket.key,
-              bronzeGame.id
-            );
+     groupBrackets
+  .filter((poolBracket) => !isPoolFinalBracket(poolBracket))
+  .forEach((poolBracket) => {
+    const poolGame = poolBracket?.game;
 
-          if (!bronzeWinner) {
-            categoryComplete = false;
-          } else {
-            const bronzeSide =
-              bronzeWinner === "home"
-                ? "away"
-                : "home";
+    if (!poolGame?.id) return;
 
-            const bronzeTeam = extractSideTeam(
-              bronzeGame.sides?.[bronzeSide],
-              bracket.key
-            );
+    const poolWinnerSide = getOutcomeWinnerSide(poolBracket.key, poolGame.id);
 
-            if (isValidPlayer(bronzeTeam)) {
-              pushUnique(
-                medalists,
-                medalEntry(
-                  bronzeTeam,
-                  "Bronze",
-                  bracket
-                )
-              );
-            }
-          }
-        }
+    if (!poolWinnerSide) return;
 
-        if (
-          categoryPlayerCount >= 4 &&
-          bracket.gamesByRound?.length >= 2
-        ) {
-          const semifinals =
-            bracket.gamesByRound[
-              bracket.gamesByRound.length - 2
-            ] || [];
+    const bronzeSide = poolWinnerSide === "home" ? "away" : "home";
 
-          semifinals
-            .slice(0, 2)
-            .forEach((semi) => {
-              const semiWinner =
-                getOutcomeWinnerSide(
-                  bracket.key,
-                  semi.id
-                );
+    const bronzeTeam = extractSideTeam(
+      poolGame.sides?.[bronzeSide],
+      poolBracket.key
+    );
 
-              if (!semiWinner) {
-                categoryComplete = false;
-                return;
-              }
+    if (isValidPlayer(bronzeTeam)) {
+      pushUniqueMedalist(
+        medalists,
+        makeMedal(bronzeTeam, "Bronze", finalBracket)
+      );
+    }
+  });
 
-              const bronzeSide =
-                semiWinner === "home"
-                  ? "away"
-                  : "home";
+      const expectedMedalCount =
+        categoryPlayerCount >= 4
+          ? 4
+          : categoryPlayerCount === 3
+            ? 3
+            : categoryPlayerCount === 2
+              ? 2
+              : 1;
 
-              const bronzeTeam = extractSideTeam(
-                semi.sides?.[bronzeSide],
-                bracket.key
-              );
+      const medalistEntryIds = new Set(
+        medalists
+          .filter((item) => ["Gold", "Silver", "Bronze"].includes(item.medal))
+          .map((item) => String(item.entryId || "").trim())
+          .filter(Boolean)
+      );
 
-              if (isValidPlayer(bronzeTeam)) {
-                pushUnique(
-                  medalists,
-                  medalEntry(
-                    bronzeTeam,
-                    "Bronze",
-                    bracket
-                  )
-                );
-              }
-            });
+    // ✅ PoolFinal complete hai to at least Gold/Silver save/display hone do.
+// Bronze resolve na ho to bhi payload empty mat karo.
+if (medalistEntryIds.size < 2) {
+  return;
+}
+
+result.push(...medalists);
+
+      allPlayers.forEach((player) => {
+        const entryId = String(player.entryId || "").trim();
+
+        if (!entryId || medalistEntryIds.has(entryId)) return;
+
+        result.push({
+          ...player,
+          medal: "X-X-X-X",
+        });
+      });
+
+      return;
+    }
+
+    const bracket = groupBrackets[0];
+    const bracketKey = bracket?.key;
+    const finalGame = bracket?.game;
+
+    if (!bracket || !bracketKey) return;
+
+    if (categoryPlayerCount === 1) {
+      const singlePlayer = allPlayers[0];
+
+      if (isValidPlayer(singlePlayer)) {
+        result.push(makeMedal(singlePlayer, "Gold", bracket));
+      }
+
+      return;
+    }
+
+    const finalWinnerSide = finalGame?.id
+      ? getOutcomeWinnerSide(bracketKey, finalGame.id)
+      : null;
+
+    if (!finalWinnerSide) return;
+
+    const goldTeam = extractSideTeam(finalGame.sides?.[finalWinnerSide], bracketKey);
+    const silverTeam = extractSideTeam(
+      finalGame.sides?.[finalWinnerSide === "home" ? "away" : "home"],
+      bracketKey
+    );
+
+    if (isValidPlayer(goldTeam)) {
+      pushUniqueMedalist(medalists, makeMedal(goldTeam, "Gold", bracket));
+    }
+
+    if (categoryPlayerCount >= 2 && isValidPlayer(silverTeam)) {
+      pushUniqueMedalist(medalists, makeMedal(silverTeam, "Silver", bracket));
+    }
+
+    if (categoryPlayerCount === 3 && bracket.gamesByRound?.[0]?.length === 1) {
+      const bronzeMatch = bracket.gamesByRound[0][0];
+      const bronzeWinnerSide = getOutcomeWinnerSide(bracketKey, bronzeMatch.id);
+
+      if (!bronzeWinnerSide) return;
+
+      const bronzeLoserSide = bronzeWinnerSide === "home" ? "away" : "home";
+      const bronzeTeam = extractSideTeam(
+        bronzeMatch.sides?.[bronzeLoserSide],
+        bracketKey
+      );
+
+      if (isValidPlayer(bronzeTeam)) {
+        pushUniqueMedalist(medalists, makeMedal(bronzeTeam, "Bronze", bracket));
+      }
+    }
+
+    if (categoryPlayerCount >= 4 && bracket.gamesByRound?.length >= 2) {
+      const semifinals = bracket.gamesByRound[bracket.gamesByRound.length - 2] || [];
+
+      for (const semi of semifinals.slice(0, 2)) {
+        const semiWinnerSide = getOutcomeWinnerSide(bracketKey, semi.id);
+
+        if (!semiWinnerSide) return;
+
+        const bronzeSide = semiWinnerSide === "home" ? "away" : "home";
+        const bronzeTeam = extractSideTeam(semi.sides?.[bronzeSide], bracketKey);
+
+        if (isValidPlayer(bronzeTeam)) {
+          pushUniqueMedalist(medalists, makeMedal(bronzeTeam, "Bronze", bracket));
         }
       }
     }
 
-    result.push(...medalists);
+    const expectedMedalCount =
+      categoryPlayerCount >= 4
+        ? 4
+        : categoryPlayerCount === 3
+          ? 3
+          : categoryPlayerCount === 2
+            ? 2
+            : 1;
 
-    if (!categoryComplete) return;
-
-    const medalistIds = new Set(
-      medalists.map((m) =>
-        String(m.entryId)
-      )
+    const medalistEntryIds = new Set(
+      medalists
+        .filter((item) => ["Gold", "Silver", "Bronze"].includes(item.medal))
+        .map((item) => String(item.entryId || "").trim())
+        .filter(Boolean)
     );
 
-    allPlayers.forEach((player) => {
-      const entryId = String(
-        player.entryId || ""
-      );
+    if (medalistEntryIds.size < expectedMedalCount) {
+      return;
+    }
 
-      if (
-        !entryId ||
-        medalistIds.has(entryId)
-      ) {
-        return;
-      }
+    result.push(...medalists);
+
+    allPlayers.forEach((player) => {
+      const entryId = String(player.entryId || "").trim();
+
+      if (!entryId || medalistEntryIds.has(entryId)) return;
 
       result.push({
         ...player,
@@ -1026,18 +993,32 @@ const extractSideTeam = (side, bracketKey, depth = 0) => {
     });
   });
 
-  const dedupe = new Map();
+  const byEntryId = new Map();
 
   result.forEach((item) => {
-    const id = String(item.entryId || "");
+    const entryId = String(item.entryId || "").trim();
+    if (!entryId) return;
 
-    if (!id) return;
-
-    dedupe.set(id, item);
+    byEntryId.set(entryId, item);
   });
 
-  return [...dedupe.values()];
-}, []);
+ const finalPayload = [...byEntryId.values()];
+
+console.group("✅ FINAL MEDAL PAYLOAD TO BACKEND");
+console.log(
+  finalPayload.map((m) => ({
+    entryId: m.entryId,
+    name: m.name,
+    medal: m.medal,
+    weightCategory: m.weightCategory,
+  }))
+);
+console.groupEnd();
+
+return finalPayload;
+
+
+}, []); 
 
 const saveTieSheetOutcomesToServer = useCallback(
   async (outcomes, signal, bracketsSnapshot = []) => {
@@ -1047,11 +1028,46 @@ const saveTieSheetOutcomesToServer = useCallback(
 
     const safeBrackets = Array.isArray(bracketsSnapshot) ? bracketsSnapshot : [];
 
-    const payload = {
-      outcomes: outcomes || {},
-      brackets: safeBrackets,
-      medals: collectBracketMedalPayload(safeBrackets, outcomes || {}),
-    };
+    const changedBracketKey = lastOutcomeAction?.bracketKey || "";
+
+const getChangedBaseKey = (key = "") =>
+  String(key || "").replace(/_Pool.*$/, "");
+
+const changedBaseKey = getChangedBaseKey(changedBracketKey);
+
+const targetBrackets =
+  changedBaseKey
+    ? safeBrackets.filter(
+        (bracket) =>
+          getChangedBaseKey(bracket?.key || "") === changedBaseKey
+      )
+    : safeBrackets;
+
+const medalsPayload = collectBracketMedalPayload(targetBrackets, outcomes || {});
+
+console.group("🚨 [FRONTEND SAVE] TieSheet outcomes save");
+console.log("Tournament ID:", id);
+console.log("Total brackets:", safeBrackets.length);
+console.log(
+  "Bracket summary:",
+  safeBrackets.map((b) => ({
+    key: b.key,
+    pool: b.pool,
+    playerCount: b.playerCount,
+    categoryPlayerCount: b.categoryPlayerCount,
+    finalGameId: b.game?.id,
+    finalWinner: outcomes?.[b.key]?.[String(b.game?.id)] ?? outcomes?.[b.key]?.[Number(b.game?.id)] ?? null,
+  }))
+);
+console.log("Outcomes snapshot:", outcomes);
+console.log("Medals payload sent to backend:", medalsPayload);
+console.groupEnd();
+
+const payload = {
+  outcomes: outcomes || {},
+  brackets: safeBrackets,
+  ...(medalsPayload.length > 0 ? { medals: medalsPayload } : {}),
+};
 
     const resp = await api.put(`/tournament/${id}/tiesheet-outcomes`, payload, {
       signal,
@@ -1060,7 +1076,7 @@ const saveTieSheetOutcomesToServer = useCallback(
 
     return resp?.data || null;
   },
-  [id, collectBracketMedalPayload, isAdminReadOnly, isAdminUser, adminEditMode]
+  [id, collectBracketMedalPayload, isAdminReadOnly, isAdminUser, adminEditMode, lastOutcomeAction]
 );
 
   const shouldRestoreSavedBrackets = useCallback((serverTieSheet, currentEntriesMeta) => {
@@ -2032,13 +2048,86 @@ const debouncedSaveOutcomesToServer = useMemo(() => {
                   return null;
                 }
 
-                const baseKey = bracket.key.replace(/_Pool.*$/, '');
-                const medals = safeComputedMedals[baseKey] || {
-                  gold: MEDAL_PLACEHOLDER,
-                  silver: MEDAL_PLACEHOLDER,
-                  bronze1: MEDAL_PLACEHOLDER,
-                  bronze2: MEDAL_PLACEHOLDER,
-                };
+              const baseKey = bracket.key.replace(/_Pool.*$/, '');
+
+const isPoolBracket = String(bracket.key || "").includes("_Pool");
+const isPoolFinalBracket =
+  String(bracket.pool || "").toLowerCase() === "final" ||
+  String(bracket.key || "").toLowerCase().includes("poolfinal");
+
+const emptyMedals = {
+  gold: MEDAL_PLACEHOLDER,
+  silver: MEDAL_PLACEHOLDER,
+  bronze1: MEDAL_PLACEHOLDER,
+  bronze2: MEDAL_PLACEHOLDER,
+};
+
+const sameCategoryBrackets = safeFilteredBrackets.filter(
+  (item) => String(item?.key || "").replace(/_Pool.*$/, "") === baseKey
+);
+
+const poolFinalPayload =
+  isPoolFinalBracket
+    ? collectBracketMedalPayload(sameCategoryBrackets, bracketsOutcomes || {})
+    : [];
+
+  if (isPoolFinalBracket) {
+  console.log("🥉 [POOL FINAL DISPLAY PAYLOAD]", {
+    bracketKey: bracket.key,
+    poolFinalPayload: poolFinalPayload.map((p) => ({
+      name: p.name,
+      medal: p.medal,
+      entryId: p.entryId,
+    })),
+  });
+}
+
+const bronzePlayers = poolFinalPayload.filter((item) =>
+  String(item?.medal || "")
+    .trim()
+    .toLowerCase()
+    .startsWith("bronze")
+);
+
+if (isPoolFinalBracket) {
+  console.log(
+    "🥉 BRONZE PLAYERS:",
+    bronzePlayers.map((p) => ({
+      name: p.name,
+      medal: p.medal,
+    }))
+  );
+}
+const poolFinalDisplayMedals = {
+  gold:
+    poolFinalPayload.find((item) => item.medal === "Gold")?.name ||
+    MEDAL_PLACEHOLDER,
+
+  silver:
+    poolFinalPayload.find((item) => item.medal === "Silver")?.name ||
+    MEDAL_PLACEHOLDER,
+
+  bronze1:
+    bronzePlayers[0]?.name ||
+    MEDAL_PLACEHOLDER,
+
+  bronze2:
+    bronzePlayers[1]?.name ||
+    MEDAL_PLACEHOLDER,
+
+  // compatibility for MedalSection
+  bronze: [
+    bronzePlayers[0]?.name || MEDAL_PLACEHOLDER,
+    bronzePlayers[1]?.name || MEDAL_PLACEHOLDER,
+  ],
+};
+
+const medals =
+  isPoolBracket && !isPoolFinalBracket
+    ? emptyMedals
+    : isPoolFinalBracket
+      ? poolFinalDisplayMedals
+      : safeComputedMedals[baseKey] || emptyMedals;
 
                 const bracketSizeClass =
                   bracket.playerCount === 1
@@ -2156,15 +2245,61 @@ const debouncedSaveOutcomesToServer = useMemo(() => {
                         </>
                       )}
 
-                      <div className={styles.signatureMedalSection}>
-                        <MedalSection
-                          medals={medals}
-                          categoryPlayerCount={bracket.categoryPlayerCount || bracket.playerCount}
-                          bracket={bracket}
-                          bracketsOutcomes={bracketsOutcomes}
-                        />
-                        <SignatureSection />
-                      </div>
+                    <div className={styles.signatureMedalSection}>
+ {isPoolBracket && !isPoolFinalBracket ? (
+  <div style={{ flex: 1 }} />
+) : isPoolFinalBracket ? (
+  <div className={styles.signatureMedalSection}>
+    <div
+      className={`${styles.medalRow} ${
+        poolFinalDisplayMedals.gold ||
+        poolFinalDisplayMedals.silver ||
+        poolFinalDisplayMedals.bronze1 ||
+        poolFinalDisplayMedals.bronze2
+          ? styles.hasWinners
+          : ""
+      }`}
+    >
+      <span className={styles.medal}>
+        GOLD:{" "}
+        <strong className={styles.gold}>
+          {poolFinalDisplayMedals.gold || MEDAL_PLACEHOLDER}
+        </strong>
+      </span>
+
+      <span className={styles.medal}>
+        SILVER:{" "}
+        <strong className={styles.silver}>
+          {poolFinalDisplayMedals.silver || MEDAL_PLACEHOLDER}
+        </strong>
+      </span>
+
+      <span className={styles.medal}>
+        BRONZE:{" "}
+        <strong className={styles.bronze}>
+          {poolFinalDisplayMedals.bronze1 || MEDAL_PLACEHOLDER}
+        </strong>
+      </span>
+
+      <span className={styles.medal}>
+        BRONZE:{" "}
+        <strong className={styles.bronze}>
+          {poolFinalDisplayMedals.bronze2 || MEDAL_PLACEHOLDER}
+        </strong>
+      </span>
+    </div>
+  </div>
+) : (
+  <MedalSection
+    medals={medals}
+    categoryPlayerCount={bracket.categoryPlayerCount || bracket.playerCount}
+    bracket={bracket}
+    bracketsOutcomes={bracketsOutcomes}
+  />
+)}
+
+  <SignatureSection />
+</div>
 
                       <BracketFooter index={index} total={safeFilteredBrackets.length} />
                     </div>
