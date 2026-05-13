@@ -1069,12 +1069,20 @@ const payload = {
   ...(medalsPayload.length > 0 ? { medals: medalsPayload } : {}),
 };
 
-    const resp = await api.put(`/tournament/${id}/tiesheet-outcomes`, payload, {
-      signal,
-      timeout: 20000,
-    });
+  const resp = await api.put(`/tournament/${id}/tiesheet-outcomes`, payload, {
+  signal,
+  timeout: 20000,
+});
 
-    return resp?.data || null;
+if (
+  Array.isArray(medalsPayload) &&
+  medalsPayload.length > 0 &&
+  resp?.data?.medalSync?.attempted
+) {
+  window.dispatchEvent(new Event(`tiesheetMedalsUpdated_${id}`));
+}
+
+return resp?.data || null;
   },
   [id, collectBracketMedalPayload, isAdminReadOnly, isAdminUser, adminEditMode, lastOutcomeAction]
 );

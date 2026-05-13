@@ -378,6 +378,65 @@ finalEntries = regenerateSrNumbers(
     dataRef.current = data;
   }, [data]);
 
+  useEffect(() => {
+  if (!id || authLoading) return;
+
+  const refreshAfterTieSheetMedals = async () => {
+    if (!token || !id) return;
+
+    Object.values(rowPatchTimersRef.current || {}).forEach((timer) => {
+      clearTimeout(timer);
+    });
+    rowPatchTimersRef.current = {};
+
+    try {
+      const payload = await getEntriesApi(id, {
+        page: 1,
+        limit: 500,
+        ts: Date.now(),
+      });
+
+      const serverEntries = Array.isArray(payload.entries) ? payload.entries : [];
+
+      const finalEntries = regenerateSrNumbers(
+        serverEntries.map((row) => ({
+          ...ensureEntryId(row),
+          entrySource: "server",
+        }))
+      );
+
+      dataRef.current = finalEntries;
+      setData(finalEntries);
+      localStorage.setItem(`entryData_${id}`, JSON.stringify(finalEntries));
+
+      setEntryPage(1);
+      setEntryPagination(
+        payload.pagination || {
+          page: 1,
+          limit: 500,
+          total: finalEntries.length,
+          totalPages: 1,
+          hasMore: false,
+        }
+      );
+
+      if (isDev) {
+        console.log("[Entry.jsx] refreshed after TieSheet medal sync", {
+          count: finalEntries.length,
+        });
+      }
+    } catch (error) {
+      console.error("Failed to refresh entries after TieSheet medal sync:", error);
+    }
+  };
+
+  window.addEventListener(`tiesheetMedalsUpdated_${id}`, refreshAfterTieSheetMedals);
+
+  return () => {
+    window.removeEventListener(`tiesheetMedalsUpdated_${id}`, refreshAfterTieSheetMedals);
+  };
+}, [id, token, authLoading, regenerateSrNumbers]);
+
   const patchEntryRowDebounced = useCallback(
   (row, columnId, value) => {
    if (!token || !id || !row?.entryId) return;
@@ -386,6 +445,12 @@ if (row.entrySource !== "server") {
   return;
 }
 
+if (
+  row.medalSource === "tiesheet" &&
+  ["medal", "medalSource", "medalUpdatedAt"].includes(columnId)
+) {
+  return;
+}
     const timerKey = `${row.entryId}:${columnId}`;
 
     if (rowPatchTimersRef.current[timerKey]) {

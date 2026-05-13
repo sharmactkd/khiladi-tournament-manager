@@ -233,7 +233,16 @@ const EntryTable = forwardRef(
           return { ok: true, skipped: true, reason: "unchanged" };
         }
 
-        const processedEntries = buildProcessedEntries(rows);
+        const processedEntries = buildProcessedEntries(rows).map((row) => {
+  if (row.medalSource === "tiesheet") {
+    return {
+      ...row,
+      medalSource: "tiesheet",
+    };
+  }
+
+  return row;
+});
         const ui = latestUiStateRef.current;
 
         const payload = {
