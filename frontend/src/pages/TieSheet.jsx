@@ -825,6 +825,37 @@ console.log("🏁 [POOL FINAL CHECK]", {
         pushUniqueMedalist(medalists, makeMedal(silverTeam, "Silver", finalBracket));
       }
 
+      // ✅ Pool bronze logic:
+// PoolFinal complete hone ke baad hi Pool A/B finalists ke losers ko Bronze do.
+// Pool A/B complete hone par yeh block run nahi hota, kyunki upar finalWinnerSide guard hai.
+const poolBrackets = groupBrackets.filter(
+  (bracket) =>
+    bracket?.pool &&
+    String(bracket.pool).toLowerCase() !== "final" &&
+    bracket?.game?.id
+);
+
+poolBrackets.forEach((poolBracket) => {
+  const poolFinalGame = poolBracket.game;
+  const poolWinnerSide = getOutcomeWinnerSide(poolBracket.key, poolFinalGame.id);
+
+  if (!poolWinnerSide) return;
+
+  const poolLoserSide = poolWinnerSide === "home" ? "away" : "home";
+
+  const bronzeTeam = extractSideTeam(
+    poolFinalGame.sides?.[poolLoserSide],
+    poolBracket.key
+  );
+
+  if (isValidPlayer(bronzeTeam)) {
+    pushUniqueMedalist(
+      medalists,
+      makeMedal(bronzeTeam, "Bronze", poolBracket)
+    );
+  }
+});
+
      groupBrackets
   .filter((poolBracket) => !isPoolFinalBracket(poolBracket))
   .forEach((poolBracket) => {
@@ -1063,16 +1094,36 @@ console.log("Outcomes snapshot:", outcomes);
 console.log("Medals payload sent to backend:", medalsPayload);
 console.groupEnd();
 
+const clientSeq = ++serverSaveSeqRef.current;
+
 const payload = {
   outcomes: outcomes || {},
   brackets: safeBrackets,
+  clientSeq,
   ...(medalsPayload.length > 0 ? { medals: medalsPayload } : {}),
 };
 
-  const resp = await api.put(`/tournament/${id}/tiesheet-outcomes`, payload, {
+const response = await api.put(`/tournament/${id}/tiesheet-outcomes`, payload, {
   signal,
   timeout: 20000,
 });
+
+if (response?.data?.stale) {
+  if (isDev) {
+    console.warn("⚠️ [TieSheet] Ignoring stale save response", {
+      clientSeq,
+    });
+  }
+
+  return response?.data || null;
+}
+
+latestServerAppliedSeqRef.current = Math.max(
+  latestServerAppliedSeqRef.current,
+  clientSeq
+);
+
+const resp = response;
 
 if (
   Array.isArray(medalsPayload) &&

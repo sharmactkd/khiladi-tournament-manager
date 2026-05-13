@@ -157,8 +157,20 @@ const tournamentSchema = new mongoose.Schema(
         searchTerm: "",
       }),
     },
-    outcomes: { type: Map, of: Map, of: String, default: {} },
-    tiesheet: { type: mongoose.Schema.Types.Mixed, default: {} },
+   outcomes: { type: Map, of: Map, of: String, default: {} },
+
+tiesheet: { type: mongoose.Schema.Types.Mixed, default: {} },
+
+tiesheetOutcomeSeq: {
+  type: Number,
+  default: 0,
+  index: true,
+},
+
+tiesheetOutcomeSavedAt: {
+  type: Date,
+  default: null,
+},
     officials: {
       type: [
         {

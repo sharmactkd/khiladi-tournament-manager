@@ -467,6 +467,11 @@ const extractMedalsFromTieSheetPayload = ({ medals, brackets, outcomes, tiesheet
   return buildUniqueMedalList(collected);
 };
 
+const normalizeTieSheetClientSeq = (value) => {
+  const seq = Number(value);
+  return Number.isFinite(seq) && seq > 0 ? seq : Date.now();
+};
+
 const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => {
   const validMedals = buildUniqueMedalList(medals || []);
 
@@ -1407,8 +1412,33 @@ export const saveTieSheetOutcomes = async (req, res) => {
   try {
     const { outcomes, brackets, medals, tiesheet } = req.body || {};
 
+    const clientSeq = normalizeTieSheetClientSeq(
+      req.body?.clientSeq || req.body?.seq || req.body?.saveSeq
+    );
+
     if (!outcomes || typeof outcomes !== "object" || Array.isArray(outcomes)) {
       return res.status(400).json({ message: "Invalid outcomes data" });
+    }
+
+    const tournament = await Tournament.findById(req.params.id)
+      .select("tiesheetOutcomeSeq")
+      .lean();
+
+    if (!tournament) {
+      return res.status(404).json({ message: "Tournament not found" });
+    }
+
+    const currentSeq = Number(tournament?.tiesheetOutcomeSeq || 0);
+
+    if (currentSeq > 0 && clientSeq < currentSeq) {
+      return res.status(200).json({
+        success: true,
+        stale: true,
+        ignored: true,
+        message: "Stale TieSheet outcome save ignored",
+        clientSeq,
+        currentSeq,
+      });
     }
 
     const updated = await Tournament.findByIdAndUpdate(
@@ -1417,62 +1447,24 @@ export const saveTieSheetOutcomes = async (req, res) => {
         $set: {
           "tiesheet.outcomes": outcomes,
           "tiesheet.outcomesUpdatedAt": new Date(),
+          tiesheetOutcomeSeq: clientSeq,
+          tiesheetOutcomeSavedAt: new Date(),
         },
       },
-      { new: true, select: "tiesheet" }
+      {
+        new: true,
+        select: "tiesheet tiesheetOutcomeSeq tiesheetOutcomeSavedAt",
+      }
     ).lean();
 
     const saved = updated?.tiesheet?.outcomes || {};
 
     const medalsToSync = extractMedalsFromTieSheetPayload({
-      
       medals,
       brackets,
       outcomes,
       tiesheet,
     });
-
-    console.group("🔥 [BACKEND] TieSheet outcomes received");
-console.log("Tournament:", req.params.id);
-console.log("Raw medals from frontend:", medals);
-console.log("Extracted medalsToSync:", medalsToSync);
-console.log("Outcomes keys:", Object.keys(outcomes || {}));
-console.log(
-  "Bracket summary:",
-  Array.isArray(brackets)
-    ? brackets.map((b) => ({
-        key: b.key,
-        pool: b.pool,
-        playerCount: b.playerCount,
-        categoryPlayerCount: b.categoryPlayerCount,
-        finalGameId: b.game?.id,
-        finalWinner:
-          outcomes?.[b.key]?.[String(b.game?.id)] ??
-          outcomes?.[b.key]?.[Number(b.game?.id)] ??
-          null,
-      }))
-    : []
-);
-console.groupEnd();
-    console.log("📥 BACKEND medalsToSync", medalsToSync);
-
-    console.log("🏅 [TieSheet] GENERATED MEDALS PAYLOAD", {
-  medals,
-  total: medals?.length || 0,
-});
-
-if (Array.isArray(medals)) {
-  medals.forEach((m, i) => {
-    console.log(`🏅 Medal ${i + 1}`, {
-      entryId: m?.entryId,
-      name: m?.name,
-      medal: m?.medal,
-      team: m?.team,
-      weightCategory: m?.weightCategory,
-      ageCategory: m?.ageCategory,
-    });
-  });
-}
 
     let syncResult = {
       attempted: false,
@@ -1490,19 +1482,25 @@ if (Array.isArray(medals)) {
       });
 
       logger.info("TieSheet outcomes saved and medals sync attempted", {
-  tournamentId: req.params.id,
-  matchedCount: syncResult.matchedCount,
-  clearedCount: syncResult.clearedCount,
-  medalsReceived: syncResult.medalsReceived,
-  entryIdMatchesUsed: medalsToSync.some((m) => m.entryId),
-  reason: syncResult.reason,
-});
+        tournamentId: req.params.id,
+        matchedCount: syncResult.matchedCount,
+        clearedCount: syncResult.clearedCount,
+        medalsReceived: syncResult.medalsReceived,
+        entryIdMatchesUsed: medalsToSync.some((m) => m.entryId),
+        reason: syncResult.reason,
+        clientSeq,
+        currentSeq: updated?.tiesheetOutcomeSeq,
+      });
     }
 
-    res.status(200).json({
+    return res.status(200).json({
+      success: true,
       message: "TieSheet outcomes saved",
       outcomes: saved,
       medalSync: syncResult,
+      clientSeq,
+      currentSeq: updated?.tiesheetOutcomeSeq || clientSeq,
+      tiesheetOutcomeSavedAt: updated?.tiesheetOutcomeSavedAt || null,
     });
   } catch (error) {
     logger.error("Save tiesheet outcomes failed", {
@@ -1510,9 +1508,9 @@ if (Array.isArray(medals)) {
       tournamentId: req.params.id,
     });
 
-    res.status(500).json({ message: "Failed to save outcomes" });
+    return res.status(500).json({ message: "Failed to save outcomes" });
   }
-};
+}; 
 
 export const getOfficials = async (req, res) => {
   try {

@@ -544,6 +544,8 @@ const buildEntryRowSetFromUpdates = (updates = {}) => {
     "medalUpdatedAt",
   ];
 
+
+
   const setObj = {};
 
   allowedFields.forEach((field) => {
@@ -591,6 +593,20 @@ const buildEntryRowSetFromUpdates = (updates = {}) => {
   }
 
   return setObj;
+};
+
+const stripProtectedTieSheetMedalFields = (setObj = {}, existingRow = null) => {
+  if (existingRow?.medalSource !== "tiesheet") {
+    return setObj;
+  }
+
+  const cleaned = { ...setObj };
+
+  delete cleaned.medal;
+  delete cleaned.medalSource;
+  delete cleaned.medalUpdatedAt;
+
+  return cleaned;
 };
 
 const updateLegacySingleEntryMirror = async ({ tournamentId, userId }) => {
@@ -937,7 +953,23 @@ export const updateSingleEntry = async (req, res) => {
       });
     }
 
-    const setObj = buildEntryRowSetFromUpdates(updates);
+    const existingRow = await EntryRow.findOne({
+  tournamentId: new mongoose.Types.ObjectId(id),
+  entryId: String(entryId).trim(),
+}).lean();
+
+if (!existingRow) {
+  return res.status(404).json({
+    success: false,
+    message: "Entry row not found",
+  });
+}
+
+
+
+const rawSetObj = buildEntryRowSetFromUpdates(updates);
+
+const setObj = stripProtectedTieSheetMedalFields(rawSetObj, existingRow);
 
     if (Object.keys(setObj).length === 0) {
       return res.status(400).json({
@@ -959,12 +991,7 @@ export const updateSingleEntry = async (req, res) => {
       { new: true, runValidators: true }
     ).lean();
 
-    if (!updatedRow) {
-      return res.status(404).json({
-        success: false,
-        message: "Entry row not found",
-      });
-    }
+   
 
   await updateLegacySingleEntryMirror({
   tournamentId: id,
