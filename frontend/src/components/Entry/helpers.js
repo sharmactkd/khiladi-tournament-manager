@@ -120,6 +120,31 @@ const normalizeGender = (gender = '') => {
   return '';
 };
 
+const normalizeAgeCategoryKey = (ageCategory = '') => {
+  const normalized = String(ageCategory || '')
+    .normalize('NFKC')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[–—−]/g, '-')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/\s*-\s*/g, '-');
+
+  if (['sub-junior', 'sub junior', 'subjunior'].includes(normalized)) {
+    return 'Sub-Junior';
+  }
+
+  if (normalized === 'cadet') return 'Cadet';
+  if (normalized === 'junior') return 'Junior';
+  if (normalized === 'senior') return 'Senior';
+
+  const underMatch = normalized.match(/^under-?(\d+)$/);
+  if (underMatch) return `Under - ${underMatch[1]}`;
+
+  return String(ageCategory || '').trim();
+};
+
 /**
  * Parse DOB safely from DD-MM-YYYY format
  * @param {string} dob
@@ -409,14 +434,16 @@ const getTournamentWeightLabels = (gender, ageCategory, tournamentData) => {
   const normalizedGender = normalizeGender(gender);
   if (!normalizedGender) return [];
 
+  const normalizedAgeCategory = normalizeAgeCategoryKey(ageCategory);
+
   const allSelectedAgeCategories = [
     ...(tournamentData.ageCategories?.open || []),
     ...(tournamentData.ageCategories?.official || []),
-  ];
+  ].map(normalizeAgeCategoryKey);
 
-  if (!allSelectedAgeCategories.includes(ageCategory)) return [];
+  if (!allSelectedAgeCategories.includes(normalizedAgeCategory)) return [];
 
-  const allowedGenders = getAllowedGendersForAgeCategory(tournamentData, ageCategory);
+  const allowedGenders = getAllowedGendersForAgeCategory(tournamentData, normalizedAgeCategory);
   if (
     Array.isArray(allowedGenders) &&
     allowedGenders.length > 0 &&
@@ -427,19 +454,16 @@ const getTournamentWeightLabels = (gender, ageCategory, tournamentData) => {
 
   const weightType = tournamentData.weightCategories?.type;
 
-  // CUSTOM
   if (weightType === 'custom') {
     const custom = tournamentData.weightCategories?.custom || {};
-    const ageBlock = custom?.[ageCategory];
+    const ageBlock = custom?.[normalizedAgeCategory] || custom?.[ageCategory];
 
-    // New structure: { Senior: { Male: [...], Female: [...] } }
     if (ageBlock && typeof ageBlock === 'object' && !Array.isArray(ageBlock)) {
       return (ageBlock?.[normalizedGender] || [])
         .map(getCategoryLabelFromItem)
         .filter(Boolean);
     }
 
-    // Legacy structure: { Senior: [...] }
     if (Array.isArray(ageBlock)) {
       return ageBlock.map(getCategoryLabelFromItem).filter(Boolean);
     }
@@ -447,29 +471,28 @@ const getTournamentWeightLabels = (gender, ageCategory, tournamentData) => {
     return [];
   }
 
-  // WT
   if (weightType === 'WT') {
-    if (ageCategory === 'Cadet') {
+    if (normalizedAgeCategory === 'Cadet') {
       const cadetMode = tournamentData?.cadetCategoryType === 'height' ? 'height' : 'weight';
       const cadetList = WT_WEIGHTS?.Cadet?.[cadetMode]?.[normalizedGender] || [];
       return Array.isArray(cadetList) ? cadetList : [];
     }
 
-    const wtList = WT_WEIGHTS?.[ageCategory]?.[normalizedGender] || [];
+    const wtList = WT_WEIGHTS?.[normalizedAgeCategory]?.[normalizedGender] || [];
     return Array.isArray(wtList) ? wtList : [];
   }
 
-  // SGFI
   if (weightType === 'SGFI') {
-    const sgfiList = SGFI_WEIGHTS?.[ageCategory]?.[normalizedGender] || [];
+    const sgfiList = SGFI_WEIGHTS?.[normalizedAgeCategory]?.[normalizedGender] || [];
     return Array.isArray(sgfiList) ? sgfiList : [];
   }
 
-  // Fallback for older selected structure if it exists
   const fallbackGenderKey = normalizedGender.toLowerCase();
   const fallbackSelected = tournamentData.weightCategories?.selected?.[fallbackGenderKey] || [];
-  return Array.isArray(fallbackSelected) ? fallbackSelected.map(getCategoryLabelFromItem).filter(Boolean) : [];
-};
+  return Array.isArray(fallbackSelected)
+    ? fallbackSelected.map(getCategoryLabelFromItem).filter(Boolean)
+    : [];
+}; 
 
 /**
  * Determines weight category based on gender, age category, weight, and tournament data

@@ -300,27 +300,47 @@ const latestServerAppliedSeqRef = useRef(0);
   const genderOrder = ['Male', 'Female'];
   const ageCategoryOrder = ['Sub-Junior', 'Cadet', 'Junior', 'Senior', 'Under - 14', 'Under - 17', 'Under - 19'];
 
-  const ageCategoryMappingRef = useRef({
-    'under - 14': 'Under - 14',
-    'under - 17': 'Under - 17',
-    'under - 19': 'Under - 19',
-    'sub-junior': 'Sub-Junior',
-    cadet: 'Cadet',
-    junior: 'Junior',
-    senior: 'Senior',
-    'under-14': 'Under - 14',
-    'under-17': 'Under - 17',
-    'under-19': 'Under - 19',
-  });
+ const ageCategoryMappingRef = useRef({
+  'under - 14': 'Under - 14',
+  'under - 17': 'Under - 17',
+  'under - 19': 'Under - 19',
+
+  'sub-junior': 'Sub-Junior',
+  'sub junior': 'Sub-Junior',
+  'sub - junior': 'Sub-Junior',
+  subjunior: 'Sub-Junior',
+
+  cadet: 'Cadet',
+  junior: 'Junior',
+  senior: 'Senior',
+
+  'under-14': 'Under - 14',
+  'under-17': 'Under - 17',
+  'under-19': 'Under - 19',
+});
 
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  const normalizeAgeCategoryForCompare = (value) => {
-  return String(value || "")
+ const normalizeAgeCategoryForCompare = (value) => {
+  const normalized = String(value || "")
     .trim()
     .toLowerCase()
+    .replace(/\u00A0/g, " ")
+    .replace(/[–—−]/g, "-")
     .replace(/\s+/g, " ")
+    .replace(/\s*-\s*/g, " - ")
     .replace(/under\s*-?\s*(\d+)/g, "under - $1");
+
+  if (
+    normalized === "sub-junior" ||
+    normalized === "sub junior" ||
+    normalized === "sub - junior" ||
+    normalized === "subjunior"
+  ) {
+    return "sub-junior";
+  }
+
+  return normalized;
 };
 
 const normalizeWeightCategoryForDisplay = (value = "") => {
@@ -439,6 +459,33 @@ const invalidKyorugiRows = kyorugiOnly.filter((p) => {
   return age && !tournamentAgeSet.has(age);
 });
 
+console.log(
+  "ALL SERVER AGE COUNTS:",
+  rows.reduce((acc, p) => {
+    acc[p.ageCategory || "Blank"] =
+      (acc[p.ageCategory || "Blank"] || 0) + 1;
+    return acc;
+  }, {})
+);
+
+console.log(
+  "KYORUGI AGE COUNTS BEFORE SETUP FILTER:",
+  kyorugiOnly.reduce((acc, p) => {
+    acc[p.ageCategory || "Blank"] =
+      (acc[p.ageCategory || "Blank"] || 0) + 1;
+    return acc;
+  }, {})
+);
+
+console.log(
+  "VALID AFTER SETUP FILTER AGE COUNTS:",
+  validKyorugiRows.reduce((acc, p) => {
+    acc[p.ageCategory || "Blank"] =
+      (acc[p.ageCategory || "Blank"] || 0) + 1;
+    return acc;
+  }, {})
+);
+
 if (validKyorugiRows.length === 0 && invalidKyorugiRows.length > 0) {
   const tournamentAgesText = allAgeCategories.join(", ");
   const entryAgesText = [
@@ -486,19 +533,64 @@ if (isDev) console.log('🧬 [TieSheet] cleaned[0].gender:', cleaned?.[0]?.gende
       ...(tournamentData.weightCategories?.selected?.female || []),
     ]);
 
-    const mappedPlayers = cleaned.filter((p) => {
-      const genderOk = p.gender && allowedGenders.has(p.gender);
-      const ageOk = p.ageCategory && allowedAgeCategories.has(p.ageCategory);
-      const weightOk =
-        allowedWeightCategories.size === 0
-          ? !!p.weightCategory
-          : [...allowedWeightCategories].some(
-    (wc) =>
-      getCanonicalWeightCategoryKey(wc) ===
-      getCanonicalWeightCategoryKey(p.weightCategory)
-  );
-      return genderOk && ageOk && weightOk;
-    });
+    console.log("ALLOWED WEIGHT CATEGORIES:", [...allowedWeightCategories]);
+
+console.table(
+  cleaned
+    .filter((p) => p.ageCategory === "Sub - Junior" || p.ageCategory === "Sub-Junior")
+    .map((p) => ({
+      name: p.name,
+      gender: p.gender,
+      ageCategory: p.ageCategory,
+      weightCategory: p.weightCategory,
+      weightKey: getCanonicalWeightCategoryKey(p.weightCategory),
+      matched: [...allowedWeightCategories].some(
+        (wc) =>
+          getCanonicalWeightCategoryKey(wc) ===
+          getCanonicalWeightCategoryKey(p.weightCategory)
+      ),
+    }))
+);
+const mappedPlayers = cleaned.filter((p) => {
+  const genderOk = p.gender && allowedGenders.has(p.gender);
+
+  const ageOk =
+    p.ageCategory &&
+    [...allowedAgeCategories].some(
+      (age) =>
+        normalizeAgeCategoryForCompare(age) ===
+        normalizeAgeCategoryForCompare(p.ageCategory)
+    );
+
+  const weightOk =
+    allowedWeightCategories.size === 0
+      ? !!p.weightCategory
+      : [...allowedWeightCategories].some(
+          (wc) =>
+            getCanonicalWeightCategoryKey(wc) ===
+            getCanonicalWeightCategoryKey(p.weightCategory)
+        );
+
+  return genderOk && ageOk && weightOk;
+});
+
+    console.table(
+  mappedPlayers.map((p) => ({
+    name: p.name,
+    gender: p.gender,
+    ageCategory: p.ageCategory,
+    weightCategory: p.weightCategory,
+    event: p.event,
+  }))
+);
+
+console.log(
+  "AGE CATEGORY COUNTS:",
+  mappedPlayers.reduce((acc, p) => {
+    acc[p.ageCategory] = (acc[p.ageCategory] || 0) + 1;
+    return acc;
+  }, {})
+);
 
     const genders = [...allowedGenders].sort((a, b) => genderOrder.indexOf(a) - genderOrder.indexOf(b));
     const ageCategories = [
@@ -617,16 +709,34 @@ const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesS
     String(bracket?.pool || "").toLowerCase() === "final" ||
     String(bracket?.key || "").toLowerCase().includes("poolfinal");
 
-  const getOutcomeWinnerSide = (bracketKey, gameId) => {
-    const outcomes = outcomesSnapshot?.[bracketKey] || {};
-    return outcomes?.[String(gameId)] ?? outcomes?.[Number(gameId)] ?? null;
-  };
+ const getOutcomeWinnerSide = (bracketKey, gameId) => {
+  const outcomes = outcomesSnapshot?.[bracketKey] || {};
 
-  const isValidPlayer = (team) =>
+  const result =
+    outcomes?.[String(gameId)] ??
+    outcomes?.[Number(gameId)] ??
+    null;
+
+  console.log("🎯 OUTCOME LOOKUP", {
+    bracketKey,
+    gameId,
+    availableOutcomes: outcomes,
+    result,
+  });
+
+  return result;
+};
+
+const isValidPlayer = (team) => {
+  const entryId = String(team?.entryId || "").trim();
+
+  return (
     team?.name &&
     team.name !== "BYE" &&
-    team.entryId &&
-    !String(team.entryId).startsWith("pool-winner-");
+    entryId &&
+    !entryId.startsWith("pool-winner-")
+  );
+};
 
   const makeMedal = (team, medal, bracket) => ({
     ...team,
@@ -637,9 +747,31 @@ const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesS
     weightCategory: team.weightCategory || bracket.weightCategory || "",
   });
 
-  const pushUniqueMedalist = (list, item) => {
-    const entryId = String(item?.entryId || "").trim();
-    if (!entryId) return;
+ const pushUniqueMedalist = (list, item) => {
+  const entryId = String(item?.entryId || "").trim();
+
+  if (!entryId) {
+    console.warn("❌ MEDALIST SKIPPED (NO ENTRY ID)", item);
+    return;
+  }
+
+  if (
+    !list.some(
+      (existing) =>
+        String(existing.entryId || "").trim() === entryId
+    )
+  ) {
+    console.log("✅ MEDALIST PUSHED", {
+      medal: item.medal,
+      name: item.name,
+      entryId,
+    });
+
+    list.push({
+      ...item,
+      entryId,
+    });
+  }
 
     if (!list.some((existing) => String(existing.entryId || "").trim() === entryId)) {
       list.push({ ...item, entryId });
@@ -699,40 +831,51 @@ const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesS
     safeBrackets.find((bracket) => String(bracket?.key || "") === String(key || ""));
 
   const resolveSideTeam = (side, currentBracketKey, depth = 0) => {
-    if (!side || depth > 30) return null;
+  if (!side || depth > 30) return null;
 
-    if (isValidPlayer(side.team)) {
-      return side.team;
-    }
+  if (isValidPlayer(side.team)) {
+    return side.team;
+  }
 
-    if (!side.sourceGame) {
-      return null;
-    }
+  if (!side.sourceGame) {
+    return null;
+  }
 
-    let sourceBracketKey = currentBracketKey;
+  let sourceBracketKey = currentBracketKey;
 
-    if (
-      String(currentBracketKey || "").toLowerCase().includes("poolfinal") &&
-      side.pool
-    ) {
-      const baseKey = String(currentBracketKey || "").replace(/_PoolFinal$/i, "");
-      sourceBracketKey = `${baseKey}_Pool${side.pool}`;
-    }
+  if (
+    String(currentBracketKey || "").toLowerCase().includes("poolfinal") &&
+    side.pool
+  ) {
+    const baseKey = String(currentBracketKey || "").replace(/_PoolFinal$/i, "");
+    sourceBracketKey = `${baseKey}_Pool${side.pool}`;
+  }
 
-    const sourceBracket = findBracketByKey(sourceBracketKey);
-    const sourceGame =
-      findGameInBracket(sourceBracket, side.sourceGame.id) || side.sourceGame;
+  const sourceBracket = findBracketByKey(sourceBracketKey);
+  const sourceGame =
+    findGameInBracket(sourceBracket, side.sourceGame.id) || side.sourceGame;
 
-    const winnerSide = getOutcomeWinnerSide(sourceBracketKey, sourceGame?.id);
+  const winnerSide = getOutcomeWinnerSide(sourceBracketKey, sourceGame?.id);
 
-    if (!winnerSide) return null;
-
+  if (winnerSide === "home" || winnerSide === "away") {
     return resolveSideTeam(
       sourceGame?.sides?.[winnerSide],
       sourceBracketKey,
       depth + 1
     );
-  };
+  }
+
+  const homeTeam = resolveSideTeam(sourceGame?.sides?.home, sourceBracketKey, depth + 1);
+  const awayTeam = resolveSideTeam(sourceGame?.sides?.away, sourceBracketKey, depth + 1);
+
+ if (homeTeam && !awayTeam) return homeTeam;
+if (!homeTeam && awayTeam) return awayTeam;
+
+if (homeTeam) return homeTeam;
+if (awayTeam) return awayTeam;
+
+return null;
+}; 
 
   const collectActualTieSheetMedals = (bracket) => {
     const medalists = [];
@@ -744,6 +887,13 @@ const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesS
     }
 
     const finalWinnerSide = getOutcomeWinnerSide(bracketKey, finalGame.id);
+
+    console.log("🏆 FINAL DEBUG", {
+  bracketKey,
+  finalGameId: finalGame?.id,
+  finalWinnerSide,
+  finalGame,
+});
 
     if (finalWinnerSide !== "home" && finalWinnerSide !== "away") {
       return medalists;
@@ -772,12 +922,34 @@ const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesS
         return;
       }
 
-      const bronzeSide = semiWinnerSide === "home" ? "away" : "home";
-      const bronzeTeam = resolveSideTeam(semiGame.sides?.[bronzeSide], bracketKey);
+    const bronzeSide = semiWinnerSide === "home" ? "away" : "home";
 
-      if (isValidPlayer(bronzeTeam)) {
-        pushUniqueMedalist(medalists, makeMedal(bronzeTeam, "Bronze", bracket));
-      }
+const bronzeTeam = resolveSideTeam(
+  semiGame.sides?.[bronzeSide],
+  bracketKey
+);
+
+console.log("🥉 BRONZE DEBUG", {
+  bracketKey,
+  semiGameId: semiGame?.id,
+  semiWinnerSide,
+  bronzeSide,
+  bronzeTeam,
+  homeSide: semiGame?.sides?.home,
+  awaySide: semiGame?.sides?.away,
+});
+
+if (isValidPlayer(bronzeTeam)) {
+  const bronzeMedal = makeMedal(
+    bronzeTeam,
+    "Bronze",
+    bracket
+  );
+
+  console.log("🥉 PUSHING BRONZE", bronzeMedal);
+
+  pushUniqueMedalist(medalists, bronzeMedal);
+}
     });
 
     return medalists;
@@ -854,6 +1026,7 @@ const collectBracketMedalPayload = useCallback((bracketsSnapshot = [], outcomesS
         pushUniqueMedalist(
           result,
           makeMedal(player, "X-X-X-X", sourceBracket)
+          
         );
       }
     });
@@ -1581,25 +1754,44 @@ dispatch(
   }, [id, tournament, fetchTournamentFromServer, fetchEntriesFromServer, normalizePlayers, dispatch]);
 
   // Filtered brackets
-  const filteredBrackets = useMemo(() => {
-    try {
-      const safeBrackets = Array.isArray(brackets) ? brackets : [];
-      const safeGenders = Array.isArray(selectedGenders) ? selectedGenders : [];
-      const safeAges = Array.isArray(selectedAgeCategories) ? selectedAgeCategories : [];
+const filteredBrackets = useMemo(() => {
+  try {
+    const safeBrackets = Array.isArray(brackets) ? brackets : [];
+    const safeGenders = Array.isArray(selectedGenders) ? selectedGenders : [];
+    const safeAges = Array.isArray(selectedAgeCategories) ? selectedAgeCategories : [];
 
-      if (safeGenders.length === 0 && safeAges.length === 0) return safeBrackets;
+    if (safeGenders.length === 0 && safeAges.length === 0) return safeBrackets;
 
-      return safeBrackets.filter((b) => {
-        if (!b || typeof b !== 'object') return false;
-        const genderMatch = safeGenders.length === 0 || (b.gender && safeGenders.includes(b.gender));
-        const ageMatch = safeAges.length === 0 || (b.ageCategory && safeAges.includes(b.ageCategory));
-        return genderMatch && ageMatch;
-      });
-    } catch (err) {
-      console.error('Error in filteredBrackets calculation:', err);
-      return [];
-    }
-  }, [brackets, selectedGenders, selectedAgeCategories]);
+    return safeBrackets.filter((b) => {
+      if (!b || typeof b !== 'object') return false;
+
+      const genderMatch =
+        safeGenders.length === 0 ||
+        (b.gender && safeGenders.includes(b.gender));
+
+      const ageMatch =
+        safeAges.length === 0 ||
+        (b.ageCategory &&
+          safeAges.some(
+            (age) =>
+              normalizeAgeCategoryForCompare(age) ===
+              normalizeAgeCategoryForCompare(b.ageCategory)
+          ));
+
+          console.log("FILTER CHECK", {
+  bracketAge: b.ageCategory,
+  selectedAges: safeAges,
+  normalizedBracket: normalizeAgeCategoryForCompare(b.ageCategory),
+  normalizedSelected: safeAges.map(normalizeAgeCategoryForCompare),
+});
+      return genderMatch && ageMatch;
+    });
+
+  } catch (err) {
+    console.error('Error in filteredBrackets calculation:', err);
+    return [];
+  }
+}, [brackets, selectedGenders, selectedAgeCategories]); 
 
   const safeFilteredBrackets = useMemo(() => (Array.isArray(filteredBrackets) ? filteredBrackets : []), [filteredBrackets]);
 
@@ -2055,11 +2247,38 @@ const poolFinalPayload =
   });
 }
 
-const bronzePlayers = poolFinalPayload.filter((item) =>
-  String(item?.medal || "")
+const bronzePlayers = poolFinalPayload.filter((m) => {
+  const medal = String(m.medal || "")
     .trim()
-    .toLowerCase()
-    .startsWith("bronze")
+    .toLowerCase();
+
+  return medal.includes("bronze");
+});
+
+console.log(
+  "🥉 BRONZE PLAYERS:",
+  bronzePlayers.map((p) => ({
+    name: p.name,
+    medal: p.medal,
+    entryId: p.entryId,
+  }))
+);
+
+console.log(
+  "🥉 MEDAL VALUES",
+  poolFinalPayload.map((m) => ({
+    name: m.name,
+    medal: m.medal,
+  }))
+);
+console.log(
+  "🥉 FULL POOL FINAL PAYLOAD:",
+  poolFinalPayload.map((m) => ({
+    medal: m.medal,
+    player: m.name || m.playerName,
+    source: m.source,
+    bracketKey: m.bracketKey,
+  }))
 );
 
 if (isPoolFinalBracket) {

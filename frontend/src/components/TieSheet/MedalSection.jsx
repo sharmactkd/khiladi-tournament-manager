@@ -13,58 +13,68 @@ const MedalSection = ({
 }) => {
   const playerCount = categoryPlayerCount || bracket?.playerCount || 0;
 
-  // IMPORTANT:
-  // Medal names must be derived ONLY from bracketsOutcomes.
-  // This prevents stale names sticking after outcomes are cleared.
   let gold = PLACEHOLDER;
   let silver = PLACEHOLDER;
   let bronze1 = PLACEHOLDER;
   let bronze2 = PLACEHOLDER;
 
-  // Find final game safely
-  let finalGame = null;
-  if (bracket?.gamesByRound?.length > 0) {
-    finalGame = bracket.gamesByRound[bracket.gamesByRound.length - 1]?.[0] || null;
-  } else if (bracket?.game) {
-    finalGame = bracket.game;
-  }
-
-  const bracketKey = bracket?.key || '';
-  const finalOutcome = finalGame ? bracketsOutcomes?.[bracketKey]?.[finalGame.id] : null;
-
-  // Visibility rules
   const showSilver = playerCount >= 2;
   const showBronze1 = playerCount >= 3;
   const showBronze2 = playerCount >= 4;
 
-  // If no valid final outcome, keep placeholders (do NOT fallback to medals.gold)
-  if (playerCount === 1) {
-    // Single-player: only show gold when outcome exists
-    if (finalGame && (finalOutcome === 'home' || finalOutcome === 'away')) {
-      const winnerSide = finalGame.sides?.home;
-      gold = getName(winnerSide, bracketKey, null, bracketsOutcomes) || PLACEHOLDER;
+  const hasProvidedMedals =
+    medals &&
+    typeof medals === 'object' &&
+    (medals.gold || medals.silver || medals.bronze1 || medals.bronze2);
+
+  if (hasProvidedMedals) {
+    gold = medals.gold || PLACEHOLDER;
+    silver = medals.silver || PLACEHOLDER;
+    bronze1 = medals.bronze1 || PLACEHOLDER;
+    bronze2 = medals.bronze2 || PLACEHOLDER;
+  } else {
+    let finalGame = null;
+
+    if (bracket?.gamesByRound?.length > 0) {
+      finalGame = bracket.gamesByRound[bracket.gamesByRound.length - 1]?.[0] || null;
+    } else if (bracket?.game) {
+      finalGame = bracket.game;
     }
-  } else if (finalGame && (finalOutcome === 'home' || finalOutcome === 'away')) {
-    const winnerSide = finalGame.sides?.[finalOutcome];
-    const loserSide = finalGame.sides?.[finalOutcome === 'home' ? 'away' : 'home'];
 
-    if (winnerSide) gold = getName(winnerSide, bracketKey, null, bracketsOutcomes) || PLACEHOLDER;
-    if (loserSide) silver = getName(loserSide, bracketKey, null, bracketsOutcomes) || PLACEHOLDER;
+    const bracketKey = bracket?.key || '';
+    const finalOutcome = finalGame ? bracketsOutcomes?.[bracketKey]?.[finalGame.id] : null;
 
-    // Bronze (semi-final losers)
-    if (bracket?.gamesByRound?.length >= 2) {
-      const semiRound = bracket.gamesByRound[bracket.gamesByRound.length - 2];
+    if (playerCount === 1) {
+      if (finalGame && (finalOutcome === 'home' || finalOutcome === 'away')) {
+        const winnerSide = finalGame.sides?.home;
+        gold = getName(winnerSide, bracketKey, null, bracketsOutcomes) || PLACEHOLDER;
+      }
+    } else if (finalGame && (finalOutcome === 'home' || finalOutcome === 'away')) {
+      const winnerSide = finalGame.sides?.[finalOutcome];
+      const loserSide = finalGame.sides?.[finalOutcome === 'home' ? 'away' : 'home'];
 
-      if (semiRound?.length >= 1) {
-        const semi1 = semiRound[0];
-        const semi1Outcome = bracketsOutcomes?.[bracketKey]?.[semi1.id];
+      if (winnerSide) {
+        gold = getName(winnerSide, bracketKey, null, bracketsOutcomes) || PLACEHOLDER;
+      }
 
-        if (semi1Outcome === 'home' || semi1Outcome === 'away') {
-          const semi1LoserSide = semi1.sides?.[semi1Outcome === 'home' ? 'away' : 'home'];
-          bronze1 = getName(semi1LoserSide, bracketKey, null, bracketsOutcomes) || PLACEHOLDER;
+      if (loserSide) {
+        silver = getName(loserSide, bracketKey, null, bracketsOutcomes) || PLACEHOLDER;
+      }
+
+      if (bracket?.gamesByRound?.length >= 2) {
+        const semiRound = bracket.gamesByRound[bracket.gamesByRound.length - 2];
+
+        if (semiRound?.length >= 1) {
+          const semi1 = semiRound[0];
+          const semi1Outcome = bracketsOutcomes?.[bracketKey]?.[semi1.id];
+
+          if (semi1Outcome === 'home' || semi1Outcome === 'away') {
+            const semi1LoserSide = semi1.sides?.[semi1Outcome === 'home' ? 'away' : 'home'];
+            bronze1 = getName(semi1LoserSide, bracketKey, null, bracketsOutcomes) || PLACEHOLDER;
+          }
         }
 
-        if (semiRound.length >= 2) {
+        if (semiRound?.length >= 2) {
           const semi2 = semiRound[1];
           const semi2Outcome = bracketsOutcomes?.[bracketKey]?.[semi2.id];
 
@@ -77,7 +87,6 @@ const MedalSection = ({
     }
   }
 
-  // Winner-present flag (for your spacing styling if you have it)
   const hasAnyWinner =
     (gold && gold !== PLACEHOLDER && gold !== MEDAL_PLACEHOLDER) ||
     (silver && silver !== PLACEHOLDER && silver !== MEDAL_PLACEHOLDER) ||
@@ -87,7 +96,6 @@ const MedalSection = ({
   return (
     <div className={styles.signatureMedalSection}>
       <div className={`${styles.medalRow} ${hasAnyWinner ? styles.hasWinners : ''}`}>
-        {/* GOLD */}
         <span className={styles.medal}>
           GOLD:{' '}
           <strong
@@ -101,7 +109,6 @@ const MedalSection = ({
           </strong>
         </span>
 
-        {/* SILVER */}
         {showSilver && (
           <span className={styles.medal}>
             SILVER:{' '}
@@ -117,7 +124,6 @@ const MedalSection = ({
           </span>
         )}
 
-        {/* BRONZE 1 */}
         {showBronze1 && (
           <span className={styles.medal}>
             BRONZE:{' '}
@@ -135,7 +141,6 @@ const MedalSection = ({
           </span>
         )}
 
-        {/* BRONZE 2 */}
         {showBronze2 && (
           <span className={styles.medal}>
             BRONZE:{' '}

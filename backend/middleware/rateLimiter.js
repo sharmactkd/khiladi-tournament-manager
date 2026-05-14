@@ -44,3 +44,9 @@ export const sensitiveRateLimiter = createRateLimiter({
   max: 100,                  // 15 sensitive actions per hour per user (prevents spam/abuse)
   message: "Too many actions performed. Please wait 1 hour before trying again.",
 });
+
+export const tieSheetOutcomeRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 500,
+  message: "Too many TieSheet updates. Please wait a few minutes before trying again.",
+});

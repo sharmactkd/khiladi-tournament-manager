@@ -26,7 +26,10 @@ import {
 } from "../controllers/tournamentController.js";
 
 import { requireCsrfToken } from "../middleware/csrfProtection.js";
-import { sensitiveRateLimiter } from "../middleware/rateLimiter.js";
+import {
+  sensitiveRateLimiter,
+  tieSheetOutcomeRateLimiter,
+} from "../middleware/rateLimiter.js";
 import premiumAccess, { PREMIUM_FEATURES } from "../middleware/premiumAccess.js";
 import optionalAuthMiddleware from "../middleware/optionalAuthMiddleware.js";
 import authMiddleware from "../middleware/authMiddleware.js";
@@ -272,10 +275,8 @@ router.put(
   requireTournamentAccess,
   requireCsrfToken,
   premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET),
-  sensitiveRateLimiter,
   saveTieSheet
 );
-
 // Tie Sheet Outcomes
 router.patch(
   "/:id/tiesheet/outcomes",
@@ -283,7 +284,7 @@ router.patch(
   requireTournamentAccess,
   requireCsrfToken,
   premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET),
-  sensitiveRateLimiter,
+  tieSheetOutcomeRateLimiter,
   saveTieSheetOutcomes
 );
 
@@ -301,7 +302,7 @@ router.put(
   requireTournamentAccess,
   requireCsrfToken,
   premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET),
-  sensitiveRateLimiter,
+ tieSheetOutcomeRateLimiter,
   saveTieSheetOutcomes
 );
 
