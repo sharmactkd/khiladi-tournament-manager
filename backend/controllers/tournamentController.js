@@ -506,6 +506,12 @@ const syncTieSheetMedalsToEntries = async ({
     targetByEntryId.set(entryId, item);
   });
 
+  const clearScopeSet = new Set(
+    (clearScopeEntryIds || [])
+      .map((entryId) => String(entryId || "").trim())
+      .filter(Boolean)
+  );
+
   const now = new Date();
   let matchedCount = 0;
   let clearedCount = 0;
@@ -518,13 +524,6 @@ const syncTieSheetMedalsToEntries = async ({
 
     if (matched) {
       matchedCount += 1;
-
-      console.log("📝 Updating EntryRow", {
-  entryId: row.entryId,
-  oldMedal: row.medal,
-  newMedal: matched?.medal,
-  medalSource: matched ? "tiesheet" : "",
-});
 
       bulkOps.push({
         updateOne: {
@@ -543,27 +542,23 @@ const syncTieSheetMedalsToEntries = async ({
       return;
     }
 
-    const clearScopeSet = new Set(
-  (clearScopeEntryIds || []).map((entryId) => String(entryId || "").trim()).filter(Boolean)
-);
+    if (row.medalSource === "tiesheet" && clearScopeSet.has(currentEntryId)) {
+      clearedCount += 1;
 
-if (row.medalSource === "tiesheet" && clearScopeSet.has(currentEntryId)) {
-  clearedCount += 1;
-
-  bulkOps.push({
-    updateOne: {
-      filter: { tournamentId: row.tournamentId, entryId: row.entryId },
-      update: {
-        $set: {
-          medal: "",
-          medalSource: "",
-          medalUpdatedAt: null,
-          updatedBy: userId || null,
+      bulkOps.push({
+        updateOne: {
+          filter: { tournamentId: row.tournamentId, entryId: row.entryId },
+          update: {
+            $set: {
+              medal: "",
+              medalSource: "",
+              medalUpdatedAt: null,
+              updatedBy: userId || null,
+            },
+          },
         },
-      },
-    },
-  });
-}
+      });
+    }
   });
 
   if (bulkOps.length > 0) {
@@ -601,7 +596,7 @@ if (row.medalSource === "tiesheet" && clearScopeSet.has(currentEntryId)) {
     lastUpdated: now,
     reason: null,
   };
-}; 
+};
 
 const normalizeEventTypeForAggregation = {
   $switch: {
