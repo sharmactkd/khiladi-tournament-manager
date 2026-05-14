@@ -472,7 +472,12 @@ const normalizeTieSheetClientSeq = (value) => {
   return Number.isFinite(seq) && seq > 0 ? seq : Date.now();
 };
 
-const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => {
+const syncTieSheetMedalsToEntries = async ({
+  tournamentId,
+  userId,
+  medals,
+  clearScopeEntryIds = [],
+}) => {
   const validMedals = buildUniqueMedalList(medals || []);
 
   const rows = await EntryRow.find({ tournamentId }).sort({ srNo: 1, createdAt: 1 }).lean();
@@ -538,23 +543,27 @@ const syncTieSheetMedalsToEntries = async ({ tournamentId, userId, medals }) => 
       return;
     }
 
-    if (row.medalSource === "tiesheet") {
-      clearedCount += 1;
+    const clearScopeSet = new Set(
+  (clearScopeEntryIds || []).map((entryId) => String(entryId || "").trim()).filter(Boolean)
+);
 
-      bulkOps.push({
-        updateOne: {
-          filter: { tournamentId: row.tournamentId, entryId: row.entryId },
-          update: {
-            $set: {
-              medal: "",
-              medalSource: "",
-              medalUpdatedAt: null,
-              updatedBy: userId || null,
-            },
-          },
+if (row.medalSource === "tiesheet" && clearScopeSet.has(currentEntryId)) {
+  clearedCount += 1;
+
+  bulkOps.push({
+    updateOne: {
+      filter: { tournamentId: row.tournamentId, entryId: row.entryId },
+      update: {
+        $set: {
+          medal: "",
+          medalSource: "",
+          medalUpdatedAt: null,
+          updatedBy: userId || null,
         },
-      });
-    }
+      },
+    },
+  });
+}
   });
 
   if (bulkOps.length > 0) {
@@ -1411,44 +1420,34 @@ export const saveTieSheet = async (req, res) => {
 export const saveTieSheetOutcomes = async (req, res) => {
   try {
     const { outcomes, brackets, medals, tiesheet } = req.body || {};
+const clearScopeEntryIds = Array.isArray(req.body?.clearScopeEntryIds)
+  ? req.body.clearScopeEntryIds.map((id) => String(id || "").trim()).filter(Boolean)
+  : [];
+    if (!outcomes || typeof outcomes !== "object" || Array.isArray(outcomes)) {
+      return res.status(400).json({ message: "Invalid outcomes data" });
+    }
 
     const clientSeq = normalizeTieSheetClientSeq(
       req.body?.clientSeq || req.body?.seq || req.body?.saveSeq
     );
 
-    if (!outcomes || typeof outcomes !== "object" || Array.isArray(outcomes)) {
-      return res.status(400).json({ message: "Invalid outcomes data" });
-    }
+    const savedAt = new Date();
 
-    const tournament = await Tournament.findById(req.params.id)
-      .select("tiesheetOutcomeSeq")
-      .lean();
-
-    if (!tournament) {
-      return res.status(404).json({ message: "Tournament not found" });
-    }
-
-    const currentSeq = Number(tournament?.tiesheetOutcomeSeq || 0);
-
-    if (currentSeq > 0 && clientSeq < currentSeq) {
-      return res.status(200).json({
-        success: true,
-        stale: true,
-        ignored: true,
-        message: "Stale TieSheet outcome save ignored",
-        clientSeq,
-        currentSeq,
-      });
-    }
-
-    const updated = await Tournament.findByIdAndUpdate(
-      req.params.id,
+    const updated = await Tournament.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        $or: [
+          { tiesheetOutcomeSeq: { $exists: false } },
+          { tiesheetOutcomeSeq: null },
+          { tiesheetOutcomeSeq: { $lte: clientSeq } },
+        ],
+      },
       {
         $set: {
           "tiesheet.outcomes": outcomes,
-          "tiesheet.outcomesUpdatedAt": new Date(),
+          "tiesheet.outcomesUpdatedAt": savedAt,
           tiesheetOutcomeSeq: clientSeq,
-          tiesheetOutcomeSavedAt: new Date(),
+          tiesheetOutcomeSavedAt: savedAt,
         },
       },
       {
@@ -1457,46 +1456,58 @@ export const saveTieSheetOutcomes = async (req, res) => {
       }
     ).lean();
 
+    if (!updated) {
+      const current = await Tournament.findById(req.params.id)
+        .select("tiesheetOutcomeSeq")
+        .lean();
+
+      if (!current) {
+        return res.status(404).json({ message: "Tournament not found" });
+      }
+
+      return res.status(200).json({
+        success: true,
+        stale: true,
+        ignored: true,
+        message: "Stale TieSheet outcome save ignored",
+        clientSeq,
+        currentSeq: Number(current?.tiesheetOutcomeSeq || 0),
+      });
+    }
+
     const saved = updated?.tiesheet?.outcomes || {};
 
     const medalsToSync = extractMedalsFromTieSheetPayload({
-      medals,
+      medals: Array.isArray(medals) ? medals : [],
       brackets,
       outcomes,
       tiesheet,
     });
 
-    let syncResult = {
-      attempted: false,
-      matchedCount: 0,
-      clearedCount: 0,
-      medalsReceived: 0,
-      reason: "no-medal-payload",
-    };
+ const syncResult = await syncTieSheetMedalsToEntries({
+  tournamentId: req.params.id,
+  userId: req.user?._id,
+  medals: medalsToSync,
+  clearScopeEntryIds,
+});
 
-    if (Array.isArray(medals)) {
-      syncResult = await syncTieSheetMedalsToEntries({
-        tournamentId: req.params.id,
-        userId: req.user?._id,
-        medals: medalsToSync,
-      });
-
-      logger.info("TieSheet outcomes saved and medals sync attempted", {
-        tournamentId: req.params.id,
-        matchedCount: syncResult.matchedCount,
-        clearedCount: syncResult.clearedCount,
-        medalsReceived: syncResult.medalsReceived,
-        entryIdMatchesUsed: medalsToSync.some((m) => m.entryId),
-        reason: syncResult.reason,
-        clientSeq,
-        currentSeq: updated?.tiesheetOutcomeSeq,
-      });
-    }
+    
+    logger.info("TieSheet outcomes saved and medals sync attempted", {
+      tournamentId: req.params.id,
+      matchedCount: syncResult.matchedCount,
+      clearedCount: syncResult.clearedCount,
+      medalsReceived: syncResult.medalsReceived,
+      skippedWithoutEntryId: syncResult.skippedWithoutEntryId,
+      clientSeq,
+      currentSeq: updated?.tiesheetOutcomeSeq,
+      reason: syncResult.reason,
+    });
 
     return res.status(200).json({
       success: true,
       message: "TieSheet outcomes saved",
       outcomes: saved,
+      outcomesUpdatedAt: updated?.tiesheet?.outcomesUpdatedAt || null,
       medalSync: syncResult,
       clientSeq,
       currentSeq: updated?.tiesheetOutcomeSeq || clientSeq,
@@ -1505,12 +1516,13 @@ export const saveTieSheetOutcomes = async (req, res) => {
   } catch (error) {
     logger.error("Save tiesheet outcomes failed", {
       error: error.message,
+      stack: error.stack,
       tournamentId: req.params.id,
     });
 
     return res.status(500).json({ message: "Failed to save outcomes" });
   }
-}; 
+};
 
 export const getOfficials = async (req, res) => {
   try {

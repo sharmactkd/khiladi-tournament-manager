@@ -1,5 +1,6 @@
 import Entry from "../models/entry.js";
 import EntryRow from "../models/entryRow.js";
+import Tournament from "../models/tournament.js";
 import logger from "../utils/logger.js";
 import { logActivitySafe } from "../utils/activityLogger.js";
 import mongoose from "mongoose";
@@ -624,6 +625,35 @@ const updateLegacySingleEntryMirror = async ({ tournamentId, userId }) => {
   ).lean();
 };
 
+const resetTieSheetAfterEntryReset = async ({ tournamentId, userId }) => {
+  await Tournament.findByIdAndUpdate(
+    tournamentId,
+    {
+      $set: {
+        "tiesheet.brackets": [],
+        "tiesheet.outcomes": {},
+        "tiesheet.outcomesUpdatedAt": new Date(),
+        tiesheetOutcomeSeq: Date.now(),
+        tiesheetOutcomeSavedAt: new Date(),
+        updatedBy: userId || null,
+      },
+    },
+    { new: true }
+  );
+
+  await EntryRow.updateMany(
+    { tournamentId: new mongoose.Types.ObjectId(tournamentId), medalSource: "tiesheet" },
+    {
+      $set: {
+        medal: "",
+        medalSource: "",
+        medalUpdatedAt: null,
+        updatedBy: userId || null,
+      },
+    }
+  );
+};
+
 export const getEntries = async (req, res) => {
   try {
     const { id } = req.params;
@@ -730,22 +760,22 @@ export const saveEntries = async (req, res) => {
   try {
     const { id } = req.params;
     const {
-  entries,
-  state,
-  userState,
-  isFullSnapshot = false,
-  confirmReplaceAll = "",
-} = req.body || {};
+      entries,
+      state,
+      userState,
+      isFullSnapshot = false,
+      confirmReplaceAll = "",
+    } = req.body || {};
 
-const resolvedUserState =
-  userState && typeof userState === "object"
-    ? userState
-    : state && typeof state === "object"
-      ? state
-      : {};
+    const resolvedUserState =
+      userState && typeof userState === "object"
+        ? userState
+        : state && typeof state === "object"
+          ? state
+          : {};
 
-const allowDeleteMissingRows =
-  isFullSnapshot === true && confirmReplaceAll === "REPLACE_ALL_ENTRIES";
+    const allowDeleteMissingRows =
+      isFullSnapshot === true && confirmReplaceAll === "REPLACE_ALL_ENTRIES";
 
     if (!req.user) {
       return res.status(401).json({ error: "Unauthorized" });
@@ -786,17 +816,24 @@ const allowDeleteMissingRows =
     });
 
     await syncEntryRowsFromEntries({
-  tournamentId: id,
-  entries: mappedEntries,
-  userId: req.user._id,
-  removeMissingRows: allowDeleteMissingRows,
-});
+      tournamentId: id,
+      entries: mappedEntries,
+      userId: req.user._id,
+      removeMissingRows: allowDeleteMissingRows,
+    });
 
-const updated = await mirrorEntryRowsToLegacyEntry({
-  tournamentId: id,
-  userState: resolvedUserState,
-  userId: req.user._id,
-});
+    if (allowDeleteMissingRows) {
+      await resetTieSheetAfterEntryReset({
+        tournamentId: id,
+        userId: req.user._id,
+      });
+    }
+
+    const updated = await mirrorEntryRowsToLegacyEntry({
+      tournamentId: id,
+      userState: resolvedUserState,
+      userId: req.user._id,
+    });
 
     const updatedEntriesCount = mappedEntries.length;
     const addedCount = Math.max(updatedEntriesCount - existingEntriesCount, 0);
@@ -822,18 +859,20 @@ const updated = await mirrorEntryRowsToLegacyEntry({
         updatedCount,
         teams: getTeamsFromEntries(mappedEntries),
         source: "entry-page",
+        isFullSnapshot,
+        deleteMissingRows: allowDeleteMissingRows,
       },
     });
 
-   return res.status(200).json({
-  success: true,
-  message: allowDeleteMissingRows
-    ? "Full snapshot saved successfully"
-    : "Saved safely without deleting missing rows",
-  lastUpdated: updated?.updatedAt || null,
-  count: mappedEntries.length,
-  deleteMissingRows: allowDeleteMissingRows,
-});
+    return res.status(200).json({
+      success: true,
+      message: allowDeleteMissingRows
+        ? "Full snapshot saved successfully"
+        : "Saved safely without deleting missing rows",
+      lastUpdated: updated?.updatedAt || null,
+      count: mappedEntries.length,
+      deleteMissingRows: allowDeleteMissingRows,
+    });
   } catch (error) {
     logger.error("Real-time save failed", {
       error: error.message,
@@ -842,11 +881,9 @@ const updated = await mirrorEntryRowsToLegacyEntry({
       userId: req.user?._id,
     });
 
-   return res.status(500).json({
-  message: isProd
-    ? "Failed to save entries"
-    : error.message,
-});
+    return res.status(500).json({
+      message: isProd ? "Failed to save entries" : error.message,
+    });
   }
 };
 
@@ -1225,9 +1262,7 @@ export const createBulkEntries = async (req, res) => {
     });
 
     return res.status(500).json({
-  message: isProd
-    ? "Failed to create entries"
-    : error.message,
-});
+      message: isProd ? "Failed to create entries" : error.message,
+    });
   }
 };

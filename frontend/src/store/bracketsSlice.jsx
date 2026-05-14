@@ -260,20 +260,26 @@ const bracketsSlice = createSlice({
               if (!game?.sides) return;
 
               if (updatedPoolBrackets[poolIndex]) {
-                game.sides.home = {
-                  sourceGame: updatedPoolBrackets[poolIndex].game,
-                  score: { score: null },
-                  pool: updatedPoolBrackets[poolIndex].pool,
-                };
+            game.sides.home = {
+  sourceGame: {
+    ...updatedPoolBrackets[poolIndex].game,
+    bracketKey: updatedPoolBrackets[poolIndex].key,
+  },
+  score: { score: null },
+  pool: updatedPoolBrackets[poolIndex].pool,
+};
                 poolIndex++;
               }
 
               if (game.sides.away && updatedPoolBrackets[poolIndex]) {
-                game.sides.away = {
-                  sourceGame: updatedPoolBrackets[poolIndex].game,
-                  score: { score: null },
-                  pool: updatedPoolBrackets[poolIndex].pool,
-                };
+             game.sides.away = {
+  sourceGame: {
+    ...updatedPoolBrackets[poolIndex].game,
+    bracketKey: updatedPoolBrackets[poolIndex].key,
+  },
+  score: { score: null },
+  pool: updatedPoolBrackets[poolIndex].pool,
+};
                 poolIndex++;
               }
             });
@@ -347,7 +353,7 @@ const bracketsSlice = createSlice({
         delete curOut[gameId];
       }
 
-      const shouldCascade = !!prevWinner && prevWinner !== nextWinner;
+    const shouldCascade = !!prevWinner && prevWinner !== nextWinner;
 
       if (shouldCascade) {
         const getGamesByRound = (key) => {
@@ -355,31 +361,58 @@ const bracketsSlice = createSlice({
           return Array.isArray(b?.gamesByRound) ? b.gamesByRound : [];
         };
 
-        const findDirectCrossBracketDependents = (sourceGameId) => {
-          const res = [];
-          const brackets = Array.isArray(state.brackets) ? state.brackets : [];
+      const findDirectCrossBracketDependents = (
+  sourceBracketKey,
+  sourceGameId
+) => {
+  const res = [];
+  const brackets = Array.isArray(state.brackets)
+    ? state.brackets
+    : [];
 
-          for (const b of brackets) {
-            const bKey = b?.key;
-            const gbr = Array.isArray(b?.gamesByRound) ? b.gamesByRound : [];
-            if (!bKey || !gbr.length) continue;
+  for (const b of brackets) {
+    const bKey = b?.key;
+    const gbr = Array.isArray(b?.gamesByRound)
+      ? b.gamesByRound
+      : [];
 
-            for (const round of gbr) {
-              for (const g of round || []) {
-                const sides = [g?.sides?.home, g?.sides?.away].filter(Boolean);
+    if (!bKey || !gbr.length) continue;
 
-                for (const s of sides) {
-                  if (s?.sourceGame?.id === sourceGameId) {
-                    res.push({ bracketKey: bKey, gameId: g.id });
-                    break;
-                  }
-                }
-              }
-            }
+    for (const round of gbr) {
+      for (const g of round || []) {
+        const sides = [
+          g?.sides?.home,
+          g?.sides?.away,
+        ].filter(Boolean);
+
+        for (const s of sides) {
+          const srcGame = s?.sourceGame;
+
+          if (!srcGame?.id) continue;
+
+          // ✅ STRICT CHECK
+          const sameGame =
+            String(srcGame.id) === String(sourceGameId);
+
+          const sameBracket =
+            String(srcGame.bracketKey || "") ===
+            String(sourceBracketKey || "");
+
+          if (sameGame && sameBracket) {
+            res.push({
+              bracketKey: bKey,
+              gameId: g.id,
+            });
+
+            break;
           }
+        }
+      }
+    }
+  }
 
-          return res;
-        };
+  return res;
+};
 
         const queue = [];
         const visited = new Set();
@@ -391,7 +424,11 @@ const bracketsSlice = createSlice({
             queue.push({ bracketKey: srcBracketKey, gameId: depId });
           }
 
-          const depsCross = findDirectCrossBracketDependents(srcGameId);
+          const depsCross =
+  findDirectCrossBracketDependents(
+    srcBracketKey,
+    srcGameId
+  );
 
           for (const dep of depsCross) {
             queue.push(dep);

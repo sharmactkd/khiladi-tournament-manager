@@ -86,6 +86,10 @@ const TieSheet = () => {
   const initialLoadRef = useRef(true);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isPdfSaving, setIsPdfSaving] = useState(false); // ✅ PDF capture state (keeps DOM mounted)
+  const [saveStatus, setSaveStatus] = useState("");
+const saveStatusTimeoutRef = useRef(null);
+  
+// values: "saved" | "saving" | "error"
   const [columnInfo, setColumnInfo] = useState({});
 
   // Server entries snapshot meta (used to decide whether restoring saved brackets is safe)
@@ -856,32 +860,6 @@ poolBrackets.forEach((poolBracket) => {
   }
 });
 
-     groupBrackets
-  .filter((poolBracket) => !isPoolFinalBracket(poolBracket))
-  .forEach((poolBracket) => {
-    const poolGame = poolBracket?.game;
-
-    if (!poolGame?.id) return;
-
-    const poolWinnerSide = getOutcomeWinnerSide(poolBracket.key, poolGame.id);
-
-    if (!poolWinnerSide) return;
-
-    const bronzeSide = poolWinnerSide === "home" ? "away" : "home";
-
-    const bronzeTeam = extractSideTeam(
-      poolGame.sides?.[bronzeSide],
-      poolBracket.key
-    );
-
-    if (isValidPlayer(bronzeTeam)) {
-      pushUniqueMedalist(
-        medalists,
-        makeMedal(bronzeTeam, "Bronze", finalBracket)
-      );
-    }
-  });
-
       const expectedMedalCount =
         categoryPlayerCount >= 4
           ? 4
@@ -1006,7 +984,7 @@ result.push(...medalists);
         .filter(Boolean)
     );
 
-    if (medalistEntryIds.size < expectedMedalCount) {
+      if (medalistEntryIds.size < expectedMedalCount) {
       return;
     }
 
@@ -1033,7 +1011,7 @@ result.push(...medalists);
     byEntryId.set(entryId, item);
   });
 
- const finalPayload = [...byEntryId.values()];
+  const finalPayload = [...byEntryId.values()];
 
 console.group("✅ FINAL MEDAL PAYLOAD TO BACKEND");
 console.log(
@@ -1051,110 +1029,148 @@ return finalPayload;
 
 }, []); 
 
+
+const showSavedState = useCallback(() => {
+  setSaveStatus("saved");
+
+  if (saveStatusTimeoutRef.current) {
+    clearTimeout(saveStatusTimeoutRef.current);
+  }
+
+  saveStatusTimeoutRef.current = setTimeout(() => {
+    setSaveStatus("");
+  }, 1500);
+}, []);
+
 const saveTieSheetOutcomesToServer = useCallback(
-  async (outcomes, signal, bracketsSnapshot = []) => {
+  async (outcomes, signal, bracketsSnapshot = [], meta = {}) => {
     if (isAdminReadOnly || (isAdminUser && !adminEditMode)) {
       return null;
     }
 
     const safeBrackets = Array.isArray(bracketsSnapshot) ? bracketsSnapshot : [];
 
-    const changedBracketKey = lastOutcomeAction?.bracketKey || "";
+    const medalsPayload = collectBracketMedalPayload(
+      safeBrackets,
+      outcomes || {}
+    );
 
-const getChangedBaseKey = (key = "") =>
-  String(key || "").replace(/_Pool.*$/, "");
+    const clientSeq = Math.max(Date.now(), serverSaveSeqRef.current + 1);
+serverSaveSeqRef.current = clientSeq;
 
-const changedBaseKey = getChangedBaseKey(changedBracketKey);
+const getAffectedEntryIds = (bracketsSnapshot = [], meta = {}) => {
+  const bracketKey = meta?.bracketKey;
 
-const targetBrackets =
-  changedBaseKey
-    ? safeBrackets.filter(
-        (bracket) =>
-          getChangedBaseKey(bracket?.key || "") === changedBaseKey
-      )
-    : safeBrackets;
+  if (!bracketKey) return [];
 
-const medalsPayload = collectBracketMedalPayload(targetBrackets, outcomes || {});
+  const baseKey = String(bracketKey).replace(/_Pool.*$/, "");
 
-console.group("🚨 [FRONTEND SAVE] TieSheet outcomes save");
-console.log("Tournament ID:", id);
-console.log("Total brackets:", safeBrackets.length);
-console.log(
-  "Bracket summary:",
-  safeBrackets.map((b) => ({
-    key: b.key,
-    pool: b.pool,
-    playerCount: b.playerCount,
-    categoryPlayerCount: b.categoryPlayerCount,
-    finalGameId: b.game?.id,
-    finalWinner: outcomes?.[b.key]?.[String(b.game?.id)] ?? outcomes?.[b.key]?.[Number(b.game?.id)] ?? null,
-  }))
-);
-console.log("Outcomes snapshot:", outcomes);
-console.log("Medals payload sent to backend:", medalsPayload);
-console.groupEnd();
-
-const clientSeq = ++serverSaveSeqRef.current;
-
-const payload = {
-  outcomes: outcomes || {},
-  brackets: safeBrackets,
-  clientSeq,
-  ...(medalsPayload.length > 0 ? { medals: medalsPayload } : {}),
+  return (Array.isArray(bracketsSnapshot) ? bracketsSnapshot : [])
+    .filter(
+      (bracket) =>
+        String(bracket?.key || "").replace(/_Pool.*$/, "") === baseKey
+    )
+    .flatMap((bracket) =>
+      Array.isArray(bracket?.shuffledPlayers) ? bracket.shuffledPlayers : []
+    )
+    .map((player) => String(player?.entryId || "").trim())
+    .filter(Boolean);
 };
 
-const response = await api.put(`/tournament/${id}/tiesheet-outcomes`, payload, {
-  signal,
-  timeout: 20000,
-});
 
-if (response?.data?.stale) {
+    const payload = {
+      outcomes: outcomes || {},
+      brackets: safeBrackets,
+      medals: medalsPayload,
+      clientSeq,
+      clearScopeEntryIds: getAffectedEntryIds(safeBrackets, meta),
+    };
+
+   setSaveStatus("saving");
+
+    const response = await api.put(`/tournament/${id}/tiesheet-outcomes`, payload, {
+      signal,
+      timeout: 20000,
+    });
+
+  if (response?.data?.stale) {
   if (isDev) {
     console.warn("⚠️ [TieSheet] Ignoring stale save response", {
       clientSeq,
+      currentSeq: response?.data?.currentSeq,
     });
   }
 
-  return response?.data || null;
+setSaveStatus("error");
+
+if (isDev) {
+  console.warn("⚠️ [TieSheet] Save ignored as stale", {
+    clientSeq,
+    currentSeq: response?.data?.currentSeq,
+  });
 }
 
-latestServerAppliedSeqRef.current = Math.max(
-  latestServerAppliedSeqRef.current,
-  clientSeq
-);
-
-const resp = response;
-
-if (
-  Array.isArray(medalsPayload) &&
-  medalsPayload.length > 0 &&
-  resp?.data?.medalSync?.attempted
-) {
-  window.dispatchEvent(new Event(`tiesheetMedalsUpdated_${id}`));
+return response?.data || null;
 }
 
-return resp?.data || null;
+showSavedState();
+
+
+    latestServerAppliedSeqRef.current = Math.max(
+      latestServerAppliedSeqRef.current,
+      clientSeq
+    );
+
+    if (response?.data?.medalSync?.attempted) {
+      window.dispatchEvent(new Event(`tiesheetMedalsUpdated_${id}`));
+    }
+
+    return response?.data || null;
   },
-  [id, collectBracketMedalPayload, isAdminReadOnly, isAdminUser, adminEditMode, lastOutcomeAction]
+  [
+    id,
+    collectBracketMedalPayload,
+    isAdminReadOnly,
+    isAdminUser,
+    adminEditMode,
+  ]
 );
 
-  const shouldRestoreSavedBrackets = useCallback((serverTieSheet, currentEntriesMeta) => {
-    try {
-      if (!serverTieSheet || !Array.isArray(serverTieSheet.brackets) || serverTieSheet.brackets.length === 0) return false;
-
-      const savedUpdated = serverTieSheet.entriesLastUpdated || null;
-      const savedCount = typeof serverTieSheet.entriesCount === 'number' ? serverTieSheet.entriesCount : null;
-
-      const currentUpdated = currentEntriesMeta?.lastUpdated || null;
-      const currentCount = typeof currentEntriesMeta?.count === 'number' ? currentEntriesMeta.count : null;
-
-      if (!savedUpdated || savedCount === null) return false;
-
-      return String(savedUpdated) === String(currentUpdated) && Number(savedCount) === Number(currentCount);
-    } catch {
+const shouldRestoreSavedBrackets = useCallback((serverTieSheet, currentEntriesMeta) => {
+  try {
+    if (
+      !serverTieSheet ||
+      !Array.isArray(serverTieSheet.brackets) ||
+      serverTieSheet.brackets.length === 0
+    ) {
       return false;
     }
-  }, []);
+
+    const savedCount =
+      typeof serverTieSheet.entriesCount === "number"
+        ? serverTieSheet.entriesCount
+        : null;
+
+    const currentCount =
+      typeof currentEntriesMeta?.count === "number"
+        ? currentEntriesMeta.count
+        : null;
+
+    // ✅ Important:
+    // Do NOT compare entriesLastUpdated here.
+    // TieSheet medal sync updates EntryRow.updatedAt, but player/bracket structure
+    // may still be exactly same. Comparing timestamps causes saved brackets to be
+    // rejected after winner declaration, so refresh regenerates brackets and UI
+    // loses declared winners.
+    if (savedCount !== null && currentCount !== null) {
+      return Number(savedCount) === Number(currentCount);
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}, []);
 
   const handleToggleLock = useCallback(
     (bracketKey) => {
@@ -1403,11 +1419,13 @@ const debouncedSaveOutcomesToServer = useMemo(() => {
   return debounce(async (outcomesSnapshot, meta) => {
     if (!id) return;
 
+    const bracketsSnapshot = Array.isArray(brackets) ? brackets : [];
+
     const hash = (() => {
       try {
         return JSON.stringify({
           outcomes: outcomesSnapshot || {},
-          brackets: Array.isArray(brackets) ? brackets : [],
+          brackets: bracketsSnapshot,
         });
       } catch {
         return "";
@@ -1419,7 +1437,7 @@ const debouncedSaveOutcomesToServer = useMemo(() => {
 
     pendingServerSaveRef.current = {
       outcomes: outcomesSnapshot || {},
-      brackets: Array.isArray(brackets) ? brackets : [],
+      brackets: bracketsSnapshot,
       meta: meta || {},
       hash,
     };
@@ -1433,22 +1451,21 @@ const debouncedSaveOutcomesToServer = useMemo(() => {
       pendingServerSaveRef.current = null;
       serverSaveInFlightRef.current = true;
 
-      const seq = serverSaveSeqRef.current + 1;
-      serverSaveSeqRef.current = seq;
-
       const controller = new AbortController();
 
       try {
-        const resp = await saveTieSheetOutcomesToServer(
-          pending.outcomes,
-          controller.signal,
-          pending.brackets
-        );
+       const resp = await saveTieSheetOutcomesToServer(
+  pending.outcomes,
+  controller.signal,
+  pending.brackets,
+  pending.meta
+);
 
-        if (seq >= latestServerAppliedSeqRef.current) {
-          latestServerAppliedSeqRef.current = seq;
-          lastServerSavedHashRef.current = pending.hash;
-        }
+      if (!resp?.stale) {
+  lastServerSavedHashRef.current = pending.hash;
+}
+
+showSavedState();
 
         if (isDev) {
           console.log("💾 [TieSheet] Outcomes saved to SERVER", {
@@ -1456,22 +1473,32 @@ const debouncedSaveOutcomesToServer = useMemo(() => {
             bracketKey: pending.meta?.bracketKey || null,
             gameId: pending.meta?.gameId || null,
             side: pending.meta?.side || null,
+            stale: Boolean(resp?.stale),
             outcomesUpdatedAt: resp?.outcomesUpdatedAt || null,
             medalSync: resp?.medalSync || null,
-            seq,
           });
         }
-      } catch (err) {
-        if (isDev) {
-          console.warn("⚠️ [TieSheet] Outcomes save to SERVER failed", {
-            tournamentId: id,
-            bracketKey: pending.meta?.bracketKey || null,
-            gameId: pending.meta?.gameId || null,
-            side: pending.meta?.side || null,
-            err: err?.message || err,
-            seq,
-          });
-        }
+    } catch (err) {
+  setSaveStatus("error");
+
+  if (saveStatusTimeoutRef.current) {
+  clearTimeout(saveStatusTimeoutRef.current);
+}
+
+saveStatusTimeoutRef.current = setTimeout(() => {
+  setSaveStatus("");
+}, 2500);
+
+  if (isDev) {
+    console.warn("⚠️ [TieSheet] Outcomes save to SERVER failed", {
+      tournamentId: id,
+      bracketKey: pending.meta?.bracketKey || null,
+      gameId: pending.meta?.gameId || null,
+      side: pending.meta?.side || null,
+      err: err?.message || err,
+    });
+  }
+
       } finally {
         serverSaveInFlightRef.current = false;
 
@@ -1485,13 +1512,17 @@ const debouncedSaveOutcomesToServer = useMemo(() => {
   }, 450);
 }, [id, saveTieSheetOutcomesToServer, brackets]);
 
-  useEffect(() => {
-    return () => {
-      try {
-        debouncedSaveOutcomesToServer.cancel();
-      } catch {}
-    };
-  }, [debouncedSaveOutcomesToServer]);
+ useEffect(() => {
+  return () => {
+    try {
+      debouncedSaveOutcomesToServer.cancel();
+    } catch {}
+
+    if (saveStatusTimeoutRef.current) {
+      clearTimeout(saveStatusTimeoutRef.current);
+    }
+  };
+}, [debouncedSaveOutcomesToServer]);
 
   /**
    * ✅ Real-time persistence for outcomes:
@@ -1598,11 +1629,20 @@ const debouncedSaveOutcomesToServer = useMemo(() => {
               if (isDev) console.log('🧩 [TieSheet] Snapshot match -> restoring brackets from server');
 
               // ✅ DO NOT overwrite outcomes here. Outcomes are hydrated separately (server-first, local fallback).
-              dispatch(
-                setInitialBrackets({
-                  brackets: saved.brackets,
-                })
-              );
+            const outcomesData = await fetchTieSheetOutcomesFromServer(controller.signal);
+const serverOutcomes =
+  outcomesData?.outcomes &&
+  typeof outcomesData.outcomes === "object" &&
+  !Array.isArray(outcomesData.outcomes)
+    ? outcomesData.outcomes
+    : {};
+
+dispatch(
+  setInitialBrackets({
+    brackets: saved.brackets,
+    outcomes: serverOutcomes,
+  })
+);
 
               if (saved.filters) {
                 setSelectedGenders((prev) => saved.filters.selectedGenders || prev);
@@ -1612,7 +1652,20 @@ const debouncedSaveOutcomesToServer = useMemo(() => {
               if (isDev) console.log('♻️ [TieSheet] Entries changed -> ignoring saved brackets and regenerating');
 
               // ✅ Brackets regen is allowed; keep outcomes intact unless regen actually happens downstream.
-              dispatch(setInitialBrackets({ brackets: [] }));
+           const outcomesData = await fetchTieSheetOutcomesFromServer(controller.signal);
+const serverOutcomes =
+  outcomesData?.outcomes &&
+  typeof outcomesData.outcomes === "object" &&
+  !Array.isArray(outcomesData.outcomes)
+    ? outcomesData.outcomes
+    : {};
+
+dispatch(
+  setInitialBrackets({
+    brackets: [],
+    outcomes: serverOutcomes,
+  })
+);
 
               if (saved?.filters) {
                 setSelectedGenders((prev) => saved.filters.selectedGenders || prev);
@@ -1656,16 +1709,17 @@ const debouncedSaveOutcomesToServer = useMemo(() => {
         controller.abort();
       } catch {}
     };
-  }, [
-    id,
-    token,
-    dispatch,
-    fetchTournamentFromServer,
-    fetchEntriesFromServer,
-    fetchLatestTieSheetFromServer,
-    normalizePlayers,
-    shouldRestoreSavedBrackets,
-  ]);
+  },[
+  id,
+  token,
+  dispatch,
+  fetchTournamentFromServer,
+  fetchEntriesFromServer,
+  fetchLatestTieSheetFromServer,
+  fetchTieSheetOutcomesFromServer,
+  normalizePlayers,
+  shouldRestoreSavedBrackets,
+]);
 
   // Real-time sync: on Entry update event, re-fetch SERVER entries
   useEffect(() => {
@@ -1799,79 +1853,106 @@ const debouncedSaveOutcomesToServer = useMemo(() => {
   }, [debouncedSaveTieSheet]);
 
   // Refresh (kept)
-  const handleRefresh = useCallback(async () => {
-    if (refreshInFlightRef.current) {
-      if (isDev) console.log('🔄 Refresh ignored: already in progress');
-      return;
+ const handleRefresh = useCallback(async () => {
+  if (refreshInFlightRef.current) {
+    if (isDev) console.log('🔄 Refresh ignored: already in progress');
+    return;
+  }
+
+  refreshInFlightRef.current = true;
+  if (isDev) console.log('🔄 Refresh button clicked (server-truth entries)');
+
+  setIsLoading(true);
+  setError(null);
+
+  const controller = new AbortController();
+
+  try {
+    const tournamentData = tournament || (await fetchTournamentFromServer(controller.signal));
+    const { rows, count, lastUpdated } = await fetchEntriesFromServer(4, 700, controller.signal);
+    const mappedPlayers = normalizePlayers(rows, tournamentData);
+
+    if (!mappedPlayers || mappedPlayers.length === 0) {
+      throw new Error('No valid players found on server. Please add players in Entry page.');
     }
 
-    refreshInFlightRef.current = true;
-    if (isDev) console.log('🔄 Refresh button clicked (server-truth entries)');
+    setPlayers(mappedPlayers);
 
-    setIsLoading(true);
-    setError(null);
+    const outcomesData = await fetchTieSheetOutcomesFromServer(controller.signal);
+    const serverOutcomes =
+      outcomesData?.outcomes &&
+      typeof outcomesData.outcomes === "object" &&
+      !Array.isArray(outcomesData.outcomes)
+        ? outcomesData.outcomes
+        : {};
 
-    const controller = new AbortController();
+    let serverTieSheet = null;
+    try {
+      serverTieSheet = await fetchLatestTieSheetFromServer(controller.signal);
+    } catch (err) {
+      if (err?.response?.status !== 404) {
+        console.warn('Refresh: failed to fetch tiesheet from server:', err?.message || err);
+      }
+    }
+
+    const canRestore = shouldRestoreSavedBrackets(serverTieSheet, { count, lastUpdated });
+
+    if (serverTieSheet?.brackets?.length > 0 && canRestore) {
+      dispatch(
+        setInitialBrackets({
+          brackets: serverTieSheet.brackets,
+          outcomes: serverOutcomes,
+        })
+      );
+
+      if (serverTieSheet.filters) {
+        setSelectedGenders((prev) => serverTieSheet.filters.selectedGenders || prev);
+        setSelectedAgeCategories((prev) => serverTieSheet.filters.selectedAgeCategories || prev);
+      }
+    } else {
+      dispatch(
+        setInitialBrackets({
+          brackets: [],
+          outcomes: serverOutcomes,
+        })
+      );
+
+      if (serverTieSheet?.filters) {
+        setSelectedGenders((prev) => serverTieSheet.filters.selectedGenders || prev);
+        setSelectedAgeCategories((prev) => serverTieSheet.filters.selectedAgeCategories || prev);
+      }
+    }
 
     try {
-      const tournamentData = tournament || (await fetchTournamentFromServer(controller.signal));
-      const { rows, count, lastUpdated } = await fetchEntriesFromServer(4, 700, controller.signal);
-      const mappedPlayers = normalizePlayers(rows, tournamentData);
+      localStorage.setItem(`brackets_outcomes_${id}`, JSON.stringify(serverOutcomes));
+      lastLocalSavedHashRef.current = JSON.stringify(serverOutcomes);
+    } catch {}
+  } catch (err) {
+    console.error('Refresh error:', err);
 
-      if (!mappedPlayers || mappedPlayers.length === 0) {
-        throw new Error('No valid players found on server. Please add players in Entry page.');
-      }
-
-      setPlayers(mappedPlayers);
-
-      let serverTieSheet = null;
-      try {
-        serverTieSheet = await fetchLatestTieSheetFromServer(controller.signal);
-      } catch (err) {
-        if (err?.response?.status !== 404)
-          console.warn('Refresh: failed to fetch tiesheet from server:', err?.message || err);
-      }
-
-      const canRestore = shouldRestoreSavedBrackets(serverTieSheet, { count, lastUpdated });
-
-      if (serverTieSheet?.brackets?.length > 0 && canRestore) {
-        // ✅ Restore brackets only; do NOT override outcomes here.
-        dispatch(setInitialBrackets({ brackets: serverTieSheet.brackets }));
-        if (serverTieSheet.filters) {
-          setSelectedGenders((prev) => serverTieSheet.filters.selectedGenders || prev);
-          setSelectedAgeCategories((prev) => serverTieSheet.filters.selectedAgeCategories || prev);
-        }
-      } else {
-        // ✅ Regenerate brackets; keep outcomes intact.
-        dispatch(setInitialBrackets({ brackets: [] }));
-        if (serverTieSheet?.filters) {
-          setSelectedGenders((prev) => serverTieSheet.filters.selectedGenders || prev);
-          setSelectedAgeCategories((prev) => serverTieSheet.filters.selectedAgeCategories || prev);
-        }
-      }
-    } catch (err) {
-      console.error('Refresh error:', err);
-     if (mountedRef.current) {
-  setError(
-    err?.title
-      ? err
-      : { title: "Error", message: "Refresh failed: " + (err?.message || "Unknown error") }
-  );
-}
-    } finally {
-      if (mountedRef.current) setIsLoading(false);
-      refreshInFlightRef.current = false;
-      if (isDev) console.log('🔚 Refresh ended');
+    if (mountedRef.current) {
+      setError(
+        err?.title
+          ? err
+          : { title: "Error", message: "Refresh failed: " + (err?.message || "Unknown error") }
+      );
     }
-  }, [
-    tournament,
-    fetchTournamentFromServer,
-    fetchEntriesFromServer,
-    normalizePlayers,
-    fetchLatestTieSheetFromServer,
-    shouldRestoreSavedBrackets,
-    dispatch,
-  ]);
+  } finally {
+    if (mountedRef.current) setIsLoading(false);
+    refreshInFlightRef.current = false;
+    if (isDev) console.log('🔚 Refresh ended');
+  }
+}, [
+  tournament,
+  fetchTournamentFromServer,
+  fetchEntriesFromServer,
+  normalizePlayers,
+  fetchLatestTieSheetFromServer,
+  fetchTieSheetOutcomesFromServer,
+  shouldRestoreSavedBrackets,
+  dispatch,
+  id,
+]); 
 
   const safeComputedMedals = useMemo(() => {
     return computedMedals && typeof computedMedals === 'object' ? computedMedals : {};
@@ -2369,7 +2450,19 @@ const medals =
           </>
         )}
       </div>
+
+    {saveStatus && (
+  <div className={`${styles.saveIndicator} ${styles[saveStatus]}`}>
+    {saveStatus === "saving"
+      ? "Saving..."
+      : saveStatus === "error"
+        ? "Save failed"
+        : "Saved"}
+  </div>
+)}
+
     </ErrorBoundary>
+  
     </PremiumAccessGuard>
   );
 };

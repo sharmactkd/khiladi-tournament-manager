@@ -1509,3 +1509,30 @@
   box-shadow: 0 8px 18px rgba(207, 0, 6, 0.22);
 }
 
+.saveIndicator {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 9999;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  background: #111827;
+  color: #ffffff;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.saving {
+  background: #2563eb;
+}
+
+.saved {
+  background: #16a34a;
+}
+
+.error {
+  background: #dc2626;
+}

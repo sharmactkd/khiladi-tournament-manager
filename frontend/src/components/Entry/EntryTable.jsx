@@ -144,6 +144,7 @@ const EntryTable = forwardRef(
     const isReadOnly = Boolean(readOnly || disabled);
 
     const [saveStatus, setSaveStatus] = useState("idle");
+    
     const [jumpHighlightedSr, setJumpHighlightedSr] = useState("");
     const parentRef = useRef(null);
 
