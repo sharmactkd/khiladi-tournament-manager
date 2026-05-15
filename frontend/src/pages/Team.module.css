@@ -533,3 +533,8 @@ table td.colPaymentStatus {
     max-width: 260px;
   }
 }
+
+.centerCell {
+  text-align: center !important;
+  vertical-align: middle !important;
+}

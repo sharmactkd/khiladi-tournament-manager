@@ -37,6 +37,65 @@ const extractEntryRows = (payload) => {
 const filterNonEmptyTeamRows = (rows = []) =>
   rows.filter((row) => String(row?.team || "").trim() !== "");
 
+
+
+const formatDobForDisplay = (value = "") => {
+  const raw = String(value || "").trim();
+  if (!raw) return "-";
+
+  // Already DD-MM-YYYY
+  if (/^\d{2}-\d{2}-\d{4}$/.test(raw)) return raw;
+
+  // ISO datetime from Mongo/Server: convert using India timezone
+  if (raw.includes("T")) {
+    const date = new Date(raw);
+
+    if (!Number.isNaN(date.getTime())) {
+      return new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+        .format(date)
+        .replace(/\//g, "-");
+    }
+  }
+
+  // Plain YYYY-MM-DD only
+  const isoDateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoDateOnly) {
+    return `${isoDateOnly[3]}-${isoDateOnly[2]}-${isoDateOnly[1]}`;
+  }
+
+  return raw;
+};
+
+const formatWeightCategoryForDisplay = (value = "") => {
+  const raw = String(value || "")
+    .normalize("NFKC")
+    .replace(/\u00A0/g, " ")
+    .replace(/[\u200B-\u200D\uFEFF]/g, "")
+    .replace(/[–—−]/g, "-")
+    .trim();
+
+  if (!raw) return "-";
+
+  const underMatch = raw.match(/under\s*-?\s*(\d+)/i);
+  if (underMatch) return `Under - ${underMatch[1]} KG`;
+
+  const overMatch = raw.match(/over\s*-?\s*(\d+)/i);
+  if (overMatch) return `Over - ${overMatch[1]} KG`;
+
+  return raw
+    .split("(")[0]
+    .split("[")[0]
+    .split("|")[0]
+    .split(":")[0]
+    .replace(/\bkg\b/gi, "KG")
+    .trim();
+};
+
 const Team = () => {
   const { id: rawId } = useParams();
   const id = rawId?.trim();
@@ -813,17 +872,21 @@ const Team = () => {
                   <tbody>
                     {selectedTeam.players.map((player, index) => (
                       <tr key={`${player.name || "player"}-${index}`}>
-                        <td>{player.sr}</td>
+                        <td className={styles.centerCell}>{index + 1}</td>
                         <td>{player.title || "-"}</td>
                         <td>{player.name || "-"}</td>
-                        <td>{player.gender || "-"}</td>
-                        <td>{player.dob || "-"}</td>
+                        <td className={styles.centerCell}>
+  {player.gender || "-"}
+</td>
+                        <td>{formatDobForDisplay(player.dob)}</td>
                         <td>{player.weight || "-"}</td>
                         <td>{player.event || "-"}</td>
                         <td>{player.subEvent || "-"}</td>
-                        <td>{player.ageCategory || "-"}</td>
-                        <td>{player.weightCategory || "-"}</td>
-                        <td>{player.medal || "-"}</td>
+                        <td className={styles.centerCell}>{player.ageCategory || "-"}</td>
+                        <td>{formatWeightCategoryForDisplay(player.weightCategory)}</td>
+                        <td className={styles.centerCell}>
+  {player.medal || "-"}
+</td>
                         <td>{player.coach || "-"}</td>
                         <td>{player.coachContact || "-"}</td>
                         <td>{player.manager || "-"}</td>

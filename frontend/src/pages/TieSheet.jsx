@@ -594,15 +594,24 @@ console.log(
   }, {})
 );
 
-    const genders = [...allowedGenders].sort((a, b) => genderOrder.indexOf(a) - genderOrder.indexOf(b));
-    const ageCategories = [
-      ...new Set([...allowedAgeCategories].map((ac) => ageCategoryMapping[normalizeString(ac)] || ac)),
-    ].sort((a, b) => ageCategoryOrder.indexOf(a) - ageCategoryOrder.indexOf(b));
+   const genders = [
+  ...new Set(mappedPlayers.map((p) => p.gender).filter(Boolean)),
+].sort((a, b) => genderOrder.indexOf(a) - genderOrder.indexOf(b));
 
-    setAvailableGenders(genders.length > 0 ? genders : ['Male', 'Female']);
-    setSelectedGenders(genders.length > 0 ? genders : ['Male']);
-    setAvailableAgeCategories(ageCategories.length > 0 ? ageCategories : ageCategoryOrder);
-    setSelectedAgeCategories(ageCategories.length > 0 ? ageCategories : ageCategoryOrder);
+const ageCategories = [
+  ...new Set(mappedPlayers.map((p) => p.ageCategory).filter(Boolean)),
+].sort((a, b) => {
+  const aIndex = ageCategoryOrder.indexOf(a);
+  const bIndex = ageCategoryOrder.indexOf(b);
+
+  return (aIndex === -1 ? 999 : aIndex) - (bIndex === -1 ? 999 : bIndex);
+});
+
+setAvailableGenders(genders);
+setSelectedGenders(genders);
+
+setAvailableAgeCategories(ageCategories);
+setSelectedAgeCategories(ageCategories);
 
     return mappedPlayers;
   }, []);
@@ -1323,10 +1332,7 @@ dispatch(
   })
 );
 
-              if (saved.filters) {
-                setSelectedGenders((prev) => saved.filters.selectedGenders || prev);
-                setSelectedAgeCategories((prev) => saved.filters.selectedAgeCategories || prev);
-              }
+             
             } else {
               if (isDev) console.log('♻️ [TieSheet] Entries changed -> ignoring saved brackets and regenerating');
 
@@ -1346,10 +1352,7 @@ dispatch(
   })
 );
 
-              if (saved?.filters) {
-                setSelectedGenders((prev) => saved.filters.selectedGenders || prev);
-                setSelectedAgeCategories((prev) => saved.filters.selectedAgeCategories || prev);
-              }
+          
             }
           } catch (err) {
             if (controller.signal.aborted) return;
@@ -1433,23 +1436,21 @@ const filteredBrackets = useMemo(() => {
     const safeGenders = Array.isArray(selectedGenders) ? selectedGenders : [];
     const safeAges = Array.isArray(selectedAgeCategories) ? selectedAgeCategories : [];
 
-    if (safeGenders.length === 0 && safeAges.length === 0) return safeBrackets;
+    if (availableGenders.length > 0 && safeGenders.length === 0) return [];
+if (availableAgeCategories.length > 0 && safeAges.length === 0) return [];
 
     return safeBrackets.filter((b) => {
       if (!b || typeof b !== 'object') return false;
 
-      const genderMatch =
-        safeGenders.length === 0 ||
-        (b.gender && safeGenders.includes(b.gender));
+    const genderMatch = b.gender && safeGenders.includes(b.gender);
 
-      const ageMatch =
-        safeAges.length === 0 ||
-        (b.ageCategory &&
-          safeAges.some(
-            (age) =>
-              normalizeAgeCategoryForCompare(age) ===
-              normalizeAgeCategoryForCompare(b.ageCategory)
-          ));
+     const ageMatch =
+  b.ageCategory &&
+  safeAges.some(
+    (age) =>
+      normalizeAgeCategoryForCompare(age) ===
+      normalizeAgeCategoryForCompare(b.ageCategory)
+  );
 
           console.log("FILTER CHECK", {
   bracketAge: b.ageCategory,
@@ -1464,7 +1465,13 @@ const filteredBrackets = useMemo(() => {
     console.error('Error in filteredBrackets calculation:', err);
     return [];
   }
-}, [brackets, selectedGenders, selectedAgeCategories]); 
+}, [
+  brackets,
+  selectedGenders,
+  selectedAgeCategories,
+  availableGenders,
+  availableAgeCategories,
+]);
 
   const safeFilteredBrackets = useMemo(() => (Array.isArray(filteredBrackets) ? filteredBrackets : []), [filteredBrackets]);
 
@@ -1603,10 +1610,7 @@ const filteredBrackets = useMemo(() => {
         })
       );
 
-      if (serverTieSheet.filters) {
-        setSelectedGenders((prev) => serverTieSheet.filters.selectedGenders || prev);
-        setSelectedAgeCategories((prev) => serverTieSheet.filters.selectedAgeCategories || prev);
-      }
+    
     } else {
       dispatch(
         setInitialBrackets({
@@ -1615,10 +1619,7 @@ const filteredBrackets = useMemo(() => {
         })
       );
 
-      if (serverTieSheet?.filters) {
-        setSelectedGenders((prev) => serverTieSheet.filters.selectedGenders || prev);
-        setSelectedAgeCategories((prev) => serverTieSheet.filters.selectedAgeCategories || prev);
-      }
+    
     }
 
     try {
