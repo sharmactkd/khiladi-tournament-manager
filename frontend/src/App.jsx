@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
 import Header from "./components/Header";
@@ -24,6 +24,7 @@ import Team from "./pages/Team";
 import TeamEntryForm from "./pages/TeamEntryForm";
 import TeamSubmissions from "./pages/TeamSubmissions";
 import TournamentLayout from "./components/TournamentLayout";
+
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminUsers from "./pages/admin/AdminUsers";
@@ -32,6 +33,13 @@ import AdminTournaments from "./pages/admin/AdminTournaments";
 import AdminTournamentDetails from "./pages/admin/AdminTournamentDetails";
 import AdminPayments from "./pages/admin/AdminPayments";
 import AdminEntries from "./pages/admin/AdminEntries";
+import BillingDashboard from "./pages/admin/BillingDashboard";
+import BillingSettings from "./pages/admin/BillingSettings";
+import UserAccessManager from "./pages/admin/UserAccessManager";
+import CouponManager from "./pages/admin/CouponManager";
+import Transactions from "./pages/admin/Transactions";
+import AuditLogs from "./pages/admin/AuditLogs";
+
 import "./App.css";
 
 function App() {
@@ -84,21 +92,21 @@ function App() {
   };
 
   const requireTournamentLogin = (element) => {
-  if (!isAuthenticated) {
-    return (
-      <Navigate
-        to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
-        replace
-      />
-    );
-  }
+    if (!isAuthenticated) {
+      return (
+        <Navigate
+          to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
+          replace
+        />
+      );
+    }
 
-  if (needsProfileCompletion) {
-    return <Navigate to="/complete-profile" replace />;
-  }
+    if (needsProfileCompletion) {
+      return <Navigate to="/complete-profile" replace />;
+    }
 
-  return element;
-};
+    return element;
+  };
 
   return (
     <div className="appLayout">
@@ -180,22 +188,10 @@ function App() {
             element={!isAuthenticated ? <SocialLogin /> : <Navigate to="/" replace />}
           />
 
-          <Route
-            path="/tournament/create"
-            element={requireAuth(<TournamentForm />)}
-          />
-
-          <Route
-            path="/tournament-form"
-            element={requireAuth(<TournamentForm />)}
-          />
-
+          <Route path="/tournament/create" element={requireAuth(<TournamentForm />)} />
+          <Route path="/tournament-form" element={requireAuth(<TournamentForm />)} />
           <Route path="/tournaments" element={<TournamentsPages />} />
-
-          <Route
-            path="/team-entry/:id"
-            element={requireAuth(<TeamEntryForm />)}
-          />
+          <Route path="/team-entry/:id" element={requireAuth(<TeamEntryForm />)} />
 
           <Route path="/admin" element={requireAdmin(<AdminLayout />)}>
             <Route index element={<AdminDashboard />} />
@@ -205,6 +201,13 @@ function App() {
             <Route path="tournaments/:tournamentId" element={<AdminTournamentDetails />} />
             <Route path="payments" element={<AdminPayments />} />
             <Route path="entries" element={<AdminEntries />} />
+
+            <Route path="billing" element={<BillingDashboard />} />
+            <Route path="billing/users" element={<UserAccessManager />} />
+            <Route path="billing/settings" element={<BillingSettings />} />
+            <Route path="billing/coupons" element={<CouponManager />} />
+            <Route path="billing/transactions" element={<Transactions />} />
+            <Route path="billing/audit-logs" element={<AuditLogs />} />
           </Route>
 
           <Route
@@ -219,16 +222,13 @@ function App() {
           >
             <Route index element={<TournamentDetails />} />
             <Route path="entry" element={requireTournamentLogin(<Entry />)} />
-<Route path="tie-sheet" element={requireTournamentLogin(<TieSheet />)} />
-<Route path="tie-sheet-record" element={requireTournamentLogin(<TieSheetRecord />)} />
-<Route path="winner" element={requireTournamentLogin(<Winner />)} />
-<Route path="team-championship" element={requireTournamentLogin(<TeamChampionship />)} />
-<Route path="official" element={requireTournamentLogin(<Official />)} />
-<Route path="team" element={requireTournamentLogin(<Team />)} />
-           <Route
-  path="team-submissions"
-  element={requireTournamentLogin(<TeamSubmissions />)}
-/>
+            <Route path="tie-sheet" element={requireTournamentLogin(<TieSheet />)} />
+            <Route path="tie-sheet-record" element={requireTournamentLogin(<TieSheetRecord />)} />
+            <Route path="winner" element={requireTournamentLogin(<Winner />)} />
+            <Route path="team-championship" element={requireTournamentLogin(<TeamChampionship />)} />
+            <Route path="official" element={requireTournamentLogin(<Official />)} />
+            <Route path="team" element={requireTournamentLogin(<Team />)} />
+            <Route path="team-submissions" element={requireTournamentLogin(<TeamSubmissions />)} />
           </Route>
 
           <Route path="/about" element={<About />} />

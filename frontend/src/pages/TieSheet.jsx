@@ -1475,6 +1475,94 @@ if (availableAgeCategories.length > 0 && safeAges.length === 0) return [];
 
   const safeFilteredBrackets = useMemo(() => (Array.isArray(filteredBrackets) ? filteredBrackets : []), [filteredBrackets]);
 
+const categoryNavigatorGroups = useMemo(() => {
+  const grouped = [];
+
+  safeFilteredBrackets
+    .filter((bracket) => bracket?.key)
+    .forEach((bracket) => {
+      const ageCategory = bracket.ageCategory || "N/A";
+      const gender = bracket.gender || "N/A";
+      const weightCategory = bracket.weightCategory || "N/A";
+
+      const rawPool = String(bracket?.pool || "").trim();
+      const poolLabel =
+        rawPool.toLowerCase() === "final"
+          ? "Final"
+          : rawPool
+            ? rawPool
+            : "";
+
+      let ageGroup = grouped.find((group) => group.ageCategory === ageCategory);
+
+      if (!ageGroup) {
+        ageGroup = {
+          ageCategory,
+          genders: [],
+        };
+        grouped.push(ageGroup);
+      }
+
+      let genderGroup = ageGroup.genders.find((group) => group.gender === gender);
+
+      if (!genderGroup) {
+        genderGroup = {
+          gender,
+          weights: [],
+        };
+        ageGroup.genders.push(genderGroup);
+      }
+
+      let weightGroup = genderGroup.weights.find(
+        (group) => group.weightCategory === weightCategory
+      );
+
+      if (!weightGroup) {
+        weightGroup = {
+          weightCategory,
+          key: bracket.key,
+          pools: [],
+        };
+        genderGroup.weights.push(weightGroup);
+      }
+
+      weightGroup.pools.push({
+        key: bracket.key,
+        poolLabel,
+      });
+
+      if (!poolLabel) {
+        weightGroup.key = bracket.key;
+      }
+    });
+
+  return grouped;
+}, [safeFilteredBrackets]);
+
+const [activeNavigatorKey, setActiveNavigatorKey] = useState("");
+
+const handleScrollToBracket = useCallback((bracketKey) => {
+  const targetId = `bracket-${sanitizeId(bracketKey)}`;
+  const target = document.getElementById(targetId);
+
+  if (!target) {
+    if (isDev) {
+      console.warn("[TieSheet] Bracket scroll target not found:", targetId);
+    }
+    return;
+  }
+
+  setActiveNavigatorKey(bracketKey);
+
+  requestAnimationFrame(() => {
+    target.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+      inline: "nearest",
+    });
+  });
+}, []);
+
   // Dev-only confirmation logs
   useEffect(() => {
     if (!isDev) return;
@@ -1874,159 +1962,239 @@ if (availableAgeCategories.length > 0 && safeAges.length === 0) return [];
               />
             </div>
 
-            {!safeFilteredBrackets || safeFilteredBrackets.length === 0 ? (
-              <p className={styles.noData}>No brackets available for the selected categories.</p>
-            ) : (
-              safeFilteredBrackets.map((bracket, index) => {
-                if (!bracket || !bracket.key) {
-                  console.error('Invalid bracket found:', bracket);
-                  return null;
-                }
+         {!safeFilteredBrackets || safeFilteredBrackets.length === 0 ? (
+  <p className={styles.noData}>No brackets available for the selected categories.</p>
+) : (
+  <div className={styles.tieSheetContentWithNavigator}>
+    <div className={styles.bracketsMainArea}>
+      {safeFilteredBrackets.map((bracket, index) => {
+        if (!bracket || !bracket.key) {
+          console.error('Invalid bracket found:', bracket);
+          return null;
+        }
 
-              const medals = getDisplayMedalsForBracket({
-                bracket,
-                bracketsSnapshot: safeFilteredBrackets,
-                outcomesSnapshot: bracketsOutcomes || {},
-              });
+        const medals = getDisplayMedalsForBracket({
+          bracket,
+          bracketsSnapshot: safeFilteredBrackets,
+          outcomesSnapshot: bracketsOutcomes || {},
+        });
 
-                const bracketSizeClass =
-                  bracket.playerCount === 1
-                    ? styles.singlePlayer
-                    : bracket.playerCount === 2
-                      ? styles.twoPlayer
-                      : bracket.playerCount === 3
-                        ? styles.threePlayer
-                        : bracket.playerCount === 4
-                          ? styles.fourPlayer
-                          : bracket.playerCount === 5
-                            ? styles.fivePlayer
-                            : bracket.playerCount === 6
-                              ? styles.sixPlayer
-                              : bracket.playerCount === 7
-                                ? styles.sevenPlayer
-                                : bracket.playerCount === 8
-                                  ? styles.eightPlayer
-                                  : bracket.playerCount === 9
-                                    ? styles.ninePlayer
-                                    : bracket.playerCount === 10
-                                      ? styles.tenPlayer
-                                      : bracket.playerCount === 11
-                                        ? styles.elevenPlayer
-                                        : bracket.playerCount === 12
-                                          ? styles.twelvePlayer
-                                          : bracket.playerCount === 13
-                                            ? styles.thirteenPlayer
-                                            : bracket.playerCount === 14
-                                              ? styles.fourteenPlayer
-                                              : bracket.playerCount === 15
-                                                ? styles.fifteenPlayer
-                                                : bracket.playerCount === 16
-                                                  ? styles.sixteenPlayer
-                                                  : bracket.playerCount <= 8
-                                                    ? styles.smallBracket
-                                                    : styles.multiPlayer;
+        const bracketSizeClass =
+          bracket.playerCount === 1
+            ? styles.singlePlayer
+            : bracket.playerCount === 2
+              ? styles.twoPlayer
+              : bracket.playerCount === 3
+                ? styles.threePlayer
+                : bracket.playerCount === 4
+                  ? styles.fourPlayer
+                  : bracket.playerCount === 5
+                    ? styles.fivePlayer
+                    : bracket.playerCount === 6
+                      ? styles.sixPlayer
+                      : bracket.playerCount === 7
+                        ? styles.sevenPlayer
+                        : bracket.playerCount === 8
+                          ? styles.eightPlayer
+                          : bracket.playerCount === 9
+                            ? styles.ninePlayer
+                            : bracket.playerCount === 10
+                              ? styles.tenPlayer
+                              : bracket.playerCount === 11
+                                ? styles.elevenPlayer
+                                : bracket.playerCount === 12
+                                  ? styles.twelvePlayer
+                                  : bracket.playerCount === 13
+                                    ? styles.thirteenPlayer
+                                    : bracket.playerCount === 14
+                                      ? styles.fourteenPlayer
+                                      : bracket.playerCount === 15
+                                        ? styles.fifteenPlayer
+                                        : bracket.playerCount === 16
+                                          ? styles.sixteenPlayer
+                                          : bracket.playerCount <= 8
+                                            ? styles.smallBracket
+                                            : styles.multiPlayer;
 
-                const roundsCount = bracket?.gamesByRound?.length || 0;
-                const columnData = columnInfo[bracket.key] || [];
+        const roundsCount = bracket?.gamesByRound?.length || 0;
+        const columnData = columnInfo[bracket.key] || [];
 
-                return (
-                  <div key={bracket.key} className={`${styles.bracketWrapper} ${bracketSizeClass}`}>
-                    <BracketActions
-                      bracket={bracket}
-                      lockedBrackets={lockedBrackets}
-                      bracketsOutcomes={bracketsOutcomes}
-                      filteredBrackets={safeFilteredBrackets}
-                      tournamentId={id}
-                      toggleLock={handleToggleLock}
-                      showToast={showToast}
-                    />
+        return (
+          <div key={bracket.key} className={`${styles.bracketWrapper} ${bracketSizeClass}`}>
+            <BracketActions
+              bracket={bracket}
+              lockedBrackets={lockedBrackets}
+              bracketsOutcomes={bracketsOutcomes}
+              filteredBrackets={safeFilteredBrackets}
+              tournamentId={id}
+              toggleLock={handleToggleLock}
+              showToast={showToast}
+            />
 
-                    <div
-                      className={`${styles.page} ${bracketSizeClass}`}
-                      id={`bracket-${sanitizeId(bracket.key)}`}
-                      data-bracket-key={sanitizeId(bracket.key)}
-                    >
-                      <BracketHeader
+            <div
+              className={`${styles.page} ${bracketSizeClass}`}
+              id={`bracket-${sanitizeId(bracket.key)}`}
+              data-bracket-key={sanitizeId(bracket.key)}
+            >
+              <BracketHeader
+                bracket={bracket}
+                tournamentName={tournamentName}
+                federation={federation}
+                logoLeft={logoLeft}
+                logoRight={logoRight}
+              />
+
+              {roundsCount === 1 ? (
+                <div className={styles.singleRoundWrapper}>
+                  <div className={styles.singleRoundColumn}>
+                    <div className={styles.roundHeaderSingle}></div>
+                    <div className={styles.singleRoundFlowFix}>
+                      <BracketTable
                         bracket={bracket}
-                        tournamentName={tournamentName}
-                        federation={federation}
-                        logoLeft={logoLeft}
-                        logoRight={logoRight}
+                        bracketsOutcomes={bracketsOutcomes}
+                        className={bracketSizeClass}
+                        lockedBrackets={lockedBrackets}
+                        onColumnsReady={(columns) => {
+                          setColumnInfo((prev) => ({ ...prev, [bracket.key]: columns }));
+                        }}
                       />
-
-                      {roundsCount === 1 ? (
-                        <div className={styles.singleRoundWrapper}>
-                          <div className={styles.singleRoundColumn}>
-                            <div className={styles.roundHeaderSingle}></div>
-                            <div className={styles.singleRoundFlowFix}>
-                              <BracketTable
-                                bracket={bracket}
-                                bracketsOutcomes={bracketsOutcomes}
-                                className={bracketSizeClass}
-                                lockedBrackets={lockedBrackets}
-                                onColumnsReady={(columns) => {
-                                  setColumnInfo((prev) => ({ ...prev, [bracket.key]: columns }));
-                                }}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      ) : (
-                        <>
-                          <div
-                            className={styles.roundHeaderStrip}
-                            style={{ display: 'flex', justifyContent: 'stretch', gap: '0px' }}
-                          >
-                            {columnData.map((col) => (
-                              <div
-                                key={col.roundIndex}
-                                className={styles.roundHeaderCell}
-                                style={{
-                                  flex: '1 1 0px',
-                                  minWidth: '180px',
-                                  padding: '0 12px',
-                                  fontSize: '1.02rem',
-                                }}
-                              >
-                                {col.name}
-                              </div>
-                            ))}
-                          </div>
-
-                          <BracketTable
-                            bracket={bracket}
-                            bracketsOutcomes={bracketsOutcomes}
-                            className={bracketSizeClass}
-                            lockedBrackets={lockedBrackets}
-                            onColumnsReady={(columns) => {
-                              setColumnInfo((prev) => ({ ...prev, [bracket.key]: columns }));
-                            }}
-                          />
-                        </>
-                      )}
-
-                   <div className={styles.signatureMedalSection}>
-  {(!bracket.pool || bracket.pool === 'Final') && (
-    <MedalSection
-      medals={medals}
-      categoryPlayerCount={bracket.categoryPlayerCount || bracket.playerCount || 0}
-      bracket={bracket}
-    />
-  )}
-
-  <SignatureSection />
-</div>
-
-                      <BracketFooter index={index} total={safeFilteredBrackets.length} />
                     </div>
                   </div>
-                );
-              })
-            )}
-          </>
-        )}
+                </div>
+              ) : (
+                <>
+                  <div
+                    className={styles.roundHeaderStrip}
+                    style={{ display: 'flex', justifyContent: 'stretch', gap: '0px' }}
+                  >
+                    {columnData.map((col) => (
+                      <div
+                        key={col.roundIndex}
+                        className={styles.roundHeaderCell}
+                        style={{
+                          flex: '1 1 0px',
+                          minWidth: '180px',
+                          padding: '0 12px',
+                          fontSize: '1.02rem',
+                        }}
+                      >
+                        {col.name}
+                      </div>
+                    ))}
+                  </div>
+
+                  <BracketTable
+                    bracket={bracket}
+                    bracketsOutcomes={bracketsOutcomes}
+                    className={bracketSizeClass}
+                    lockedBrackets={lockedBrackets}
+                    onColumnsReady={(columns) => {
+                      setColumnInfo((prev) => ({ ...prev, [bracket.key]: columns }));
+                    }}
+                  />
+                </>
+              )}
+
+              <div className={styles.signatureMedalSection}>
+                {(!bracket.pool || bracket.pool === 'Final') && (
+                  <MedalSection
+                    medals={medals}
+                    categoryPlayerCount={bracket.categoryPlayerCount || bracket.playerCount || 0}
+                    bracket={bracket}
+                  />
+                )}
+
+                <SignatureSection />
+              </div>
+
+              <BracketFooter index={index} total={safeFilteredBrackets.length} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+
+    <aside className={styles.categoryNavigator} aria-label="Category Navigator">
+      <div className={styles.categoryNavigatorTitle}>Category Navigator</div>
+
+     <div className={styles.categoryNavigatorList}>
+  {categoryNavigatorGroups.map((ageGroup) => (
+    <div key={ageGroup.ageCategory} className={styles.categoryNavigatorGroup}>
+      <div className={styles.categoryNavigatorAgeHeading}>
+        {ageGroup.ageCategory}
       </div>
 
+      {ageGroup.genders.map((genderGroup) => (
+        <div
+          key={`${ageGroup.ageCategory}-${genderGroup.gender}`}
+          className={styles.categoryNavigatorGenderGroup}
+        >
+          <div className={styles.categoryNavigatorGenderHeading}>
+            {genderGroup.gender}
+          </div>
+
+         <div className={styles.categoryNavigatorWeightList}>
+  {genderGroup.weights.map((weightGroup) => {
+    const hasPools = weightGroup.pools.some((pool) => pool.poolLabel);
+
+    return (
+      <div
+        key={`${ageGroup.ageCategory}-${genderGroup.gender}-${weightGroup.weightCategory}`}
+        className={`${styles.categoryNavigatorItem} ${
+          activeNavigatorKey === weightGroup.key
+            ? styles.categoryNavigatorItemActive
+            : ""
+        }`}
+      >
+        <button
+          type="button"
+          className={styles.categoryNavigatorWeightButton}
+          onClick={() => handleScrollToBracket(weightGroup.key)}
+          title={`${ageGroup.ageCategory} • ${genderGroup.gender} • ${weightGroup.weightCategory}`}
+        >
+          <span className={styles.categoryNavigatorWeight}>
+            {weightGroup.weightCategory}
+          </span>
+        </button>
+
+        {hasPools && (
+          <div className={styles.categoryNavigatorPoolList}>
+            {weightGroup.pools.map((pool) => (
+              <button
+                key={pool.key}
+                type="button"
+                className={`${styles.categoryNavigatorPoolButton} ${
+                  activeNavigatorKey === pool.key
+                    ? styles.categoryNavigatorPoolButtonActive
+                    : ""
+                }`}
+                onClick={() => handleScrollToBracket(pool.key)}
+                title={`${ageGroup.ageCategory} • ${genderGroup.gender} • ${weightGroup.weightCategory} • ${pool.poolLabel}`}
+              >
+               {pool.poolLabel.toLowerCase() === "final"
+  ? "Pool Final"
+  : pool.poolLabel.toLowerCase().startsWith("pool")
+    ? pool.poolLabel
+    : `Pool ${pool.poolLabel}`}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  })}
+</div>
+        </div>
+      ))}
+    </div>
+  ))}
+</div>
+    </aside>
+  </div>
+)}
+          </>
+        )}
+ </div>
     {saveStatus && (
   <div className={`${styles.saveIndicator} ${styles[saveStatus]}`}>
     {saveStatus === "saving"

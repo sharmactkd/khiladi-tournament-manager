@@ -37,7 +37,7 @@ export const generateToken = (user) => {
     },
     JWT_SECRET,
     {
-     expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "30m",
+     expiresIn: process.env.JWT_ACCESS_EXPIRES_IN || "7d",
       ...commonOptions,
     }
   );

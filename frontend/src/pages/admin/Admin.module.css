@@ -2,11 +2,14 @@
   width: 100%;
   min-height: calc(100vh - 120px);
   display: grid;
-  grid-template-columns: 290px minmax(0, 1fr);
+  grid-template-columns: 305px minmax(0, 1fr);
   background:
-    radial-gradient(circle at top right, rgba(220, 38, 38, 0.08), transparent 30%),
-    linear-gradient(180deg, #fff7f7 0%, #f8fafc 45%, #ffffff 100%);
+    radial-gradient(circle at 85% 0%, rgba(220, 38, 38, 0.16), transparent 34%),
+    radial-gradient(circle at 0% 22%, rgba(15, 23, 42, 0.10), transparent 30%),
+    linear-gradient(135deg, #f8fafc 0%, #fff7f7 42%, #ffffff 100%);
   color: #111827;
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
 }
 
 .sidebar {
@@ -14,30 +17,33 @@
   top: 0;
   align-self: start;
   min-height: calc(100vh - 120px);
-  background:
-    linear-gradient(180deg, rgba(127, 29, 29, 0.98), rgba(15, 23, 42, 0.98)),
-    radial-gradient(circle at top, rgba(255, 255, 255, 0.12), transparent 42%);
-  color: #ffffff;
-  padding: 26px;
+  padding: 28px;
+  color: #fff;
   display: flex;
   flex-direction: column;
   gap: 24px;
-  box-shadow: 18px 0 45px rgba(127, 29, 29, 0.2);
+  background:
+    linear-gradient(180deg, rgba(7, 13, 30, 0.98), rgba(69, 10, 10, 0.98)),
+    radial-gradient(circle at top, rgba(248, 113, 113, 0.24), transparent 36%);
+  box-shadow: 22px 0 60px rgba(15, 23, 42, 0.22);
+  border-right: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .brandBlock {
-  padding-bottom: 22px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.16);
+  padding: 20px;
+  border-radius: 26px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
 .brandMini,
 .kicker {
   display: inline-block;
   font-size: 0.72rem;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  font-weight: 900;
-  color: #ef4444;
+  font-weight: 950;
+  color: #fb7185;
   margin-bottom: 8px;
 }
 
@@ -49,38 +55,44 @@
 }
 
 .brandBlock h2 {
+  font-size: 1.45rem;
   letter-spacing: 0.04em;
 }
 
 .brandBlock p {
-  margin: 8px 0 0;
-  color: #fee2e2;
+  margin: 9px 0 0;
+  color: #fecaca;
   word-break: break-word;
   font-size: 0.9rem;
+  line-height: 1.45;
 }
 
 .navList {
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 10px;
 }
 
 .navLink {
   color: #fee2e2;
   text-decoration: none;
-  padding: 13px 15px;
-  border-radius: 16px;
-  font-weight: 800;
+  padding: 14px 16px;
+  border-radius: 18px;
+  font-weight: 900;
+  letter-spacing: 0.01em;
   transition: 0.22s ease;
   border: 1px solid transparent;
 }
 
 .navLink:hover,
 .activeNavLink {
-  color: #ffffff;
-  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  background: rgba(255, 255, 255, 0.13);
   border-color: rgba(255, 255, 255, 0.18);
-  box-shadow: inset 4px 0 0 #ef4444;
+  box-shadow:
+    inset 4px 0 0 #ef4444,
+    0 14px 26px rgba(0, 0, 0, 0.16);
+  transform: translateX(3px);
 }
 
 .sidebarFooter {
@@ -91,26 +103,30 @@
 
 .adminMain {
   min-width: 0;
-  padding: 30px;
+  padding: 34px;
 }
 
 .topbar {
-  background: rgba(255, 255, 255, 0.92);
+  background: rgba(255, 255, 255, 0.88);
   border: 1px solid rgba(220, 38, 38, 0.12);
-  border-radius: 28px;
-  padding: 24px 26px;
-  margin-bottom: 26px;
+  border-radius: 30px;
+  padding: 25px 28px;
+  margin-bottom: 28px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  box-shadow: 0 20px 55px rgba(127, 29, 29, 0.08);
-  backdrop-filter: blur(12px);
+  gap: 18px;
+  box-shadow:
+    0 24px 70px rgba(15, 23, 42, 0.09),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(16px);
 }
 
 .topbar h1 {
-  font-size: clamp(1.45rem, 3vw, 2.15rem);
-  color: #111827;
+  font-size: clamp(1.55rem, 3vw, 2.25rem);
+  color: #0f172a;
+  font-weight: 950;
+  letter-spacing: -0.04em;
 }
 
 .pageStack {
@@ -130,14 +146,17 @@
 .accessBox,
 .stateBox,
 .errorBox {
-  background: rgba(255, 255, 255, 0.96);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.96));
   border: 1px solid rgba(226, 232, 240, 0.95);
-  border-radius: 24px;
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.07);
+  border-radius: 26px;
+  box-shadow:
+    0 22px 62px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 
 .statCard {
-  padding: 22px;
+  padding: 24px;
   text-align: left;
   position: relative;
   overflow: hidden;
@@ -147,9 +166,19 @@
   content: "";
   position: absolute;
   inset: 0 auto 0 0;
-  width: 5px;
-  background: linear-gradient(180deg, #dc2626, #991b1b);
-  opacity: 0.9;
+  width: 6px;
+  background: linear-gradient(180deg, #ef4444, #7f1d1d);
+}
+
+.statCard::after {
+  content: "";
+  position: absolute;
+  right: -38px;
+  top: -38px;
+  width: 118px;
+  height: 118px;
+  border-radius: 999px;
+  background: rgba(220, 38, 38, 0.08);
 }
 
 button.statCard {
@@ -158,38 +187,37 @@ button.statCard {
 
 .clickableCard {
   cursor: pointer;
-  border: 1px solid rgba(220, 38, 38, 0.12);
-  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease,
-    background 0.22s ease;
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease;
 }
 
 .clickableCard:hover {
-  transform: translateY(-5px);
-  border-color: rgba(220, 38, 38, 0.35);
-  background: linear-gradient(180deg, #ffffff 0%, #fff1f2 100%);
-  box-shadow: 0 26px 60px rgba(127, 29, 29, 0.14);
+  transform: translateY(-6px);
+  border-color: rgba(220, 38, 38, 0.32);
+  box-shadow: 0 30px 72px rgba(127, 29, 29, 0.16);
 }
 
 .clickableCard:focus-visible,
 .clickableRow:focus-visible {
-  outline: 3px solid rgba(220, 38, 38, 0.22);
+  outline: 3px solid rgba(220, 38, 38, 0.24);
   outline-offset: -3px;
 }
 
 .statCard span {
   display: block;
   color: #64748b;
-  font-size: 0.86rem;
-  font-weight: 900;
-  margin-bottom: 9px;
+  font-size: 0.78rem;
+  font-weight: 950;
+  margin-bottom: 10px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
 }
 
 .statCard strong {
   display: block;
-  color: #111827;
-  font-size: clamp(1.45rem, 3vw, 2.15rem);
+  color: #0f172a;
+  font-size: clamp(1.55rem, 3vw, 2.25rem);
+  font-weight: 950;
+  letter-spacing: -0.04em;
 }
 
 .gridTwo {
@@ -199,7 +227,7 @@ button.statCard {
 }
 
 .panel {
-  padding: 24px;
+  padding: 25px;
   min-width: 0;
 }
 
@@ -208,44 +236,45 @@ button.statCard {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 18px;
+  margin-bottom: 20px;
 }
 
 .panelHeader p {
   color: #64748b;
-  margin: 6px 0 0;
+  margin: 7px 0 0;
+  line-height: 1.55;
 }
 
 .panelHeader a,
 .tableLink {
   color: #dc2626;
   text-decoration: none;
-  font-weight: 900;
+  font-weight: 950;
 }
 
 .panelHeader a:hover,
 .tableLink:hover {
-  color: #991b1b;
+  color: #7f1d1d;
   text-decoration: underline;
 }
 
 .tableWrap {
   overflow-x: auto;
   border: 1px solid #e5e7eb;
-  border-radius: 18px;
-  background: #ffffff;
+  border-radius: 20px;
+  background: #fff;
 }
 
 .adminTable {
   width: 100%;
   border-collapse: collapse;
-  min-width: 760px;
-  background: #ffffff;
+  min-width: 780px;
+  background: #fff;
 }
 
 .adminTable th,
 .adminTable td {
-  padding: 14px 15px;
+  padding: 15px 16px;
   text-align: left;
   border-bottom: 1px solid #eef2f7;
   vertical-align: middle;
@@ -255,8 +284,8 @@ button.statCard {
 .adminTable th {
   background: linear-gradient(180deg, #fff7f7, #f8fafc);
   color: #334155;
-  font-size: 0.76rem;
-  letter-spacing: 0.07em;
+  font-size: 0.74rem;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   font-weight: 950;
 }
@@ -284,14 +313,14 @@ button.statCard {
 
 .actionGroup {
   display: flex;
-  gap: 8px;
+  gap: 9px;
   flex-wrap: wrap;
   cursor: default;
 }
 
 .toolbar {
   display: flex;
-  gap: 11px;
+  gap: 12px;
   margin-bottom: 18px;
 }
 
@@ -303,7 +332,8 @@ button.statCard {
   padding: 13px 15px;
   font-size: 0.95rem;
   outline: none;
-  background: #ffffff;
+  background: #fff;
+  color: #0f172a;
   transition: 0.2s ease;
 }
 
@@ -315,8 +345,7 @@ button.statCard {
 .primaryBtn,
 .secondaryBtn,
 .dangerBtn {
-  border: 0;
-  border-radius: 15px;
+  border-radius: 16px;
   padding: 11px 17px;
   font-weight: 950;
   cursor: pointer;
@@ -327,28 +356,30 @@ button.statCard {
 }
 
 .primaryBtn {
-  background: linear-gradient(135deg, #dc2626, #991b1b);
-  color: #ffffff;
-  box-shadow: 0 12px 24px rgba(220, 38, 38, 0.22);
+  border: 0;
+  background: linear-gradient(135deg, #ef4444, #991b1b);
+  color: #fff;
+  box-shadow: 0 14px 30px rgba(220, 38, 38, 0.24);
 }
 
 .primaryBtn:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 16px 28px rgba(220, 38, 38, 0.28);
+  transform: translateY(-2px);
+  box-shadow: 0 18px 34px rgba(220, 38, 38, 0.31);
 }
 
 .secondaryBtn {
-  background: #f1f5f9;
+  background: #f8fafc;
   color: #0f172a;
   border: 1px solid #e2e8f0;
 }
 
 .secondaryBtn:hover {
   background: #e2e8f0;
+  transform: translateY(-1px);
 }
 
 .dangerBtn {
-  background: #fee2e2;
+  background: #fff1f2;
   color: #991b1b;
   border: 1px solid #fecaca;
 }
@@ -356,6 +387,7 @@ button.statCard {
 .dangerBtn:hover {
   background: #fecaca;
   color: #7f1d1d;
+  transform: translateY(-1px);
 }
 
 .secondaryBtn:disabled,
@@ -377,7 +409,7 @@ button.statCard {
   justify-content: center;
   border-radius: 999px;
   padding: 6px 11px;
-  font-size: 0.76rem;
+  font-size: 0.75rem;
   font-weight: 950;
   text-transform: capitalize;
   white-space: nowrap;
@@ -389,8 +421,9 @@ button.statCard {
 }
 
 .roleBadge {
-  background: linear-gradient(135deg, #111827, #7f1d1d);
-  color: #ffffff;
+  background: linear-gradient(135deg, #0f172a, #991b1b);
+  color: #fff;
+  box-shadow: 0 12px 26px rgba(15, 23, 42, 0.18);
 }
 
 .successBadge {
@@ -424,13 +457,11 @@ button.statCard {
 }
 
 .profilePanel {
-  padding: 26px;
+  padding: 28px;
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
-  background:
-    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(255, 241, 242, 0.85));
 }
 
 .profilePanel p {
@@ -446,9 +477,10 @@ button.statCard {
 }
 
 .detailGrid div,
-.profileMetaGrid div {
+.profileMetaGrid div,
+.detailGrid label {
   background: #f8fafc;
-  border-radius: 17px;
+  border-radius: 18px;
   padding: 15px;
   border: 1px solid #e5e7eb;
 }
@@ -457,11 +489,11 @@ button.statCard {
 .profileMetaGrid span {
   display: block;
   color: #64748b;
-  font-size: 0.78rem;
-  font-weight: 900;
-  margin-bottom: 6px;
+  font-size: 0.76rem;
+  font-weight: 950;
+  margin-bottom: 7px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
 }
 
 .detailGrid strong,
@@ -506,184 +538,18 @@ button.statCard {
   line-height: 1.35;
 }
 
-.activityTimeline {
-  position: relative;
-  display: grid;
-  gap: 14px;
-}
-
-.activityTimeline::before {
-  content: "";
-  position: absolute;
-  left: 21px;
-  top: 8px;
-  bottom: 8px;
-  width: 2px;
-  background: #e5e7eb;
-}
-
-.activityItem {
-  position: relative;
-  display: grid;
-  grid-template-columns: 44px minmax(0, 1fr);
-  gap: 14px;
-}
-
-.activityIcon {
-  position: relative;
-  z-index: 1;
-  width: 44px;
-  height: 44px;
-  border-radius: 999px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
-  font-size: 1.05rem;
-}
-
-.activityContent {
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  border-radius: 18px;
-  padding: 16px;
-  min-width: 0;
-}
-
-.activityTop {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.activityTop h3 {
-  margin: 0;
-  color: #0f172a;
-  font-size: 1rem;
-}
-
-.activitySubline {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  flex-wrap: wrap;
-  color: #64748b;
-  font-size: 0.84rem;
-  font-weight: 700;
-  margin-top: 5px;
-}
-
-.activityBadges {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.activityModuleBadge,
-.derivedBadge,
-.loggedBadge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 5px 9px;
-  font-size: 0.72rem;
-  font-weight: 900;
-  white-space: nowrap;
-}
-
-.activityModuleBadge {
-  background: #eff6ff;
-  color: #1d4ed8;
-}
-
-.derivedBadge {
-  background: #f1f5f9;
-  color: #475569;
-}
-
-.loggedBadge {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.activityDescription {
-  margin: 10px 0 0;
-  color: #334155;
-  line-height: 1.5;
-}
-
-.activityAction {
-  display: inline-flex;
-  margin-top: 10px;
-  color: #991b1b;
-  background: #fee2e2;
-  border-radius: 999px;
-  padding: 5px 9px;
-  font-size: 0.72rem;
-  font-weight: 900;
-}
-
 .metadataBox {
   margin-top: 10px;
-  background: #ffffff;
+  background: #fff;
   border: 1px dashed #cbd5e1;
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 10px;
   color: #475569;
   font-size: 0.8rem;
   line-height: 1.45;
   word-break: break-word;
-}
-
-.emptyTimeline {
-  border: 1px dashed #cbd5e1;
-  border-radius: 18px;
-  padding: 24px;
-  text-align: center;
-  background: #f8fafc;
-  color: #64748b;
-}
-
-.emptyTimeline strong {
-  display: block;
-  color: #0f172a;
-  margin-bottom: 6px;
-}
-
-.emptyTimeline p {
-  margin: 0;
-}
-
-.entryGroups {
-  display: grid;
-  gap: 18px;
-}
-
-.entryGroup {
-  display: grid;
-  gap: 12px;
-}
-
-.entryGroupHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
-  border-radius: 16px;
-  padding: 12px 14px;
-}
-
-.entryGroupHeader h3 {
-  margin: 0;
-  font-size: 1rem;
-  color: #0f172a;
+  white-space: pre-wrap;
+  max-width: 420px;
 }
 
 @media (max-width: 1100px) {
@@ -746,33 +612,5 @@ button.statCard {
   .pagination {
     justify-content: center;
     flex-wrap: wrap;
-  }
-
-  .activityTop {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .activityBadges {
-    justify-content: flex-start;
-  }
-
-  .activityItem {
-    grid-template-columns: 38px minmax(0, 1fr);
-    gap: 10px;
-  }
-
-  .activityIcon {
-    width: 38px;
-    height: 38px;
-  }
-
-  .activityTimeline::before {
-    left: 18px;
-  }
-
-  .entryGroupHeader {
-    align-items: stretch;
-    flex-direction: column;
   }
 }

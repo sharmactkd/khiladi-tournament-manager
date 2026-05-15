@@ -7,8 +7,13 @@ const adminLinks = [
   { to: "/admin", label: "Dashboard", end: true },
   { to: "/admin/users", label: "Users" },
   { to: "/admin/tournaments", label: "Tournaments" },
- 
   { to: "/admin/entries", label: "Entries" },
+  { to: "/admin/billing", label: "Billing" },
+  { to: "/admin/billing/users", label: "Access" },
+  { to: "/admin/billing/settings", label: "Settings" },
+  { to: "/admin/billing/coupons", label: "Coupons" },
+  { to: "/admin/billing/transactions", label: "Transactions" },
+  { to: "/admin/billing/audit-logs", label: "Audit Logs" },
 ];
 
 const isAdminUser = (user) => ["admin", "superadmin"].includes(user?.role);

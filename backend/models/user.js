@@ -10,37 +10,14 @@ const LEGACY_ROLES = ["user"];
 
 const refreshTokenSessionSchema = new mongoose.Schema(
   {
-    tokenHash: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-    createdAt: {
-      type: Date,
-      default: Date.now,
-    },
-    expiresAt: {
-      type: Date,
-      required: true,
-    },
-    userAgent: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    ip: {
-      type: String,
-      default: "",
-      trim: true,
-    },
-    lastUsedAt: {
-      type: Date,
-      default: null,
-    },
+    tokenHash: { type: String, required: true, trim: true },
+    createdAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date, required: true },
+    userAgent: { type: String, default: "", trim: true },
+    ip: { type: String, default: "", trim: true },
+    lastUsedAt: { type: Date, default: null },
   },
-  {
-    _id: false,
-  }
+  { _id: false }
 );
 
 const userSchema = new mongoose.Schema(
@@ -89,24 +66,27 @@ const userSchema = new mongoose.Schema(
       default: "player",
     },
 
-adminPermissions: {
-  type: [String],
-  default: [],
-  enum: [
-    "dashboard:read",
-
-    "users:read_basic",
-    "users:read_sensitive",
-    "users:read",
-    "users:manage",
-
-    "tournaments:read",
-    "tournaments:manage",
-
-    "payments:read",
-    "entries:read",
-  ],
-},
+    adminPermissions: {
+      type: [String],
+      default: [],
+      enum: [
+        "dashboard:read",
+        "users:read_basic",
+        "users:read_sensitive",
+        "users:read",
+        "users:manage",
+        "tournaments:read",
+        "tournaments:manage",
+        "payments:read",
+        "payments:manage",
+        "billing:read",
+        "billing:manage",
+        "coupons:read",
+        "coupons:manage",
+        "audit:read",
+        "entries:read",
+      ],
+    },
 
     loginProvider: {
       type: String,
@@ -120,11 +100,7 @@ adminPermissions: {
       sparse: true,
     },
 
-
-    profilePicture: {
-      type: String,
-      default: null,
-    },
+    profilePicture: { type: String, default: null },
 
     weightPresets: [
       {
@@ -147,28 +123,68 @@ adminPermissions: {
     deletedAt: { type: Date, default: null },
     deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 
+    subscriptionStatus: {
+      type: String,
+      enum: ["none", "active", "expired", "cancelled", "trial", "lifetime"],
+      default: "none",
+      index: true,
+    },
+
+    subscriptionType: {
+      type: String,
+      enum: ["none", "single", "six_months", "one_year", "monthly", "yearly", "lifetime", "trial"],
+      default: "none",
+      index: true,
+    },
+
+    premiumExpiresAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    adminAccessOverride: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    accessSource: {
+      type: String,
+      enum: ["payment", "coupon", "admin", "trial", "lifetime", null],
+      default: null,
+      index: true,
+    },
+
+    trialUsed: { type: Boolean, default: false },
+    trialExpiresAt: { type: Date, default: null, index: true },
+
+    lifetimeAccess: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    blocked: {
+      type: Boolean,
+      default: false,
+      index: true,
+    },
+
+    lastPaymentDate: { type: Date, default: null },
+
     lastLogin: Date,
 
-   refreshTokens: {
-  type: [refreshTokenSessionSchema],
-  default: [],
-  select: false,
-},
-
-    resetPasswordToken: {
-      type: String,
+    refreshTokens: {
+      type: [refreshTokenSessionSchema],
+      default: [],
       select: false,
     },
 
-    resetPasswordExpire: {
-      type: Date,
-      select: false,
-    },
+    resetPasswordToken: { type: String, select: false },
+    resetPasswordExpire: { type: Date, select: false },
   },
-  {
-    timestamps: true,
-    versionKey: false,
-  }
+  { timestamps: true, versionKey: false }
 );
 
 userSchema.index({ loginProvider: 1 });
@@ -181,6 +197,9 @@ userSchema.index({ resetPasswordToken: 1 });
 userSchema.index({ resetPasswordExpire: 1 });
 userSchema.index({ "refreshTokens.tokenHash": 1 });
 userSchema.index({ "refreshTokens.expiresAt": 1 });
+userSchema.index({ subscriptionStatus: 1, premiumExpiresAt: 1 });
+userSchema.index({ blocked: 1, subscriptionStatus: 1 });
+
 
 userSchema.pre("save", async function (next) {
   if (!this.isModified("password") || !this.password) return next();

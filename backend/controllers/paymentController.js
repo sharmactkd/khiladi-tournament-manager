@@ -9,6 +9,9 @@ import {
 } from "../services/subscriptionService.js";
 import Payment from "../models/payment.js";
 import Tournament from "../models/tournament.js";
+import User from "../models/user.js";
+import PlatformSettings from "../models/platformSettings.js";
+import PaymentTransaction from "../models/paymentTransaction.js";
 
 const getUserId = (req) => req.user?._id || req.user?.id || req.user?.userId;
 
@@ -33,9 +36,15 @@ export const createPaymentOrder = async (req, res) => {
     ({ planType, tournamentId } = req.body || {});
 
     if (!userId) {
-      return res.status(401).json({
+      return res.status(401).json({ success: false, message: "Unauthorized user" });
+    }
+
+    const settings = await PlatformSettings.getSettings();
+
+    if (!settings.paymentsEnabled) {
+      return res.status(403).json({
         success: false,
-        message: "Unauthorized user",
+        message: "Payments are currently disabled",
       });
     }
 
@@ -46,7 +55,9 @@ export const createPaymentOrder = async (req, res) => {
       });
     }
 
-    if (!getPlanConfig(planType)) {
+    const selectedPlan = await getPlanConfig(planType);
+
+    if (!selectedPlan) {
       return res.status(400).json({
         success: false,
         message: "Invalid payment plan",
@@ -73,10 +84,7 @@ export const createPaymentOrder = async (req, res) => {
         });
       }
 
-      const existingAccess = await hasActiveAccess({
-        userId,
-        tournamentId,
-      });
+      const existingAccess = await hasActiveAccess({ userId, tournamentId });
 
       if (existingAccess.hasAccess) {
         return res.status(200).json({
@@ -88,14 +96,14 @@ export const createPaymentOrder = async (req, res) => {
       }
     }
 
-    const selectedPlan = getPlanConfig(planType);
-    const amountInRupees = selectedPlan.amount;
+    const amountInRupees = Number(selectedPlan.amount || 0);
     const amountInPaise = amountInRupees * 100;
+    const currency = selectedPlan.currency || settings.defaultCurrency || "INR";
 
     const razorpay = getRazorpayInstance();
     const order = await razorpay.orders.create({
       amount: amountInPaise,
-      currency: "INR",
+      currency,
       receipt: `khiladi_${Date.now()}`,
       notes: {
         userId: String(userId),
@@ -109,10 +117,24 @@ export const createPaymentOrder = async (req, res) => {
       tournamentId: planType === "single" ? tournamentId : null,
       planType,
       amount: amountInRupees,
-      currency: "INR",
+      currency,
       razorpayOrderId: order.id,
       status: "created",
       accessType: selectedPlan.accessType,
+    });
+
+    await PaymentTransaction.create({
+      userId,
+      amount: amountInRupees,
+      currency,
+      paymentGateway: "razorpay",
+      orderId: order.id,
+      planType,
+      status: "created",
+      metadata: {
+        legacyPaymentId: payment._id,
+        tournamentId: planType === "single" ? tournamentId : null,
+      },
     });
 
     logger.info("Payment order created", {
@@ -165,10 +187,7 @@ export const verifyPayment = async (req, res) => {
       req.body || {};
 
     if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized user",
-      });
+      return res.status(401).json({ success: false, message: "Unauthorized user" });
     }
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
@@ -217,12 +236,14 @@ export const verifyPayment = async (req, res) => {
       payment.razorpaySignature = razorpay_signature;
       await payment.save();
 
-      logger.warn("Invalid payment signature", {
-        paymentId: payment._id,
-        userId,
-        razorpayOrderId: razorpay_order_id,
-        razorpayPaymentId: razorpay_payment_id,
-      });
+      await PaymentTransaction.findOneAndUpdate(
+        { orderId: razorpay_order_id },
+        {
+          status: "failed",
+          paymentId: razorpay_payment_id,
+          metadata: { signatureError: true },
+        }
+      );
 
       return res.status(400).json({
         success: false,
@@ -232,101 +253,49 @@ export const verifyPayment = async (req, res) => {
 
     const razorpay = getRazorpayInstance();
 
-const [razorpayPayment, razorpayOrder] = await Promise.all([
-  razorpay.payments.fetch(razorpay_payment_id),
-  razorpay.orders.fetch(razorpay_order_id),
-]);
+    const [razorpayPayment, razorpayOrder] = await Promise.all([
+      razorpay.payments.fetch(razorpay_payment_id),
+      razorpay.orders.fetch(razorpay_order_id),
+    ]);
 
-const expectedAmountInPaise = Number(payment.amount || 0) * 100;
+    const expectedAmountInPaise = Number(payment.amount || 0) * 100;
 
-const isValidRazorpayPayment =
-  razorpayPayment &&
-  razorpayPayment.id === razorpay_payment_id &&
-  razorpayPayment.order_id === razorpay_order_id &&
-  razorpayPayment.status === "captured" &&
-  Number(razorpayPayment.amount) === expectedAmountInPaise &&
-  String(razorpayPayment.currency || "").toUpperCase() === "INR";
+    const isValidRazorpayPayment =
+      razorpayPayment &&
+      razorpayPayment.id === razorpay_payment_id &&
+      razorpayPayment.order_id === razorpay_order_id &&
+      razorpayPayment.status === "captured" &&
+      Number(razorpayPayment.amount) === expectedAmountInPaise &&
+      String(razorpayPayment.currency || "").toUpperCase() ===
+        String(payment.currency || "INR").toUpperCase();
 
-const isValidRazorpayOrder =
-  razorpayOrder &&
-  razorpayOrder.id === razorpay_order_id &&
-  Number(razorpayOrder.amount) === expectedAmountInPaise &&
-  String(razorpayOrder.currency || "").toUpperCase() === "INR";
+    const isValidRazorpayOrder =
+      razorpayOrder &&
+      razorpayOrder.id === razorpay_order_id &&
+      Number(razorpayOrder.amount) === expectedAmountInPaise;
 
-if (!isValidRazorpayPayment || !isValidRazorpayOrder) {
-  payment.status = "failed";
-  payment.razorpayPaymentId = razorpay_payment_id;
-  payment.razorpaySignature = razorpay_signature;
-  await payment.save();
+    if (!isValidRazorpayPayment || !isValidRazorpayOrder) {
+      payment.status = "failed";
+      payment.razorpayPaymentId = razorpay_payment_id;
+      payment.razorpaySignature = razorpay_signature;
+      await payment.save();
 
-  logger.warn("Razorpay server verification failed", {
-    paymentId: payment._id,
-    userId,
-    razorpayOrderId: razorpay_order_id,
-    razorpayPaymentId: razorpay_payment_id,
-    razorpayPaymentStatus: razorpayPayment?.status,
-    razorpayPaymentAmount: razorpayPayment?.amount,
-    expectedAmountInPaise,
-    razorpayPaymentCurrency: razorpayPayment?.currency,
-    razorpayOrderAmount: razorpayOrder?.amount,
-    razorpayOrderCurrency: razorpayOrder?.currency,
-  });
+      await PaymentTransaction.findOneAndUpdate(
+        { orderId: razorpay_order_id },
+        {
+          status: "failed",
+          paymentId: razorpay_payment_id,
+          metadata: { serverVerificationFailed: true },
+        }
+      );
 
-  return res.status(400).json({
-    success: false,
-    message: "Payment could not be verified with Razorpay",
-  });
-}
+      return res.status(400).json({
+        success: false,
+        message: "Payment could not be verified with Razorpay",
+      });
+    }
 
-const orderNotes = razorpayOrder.notes || {};
-
-if (
-  orderNotes.userId &&
-  String(orderNotes.userId) !== String(userId)
-) {
-  payment.status = "failed";
-  payment.razorpayPaymentId = razorpay_payment_id;
-  payment.razorpaySignature = razorpay_signature;
-  await payment.save();
-
-  logger.warn("Razorpay order user mismatch", {
-    paymentId: payment._id,
-    userId,
-    orderUserId: orderNotes.userId,
-    razorpayOrderId: razorpay_order_id,
-  });
-
-  return res.status(400).json({
-    success: false,
-    message: "Payment order ownership mismatch",
-  });
-}
-
-if (
-  payment.planType === "single" &&
-  orderNotes.tournamentId &&
-  String(orderNotes.tournamentId) !== String(payment.tournamentId)
-) {
-  payment.status = "failed";
-  payment.razorpayPaymentId = razorpay_payment_id;
-  payment.razorpaySignature = razorpay_signature;
-  await payment.save();
-
-  logger.warn("Razorpay order tournament mismatch", {
-    paymentId: payment._id,
-    userId,
-    orderTournamentId: orderNotes.tournamentId,
-    paymentTournamentId: payment.tournamentId,
-    razorpayOrderId: razorpay_order_id,
-  });
-
-  return res.status(400).json({
-    success: false,
-    message: "Payment tournament mismatch",
-  });
-}
-
-    const accessFields = getPaymentAccessFields(payment.planType, new Date());
+    const accessFields = await getPaymentAccessFields(payment.planType, new Date());
 
     payment.status = "paid";
     payment.razorpayPaymentId = razorpay_payment_id;
@@ -336,6 +305,28 @@ if (
     payment.accessExpiresAt = accessFields.accessExpiresAt;
 
     await payment.save();
+
+    await User.findByIdAndUpdate(userId, {
+      subscriptionStatus: payment.planType === "lifetime" ? "lifetime" : "active",
+      subscriptionType: payment.planType,
+      premiumExpiresAt: payment.planType === "single" ? null : payment.accessExpiresAt,
+      lifetimeAccess: payment.planType === "lifetime",
+      accessSource: payment.planType === "lifetime" ? "lifetime" : "payment",
+      lastPaymentDate: new Date(),
+    });
+
+    await PaymentTransaction.findOneAndUpdate(
+      { orderId: razorpay_order_id },
+      {
+        status: "paid",
+        paymentId: razorpay_payment_id,
+        metadata: {
+          legacyPaymentId: payment._id,
+          accessStartsAt: payment.accessStartsAt,
+          accessExpiresAt: payment.accessExpiresAt,
+        },
+      }
+    );
 
     logger.info("Payment verified successfully", {
       paymentId: payment._id,
@@ -373,24 +364,15 @@ if (
 };
 
 export const getMyAccessStatus = async (req, res) => {
-  let userId;
-  let tournamentId;
-
   try {
-    userId = getUserId(req);
-    ({ tournamentId } = req.query || {});
+    const userId = getUserId(req);
+    const { tournamentId } = req.query || {};
 
     if (!userId) {
-      return res.status(401).json({
-        success: false,
-        message: "Unauthorized user",
-      });
+      return res.status(401).json({ success: false, message: "Unauthorized user" });
     }
 
-    const access = await hasActiveAccess({
-      userId,
-      tournamentId,
-    });
+    const access = await hasActiveAccess({ userId, tournamentId });
 
     if (access.hasAccess) {
       return res.status(200).json({
@@ -401,6 +383,8 @@ export const getMyAccessStatus = async (req, res) => {
         tournamentId: access.tournamentId,
         accessStartsAt: access.accessStartsAt,
         accessExpiresAt: access.accessExpiresAt,
+        reason: access.reason,
+        source: access.source,
       });
     }
 
@@ -415,8 +399,6 @@ export const getMyAccessStatus = async (req, res) => {
     logger.error("Get payment access status failed", {
       error: error.message,
       stack: error.stack,
-      userId,
-      tournamentId,
     });
 
     return res.status(500).json({

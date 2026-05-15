@@ -17,7 +17,42 @@ import {
   deleteAdminUser,
   deleteAdminTournament,
 } from "../controllers/adminController.js";
+import {
+  getBillingDashboard,
+  getPlatformSettings,
+  updatePlatformSettings,
+  getBillingUsers,
+  grantPremium,
+  removePremium,
+  extendPremium,
+  setLifetimeAccess,
+  startTrial,
+  removeTrial,
+  enableOverride,
+  disableOverride,
+  blockUser,
+  unblockUser,
+  forceLogoutUser,
+  listCoupons,
+  createCoupon,
+  updateCoupon,
+  disableCoupon,
+  deleteCoupon,
+  validateCoupon,
+  applyCoupon,
+  listTransactions,
+  listAuditLogs,
+} from "../controllers/billingController.js";
 import { requireCsrfToken } from "../middleware/csrfProtection.js";
+import {
+  validatePlatformSettingsUpdate,
+  validateCouponCreate,
+  validateCouponUpdate,
+  validateCouponParam,
+  validateCouponValidate,
+  validateAccessAction,
+  validateBillingUserQuery,
+} from "../middleware/billingValidation.js";
 
 const router = express.Router();
 
@@ -27,7 +62,7 @@ router.use(adminMiddleware);
 router.get(
   "/dashboard",
   requireAdminPermission("dashboard:read"),
-  getAdminDashboard,
+  getAdminDashboard
 );
 
 router.get(
@@ -47,8 +82,9 @@ router.patch(
   requireCsrfToken,
   requireAdminPermission("users:manage"),
   superAdminMiddleware,
-  suspendAdminUser,
+  suspendAdminUser
 );
+
 router.patch(
   "/users/:userId/unsuspend",
   requireCsrfToken,
@@ -56,6 +92,7 @@ router.patch(
   superAdminMiddleware,
   unsuspendAdminUser
 );
+
 router.delete(
   "/users/:userId",
   requireCsrfToken,
@@ -63,16 +100,19 @@ router.delete(
   superAdminMiddleware,
   deleteAdminUser
 );
+
 router.get(
   "/tournaments",
   requireAdminPermission("tournaments:read"),
-  getAdminTournaments,
+  getAdminTournaments
 );
+
 router.get(
   "/tournaments/:tournamentId",
   requireAdminPermission("tournaments:read"),
-  getAdminTournamentDetails,
+  getAdminTournamentDetails
 );
+
 router.delete(
   "/tournaments/:tournamentId",
   requireCsrfToken,
@@ -84,8 +124,192 @@ router.delete(
 router.get(
   "/payments",
   requireAdminPermission("payments:read"),
-  getAdminPayments,
+  getAdminPayments
 );
+
 router.get("/entries", requireAdminPermission("entries:read"), getAdminEntries);
+
+/**
+ * SaaS Billing Admin Routes
+ */
+router.get(
+  "/billing/dashboard",
+  requireAdminPermission("billing:read"),
+  getBillingDashboard
+);
+
+router.get(
+  "/billing/settings",
+  requireAdminPermission("billing:read"),
+  getPlatformSettings
+);
+
+router.patch(
+  "/billing/settings",
+  requireCsrfToken,
+  requireAdminPermission("billing:manage"),
+  validatePlatformSettingsUpdate,
+  updatePlatformSettings
+);
+
+router.get(
+  "/billing/users",
+  requireAdminPermission("billing:read"),
+  validateBillingUserQuery,
+  getBillingUsers
+);
+
+router.patch(
+  "/billing/users/:userId/grant-premium",
+  requireCsrfToken,
+  requireAdminPermission("billing:manage"),
+  validateAccessAction,
+  grantPremium
+);
+
+router.patch(
+  "/billing/users/:userId/remove-premium",
+  requireCsrfToken,
+  requireAdminPermission("billing:manage"),
+  validateAccessAction,
+  removePremium
+);
+
+router.patch(
+  "/billing/users/:userId/extend-premium",
+  requireCsrfToken,
+  requireAdminPermission("billing:manage"),
+  validateAccessAction,
+  extendPremium
+);
+
+router.patch(
+  "/billing/users/:userId/lifetime",
+  requireCsrfToken,
+  requireAdminPermission("billing:manage"),
+  validateAccessAction,
+  setLifetimeAccess
+);
+
+router.patch(
+  "/billing/users/:userId/start-trial",
+  requireCsrfToken,
+  requireAdminPermission("billing:manage"),
+  validateAccessAction,
+  startTrial
+);
+
+router.patch(
+  "/billing/users/:userId/remove-trial",
+  requireCsrfToken,
+  requireAdminPermission("billing:manage"),
+  validateAccessAction,
+  removeTrial
+);
+
+router.patch(
+  "/billing/users/:userId/enable-override",
+  requireCsrfToken,
+  requireAdminPermission("billing:manage"),
+  validateAccessAction,
+  enableOverride
+);
+
+router.patch(
+  "/billing/users/:userId/disable-override",
+  requireCsrfToken,
+  requireAdminPermission("billing:manage"),
+  validateAccessAction,
+  disableOverride
+);
+
+router.patch(
+  "/billing/users/:userId/block",
+  requireCsrfToken,
+  requireAdminPermission("billing:manage"),
+  validateAccessAction,
+  blockUser
+);
+
+router.patch(
+  "/billing/users/:userId/unblock",
+  requireCsrfToken,
+  requireAdminPermission("billing:manage"),
+  validateAccessAction,
+  unblockUser
+);
+
+router.patch(
+  "/billing/users/:userId/force-logout",
+  requireCsrfToken,
+  requireAdminPermission("billing:manage"),
+  validateAccessAction,
+  forceLogoutUser
+);
+
+router.get(
+  "/billing/coupons",
+  requireAdminPermission("coupons:read"),
+  listCoupons
+);
+
+router.post(
+  "/billing/coupons",
+  requireCsrfToken,
+  requireAdminPermission("coupons:manage"),
+  validateCouponCreate,
+  createCoupon
+);
+
+router.patch(
+  "/billing/coupons/:couponId",
+  requireCsrfToken,
+  requireAdminPermission("coupons:manage"),
+  validateCouponUpdate,
+  updateCoupon
+);
+
+router.patch(
+  "/billing/coupons/:couponId/disable",
+  requireCsrfToken,
+  requireAdminPermission("coupons:manage"),
+  validateCouponParam,
+  disableCoupon
+);
+
+router.delete(
+  "/billing/coupons/:couponId",
+  requireCsrfToken,
+  requireAdminPermission("coupons:manage"),
+  validateCouponParam,
+  deleteCoupon
+);
+
+router.post(
+  "/billing/coupons/validate",
+  requireAdminPermission("coupons:read"),
+  validateCouponValidate,
+  validateCoupon
+);
+
+router.post(
+  "/billing/coupons/apply",
+  requireCsrfToken,
+  requireAdminPermission("coupons:manage"),
+  validateCouponValidate,
+  applyCoupon
+);
+
+router.get(
+  "/billing/transactions",
+  requireAdminPermission("payments:read"),
+  listTransactions
+);
+
+router.get(
+  "/billing/audit-logs",
+  requireAdminPermission("audit:read"),
+  listAuditLogs
+);
 
 export default router;

@@ -18,8 +18,8 @@ const paymentSchema = new mongoose.Schema(
 
     planType: {
       type: String,
-      enum: ["single", "six_months", "one_year"],
       required: true,
+      trim: true,
       index: true,
     },
 

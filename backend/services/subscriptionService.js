@@ -1,5 +1,5 @@
-import mongoose from "mongoose";
-import Payment from "../models/payment.js";
+import PlatformSettings from "../models/platformSettings.js";
+import hasPremiumAccess from "../utils/hasPremiumAccess.js";
 
 export const PREMIUM_FEATURES = {
   TIESHEET: "tiesheet",
@@ -10,61 +10,80 @@ export const PREMIUM_FEATURES = {
 
 export const PLAN_CONFIG = {
   single: {
+    label: "Single Tournament",
     amount: 1000,
     accessType: "tournament",
-    durationMonths: null,
-    features: [
-      PREMIUM_FEATURES.TIESHEET,
-      PREMIUM_FEATURES.OFFICIALS,
-      PREMIUM_FEATURES.TEAM_PAYMENTS,
-      PREMIUM_FEATURES.TIESHEET_RECORD,
-    ],
+    durationDays: null,
+    features: Object.values(PREMIUM_FEATURES),
   },
-
   six_months: {
+    label: "6 Months",
     amount: 2000,
     accessType: "unlimited",
-    durationMonths: 6,
-    features: [
-      PREMIUM_FEATURES.TIESHEET,
-      PREMIUM_FEATURES.OFFICIALS,
-      PREMIUM_FEATURES.TEAM_PAYMENTS,
-      PREMIUM_FEATURES.TIESHEET_RECORD,
-    ],
+    durationDays: 180,
+    features: Object.values(PREMIUM_FEATURES),
   },
-
   one_year: {
+    label: "1 Year",
     amount: 3000,
     accessType: "unlimited",
-    durationMonths: 12,
-    features: [
-      PREMIUM_FEATURES.TIESHEET,
-      PREMIUM_FEATURES.OFFICIALS,
-      PREMIUM_FEATURES.TEAM_PAYMENTS,
-      PREMIUM_FEATURES.TIESHEET_RECORD,
-    ],
+    durationDays: 365,
+    features: Object.values(PREMIUM_FEATURES),
   },
 };
 
-export const getPlanConfig = (planType) => PLAN_CONFIG[planType] || null;
+const getPlanFromSettings = (settings, planType) => {
+  if (!settings?.plans || !planType) return null;
 
-export const addMonths = (date, months) => {
-  if (!months) return null;
+  if (settings.plans instanceof Map) {
+    return settings.plans.get(planType) || null;
+  }
 
+  return settings.plans[planType] || null;
+};
+
+export const getPlanConfig = async (planType) => {
+  const settings = await PlatformSettings.getSettings();
+  const dynamicPlan = getPlanFromSettings(settings, planType);
+
+  if (dynamicPlan && dynamicPlan.enabled) {
+    return {
+      label: dynamicPlan.label || planType,
+      amount: Number(dynamicPlan.price || 0),
+      currency: dynamicPlan.currency || settings.defaultCurrency || "INR",
+      accessType: dynamicPlan.accessType || "unlimited",
+      durationDays:
+        dynamicPlan.durationDays === null || dynamicPlan.durationDays === undefined
+          ? null
+          : Number(dynamicPlan.durationDays),
+      features: Object.values(PREMIUM_FEATURES),
+    };
+  }
+
+  return PLAN_CONFIG[planType] || null;
+};
+
+export const getLegacyPlanConfig = (planType) => PLAN_CONFIG[planType] || null;
+
+export const addDays = (date, days) => {
+  if (!days) return null;
   const d = new Date(date);
-  d.setMonth(d.getMonth() + months);
+  d.setDate(d.getDate() + Number(days));
   return d;
 };
 
-export const getAccessExpiry = (planType, now = new Date()) => {
-  const plan = getPlanConfig(planType);
+export const getAccessExpiry = async (planType, now = new Date()) => {
+  const plan = await getPlanConfig(planType);
   if (!plan) return null;
 
-  return addMonths(now, plan.durationMonths);
+  if (plan.accessType === "tournament") return null;
+  if (!plan.durationDays) return null;
+
+  return addDays(now, plan.durationDays);
 };
 
-export const getPaymentAccessFields = (planType, now = new Date()) => {
-  const plan = getPlanConfig(planType);
+export const getPaymentAccessFields = async (planType, now = new Date()) => {
+  const plan = await getPlanConfig(planType);
 
   if (!plan) {
     throw new Error("Invalid payment plan");
@@ -73,21 +92,8 @@ export const getPaymentAccessFields = (planType, now = new Date()) => {
   return {
     accessType: plan.accessType,
     accessStartsAt: now,
-    accessExpiresAt: getAccessExpiry(planType, now),
+    accessExpiresAt: await getAccessExpiry(planType, now),
   };
-};
-
-const normalizeId = (value) => {
-  if (!value) return null;
-  const id = String(value).trim();
-  return mongoose.Types.ObjectId.isValid(id) ? id : null;
-};
-
-const isFeatureAllowedByPlan = (planType, feature) => {
-  const plan = getPlanConfig(planType);
-  if (!plan) return false;
-  if (!feature) return true;
-  return plan.features.includes(feature);
 };
 
 export const hasActiveAccess = async ({
@@ -95,76 +101,11 @@ export const hasActiveAccess = async ({
   tournamentId = null,
   feature = null,
 }) => {
-  const safeUserId = normalizeId(userId);
-  const safeTournamentId = normalizeId(tournamentId);
-
-  if (!safeUserId) {
-    return {
-      hasAccess: false,
-      reason: "invalid-user",
-    };
-  }
-
-  const now = new Date();
-
-  const unlimitedAccess = await Payment.findOne({
-    userId: safeUserId,
-    status: "paid",
-    accessType: "unlimited",
-    accessStartsAt: { $ne: null, $lte: now },
-    accessExpiresAt: { $gt: now },
-  })
-    .sort({ accessExpiresAt: -1 })
-    .lean();
-
-  if (
-    unlimitedAccess &&
-    isFeatureAllowedByPlan(unlimitedAccess.planType, feature)
-  ) {
-    return {
-      hasAccess: true,
-      accessType: "unlimited",
-      planType: unlimitedAccess.planType,
-      paymentId: unlimitedAccess._id,
-      tournamentId: safeTournamentId,
-      accessStartsAt: unlimitedAccess.accessStartsAt,
-      accessExpiresAt: unlimitedAccess.accessExpiresAt,
-      feature,
-    };
-  }
-
-  if (safeTournamentId) {
-    const tournamentAccess = await Payment.findOne({
-      userId: safeUserId,
-      tournamentId: safeTournamentId,
-      status: "paid",
-      accessType: "tournament",
-      accessStartsAt: { $ne: null, $lte: now },
-    })
-      .sort({ createdAt: -1 })
-      .lean();
-
-    if (
-      tournamentAccess &&
-      isFeatureAllowedByPlan(tournamentAccess.planType, feature)
-    ) {
-      return {
-        hasAccess: true,
-        accessType: "tournament",
-        planType: tournamentAccess.planType,
-        paymentId: tournamentAccess._id,
-        tournamentId: tournamentAccess.tournamentId,
-        accessStartsAt: tournamentAccess.accessStartsAt,
-        accessExpiresAt: tournamentAccess.accessExpiresAt,
-        feature,
-      };
-    }
-  }
+  const access = await hasPremiumAccess({ userId, tournamentId, feature });
 
   return {
-    hasAccess: false,
-    paymentRequired: true,
-    reason: "premium-access-required",
-    feature,
+    ...access,
+    paymentRequired: !access.hasAccess,
+    accessExpiresAt: access.expiresAt,
   };
 };
