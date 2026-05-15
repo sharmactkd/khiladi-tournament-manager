@@ -16,14 +16,76 @@ const FilterDropdown = ({
   const [searchValue, setSearchValue] = useState('');
   const [selectedValues, setSelectedValues] = useState(currentFilters[columnId] || []);
 
+  const cleanFilterValue = (columnId, value) => {
+  const text = String(value || '').trim();
+
+  if (columnId !== 'weightCategory') return text;
+
+  return text
+    .split('(')[0]
+    .split('[')[0]
+    .split('|')[0]
+    .split(':')[0]
+    .trim();
+};
+
+const medalSortOrder = {
+  Gold: 1,
+  Silver: 2,
+  Bronze: 3,
+  "X-X-X-X": 4,
+  "x-x-x-x": 4,
+};
+
+const getWeightSortValue = (value = "") => {
+  const text = String(value || "").toLowerCase();
+
+  const underMatch = text.match(/under\s*-?\s*(\d+)/);
+  if (underMatch) return Number(underMatch[1]);
+
+  const overMatch = text.match(/over\s*-?\s*(\d+)/);
+  if (overMatch) return Number(overMatch[1]) + 1000;
+
+  const numberMatch = text.match(/(\d+)/);
+  if (numberMatch) return Number(numberMatch[1]);
+
+  return 9999;
+};
+
+const sortFilterValues = (columnId, a, b) => {
+  if (columnId === "medal") {
+    return (medalSortOrder[a] || 999) - (medalSortOrder[b] || 999);
+  }
+
+  if (columnId === "weightCategory") {
+    const weightA = getWeightSortValue(a);
+    const weightB = getWeightSortValue(b);
+
+    if (weightA !== weightB) return weightA - weightB;
+
+    return a.localeCompare(b, undefined, {
+      numeric: true,
+      sensitivity: "base",
+    });
+  }
+
+  return a.localeCompare(b, undefined, {
+    numeric: true,
+    sensitivity: "base",
+  });
+};
   // Unique values
-  const uniqueValues = useMemo(() => {
-    if (!Array.isArray(data)) return [];
-    const values = data
-      .map(row => row?.[columnId]?.toString()?.trim() || '')
-      .filter(val => val !== '');
-    return [...new Set(values)].sort((a, b) => a.localeCompare(b));
-  }, [data, columnId]);
+const uniqueValues = useMemo(() => {
+  if (!Array.isArray(data)) return [];
+
+  const values = data
+    .map(row => cleanFilterValue(columnId, row?.[columnId]))
+    .filter(val => val !== '');
+
+  return [...new Set(values)].sort((a, b) =>
+    sortFilterValues(columnId, a, b)
+  );
+}, [data, columnId]);
 
   // Filtered values
   const filteredValues = useMemo(() => {

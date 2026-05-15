@@ -1,10 +1,11 @@
 // src/components/TieSheet/useBracketGenerator.js
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import debounce from 'lodash/debounce';
-import { getName, MEDAL_PLACEHOLDER } from './bracketUtils';
+import { buildMedalsByCategory } from './medalUtils';
 
 // ── Config (easy to extend in future) ───────────────────────────────────────
 const GENDER_ORDER = ['Male', 'Female'];
+
 const AGE_CATEGORY_ORDER = [
   'Sub-Junior',
   'Cadet',
@@ -15,23 +16,22 @@ const AGE_CATEGORY_ORDER = [
   'Under - 19',
 ];
 
-
-const normalizeCategoryText = (value = "") => {
-  return String(value || "")
-    .normalize("NFKC")
-    .replace(/\u00A0/g, " ")
-    .replace(/[\u200B-\u200D\uFEFF]/g, "")
-    .replace(/[–—−]/g, "-")
+const normalizeCategoryText = (value = '') => {
+  return String(value || '')
+    .normalize('NFKC')
+    .replace(/\u00A0/g, ' ')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[–—−]/g, '-')
     .trim()
     .toLowerCase()
-    .replace(/\s+/g, " ")
-    .replace(/\s*-\s*/g, " - ");
+    .replace(/\s+/g, ' ')
+    .replace(/\s*-\s*/g, ' - ');
 };
 
-const getCanonicalAgeCategoryKey = (value = "") => {
+const getCanonicalAgeCategoryKey = (value = '') => {
   const text = normalizeCategoryText(value);
 
-  if (!text) return "";
+  if (!text) return '';
 
   const underMatch = text.match(/under\s*-?\s*(\d+)/i);
   if (underMatch) return `under_${underMatch[1]}`;
@@ -39,16 +39,16 @@ const getCanonicalAgeCategoryKey = (value = "") => {
   const overMatch = text.match(/over\s*-?\s*(\d+)/i);
   if (overMatch) return `over_${overMatch[1]}`;
 
-  return text.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return text.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 };
 
-const getCanonicalWeightCategoryKey = (value = "") => {
+const getCanonicalWeightCategoryKey = (value = '') => {
   const text = normalizeCategoryText(value)
-    .replace(/\bkilograms?\b/g, "kg")
-    .replace(/\bkgs\b/g, "kg")
-    .replace(/\bkg\b/g, "kg");
+    .replace(/\bkilograms?\b/g, 'kg')
+    .replace(/\bkgs\b/g, 'kg')
+    .replace(/\bkg\b/g, 'kg');
 
-  if (!text) return "";
+  if (!text) return '';
 
   const underMatch = text.match(/under\s*-?\s*(\d+)/i);
   if (underMatch) return `under_${underMatch[1]}_kg`;
@@ -56,37 +56,37 @@ const getCanonicalWeightCategoryKey = (value = "") => {
   const overMatch = text.match(/over\s*-?\s*(\d+)/i);
   if (overMatch) return `over_${overMatch[1]}_kg`;
 
-  return text.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+  return text.replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
 };
 
-const normalizeAgeCategoryForDisplay = (value = "") => {
+const normalizeAgeCategoryForDisplay = (value = '') => {
   const text = normalizeCategoryText(value);
 
-  if (!text) return "";
+  if (!text) return '';
 
   return text
-    .replace(/^under\s*-?\s*(\d+).*$/i, "Under - $1")
-    .replace(/^over\s*-?\s*(\d+).*$/i, "Over - $1")
+    .replace(/^under\s*-?\s*(\d+).*$/i, 'Under - $1')
+    .replace(/^over\s*-?\s*(\d+).*$/i, 'Over - $1')
     .replace(/\b\w/g, (char) => char.toUpperCase())
-    .replace(/\s-\s/g, " - ")
+    .replace(/\s-\s/g, ' - ')
     .trim();
 };
 
-const normalizeWeightCategoryForDisplay = (value = "") => {
+const normalizeWeightCategoryForDisplay = (value = '') => {
   const text = normalizeCategoryText(value);
 
-  if (!text) return "";
+  if (!text) return '';
 
   return text
-    .replace(/^under\s*-?\s*(\d+).*$/i, "Under - $1 KG")
-    .replace(/^over\s*-?\s*(\d+).*$/i, "Over - $1 KG")
-    .replace(/\bkg\b/gi, "KG")
-    .replace(/\s+/g, " ")
-    .replace(/\s*-\s*/g, " - ")
+    .replace(/^under\s*-?\s*(\d+).*$/i, 'Under - $1 KG')
+    .replace(/^over\s*-?\s*(\d+).*$/i, 'Over - $1 KG')
+    .replace(/\bkg\b/gi, 'KG')
+    .replace(/\s+/g, ' ')
+    .replace(/\s*-\s*/g, ' - ')
     .trim();
 };
 
-const getWeightSortValue = (weightCategory = "") => {
+const getWeightSortValue = (weightCategory = '') => {
   const text = String(weightCategory).toLowerCase();
 
   const underMatch = text.match(/under\s*-?\s*(\d+)|u\s*-?\s*(\d+)/);
@@ -107,57 +107,82 @@ const compareWeightCategories = (a, b) => {
 
   if (weightA !== weightB) return weightA - weightB;
 
-  return String(a?.weightCategory || "").localeCompare(
-    String(b?.weightCategory || ""),
+  return String(a?.weightCategory || '').localeCompare(
+    String(b?.weightCategory || ''),
     undefined,
-    { numeric: true, sensitivity: "base" }
+    { numeric: true, sensitivity: 'base' }
   );
 };
 
+const sanitizeBracketKey = (value = '') =>
+  String(value || '')
+    .replace(/\s+/g, '-')
+    .replace(/[^a-zA-Z0-9-_]/g, '')
+    .replace(/-+/g, '-');
+
 // ── Helper: Smart Seed Players ──────────────────────────────────────────────
-const smartSeedPlayers = (playersList) => {
+const smartSeedPlayers = (playersList = []) => {
   if (playersList.length <= 2) return [...playersList];
 
   const teamGroups = {};
-  playersList.forEach(p => {
-    const team = p.team?.trim() || 'No Team';
-    if (!teamGroups[team]) teamGroups[team] = [];
-    teamGroups[team].push(p);
+
+  playersList.forEach((player) => {
+    const team = player?.team?.trim() || 'No Team';
+
+    if (!teamGroups[team]) {
+      teamGroups[team] = [];
+    }
+
+    teamGroups[team].push(player);
   });
 
-  const sortedTeams = Object.entries(teamGroups)
-    .sort((a, b) => b[1].length - a[1].length);
+  const sortedTeams = Object.entries(teamGroups).sort(
+    (a, b) => b[1].length - a[1].length
+  );
 
   const totalSlots = Math.pow(2, Math.ceil(Math.log2(playersList.length)));
   const seeded = new Array(totalSlots);
+
   let topIndex = 0;
   let bottomIndex = totalSlots - 1;
 
-  sortedTeams.forEach(([team, teamPlayers]) => {
-    teamPlayers.forEach((player, i) => {
-      if (i % 2 === 0) {
-        while (topIndex < totalSlots && seeded[topIndex]) topIndex++;
+  sortedTeams.forEach(([, teamPlayers]) => {
+    teamPlayers.forEach((player, index) => {
+      if (index % 2 === 0) {
+        while (topIndex < totalSlots && seeded[topIndex]) topIndex += 1;
+
         if (topIndex < totalSlots / 2) {
           seeded[topIndex] = player;
           topIndex += 2;
-          if (topIndex >= totalSlots / 2) topIndex = 1;
+
+          if (topIndex >= totalSlots / 2) {
+            topIndex = 1;
+          }
         }
       } else {
-        while (bottomIndex >= totalSlots / 2 && seeded[bottomIndex]) bottomIndex--;
+        while (bottomIndex >= totalSlots / 2 && seeded[bottomIndex]) {
+          bottomIndex -= 1;
+        }
+
         if (bottomIndex >= totalSlots / 2) {
           seeded[bottomIndex] = player;
           bottomIndex -= 2;
-          if (bottomIndex < totalSlots / 2) bottomIndex = totalSlots - 2;
+
+          if (bottomIndex < totalSlots / 2) {
+            bottomIndex = totalSlots - 2;
+          }
         }
       }
     });
   });
 
-  let remaining = playersList.filter(p => !seeded.includes(p));
+  const remaining = playersList.filter((player) => !seeded.includes(player));
   let fillIndex = 0;
-  for (let i = 0; i < totalSlots; i++) {
-    if (!seeded[i] && remaining[fillIndex]) {
-      seeded[i] = remaining[fillIndex++];
+
+  for (let index = 0; index < totalSlots; index += 1) {
+    if (!seeded[index] && remaining[fillIndex]) {
+      seeded[index] = remaining[fillIndex];
+      fillIndex += 1;
     }
   }
 
@@ -165,41 +190,45 @@ const smartSeedPlayers = (playersList) => {
 };
 
 // ── Generate Single Elimination Structure ───────────────────────────────────
-const generateSingleEliminationGameStructure = (players, poolLabel = '') => {
-  if (!players || players.length === 0) return { finalGame: null, gamesByRound: [] };
+const generateSingleEliminationGameStructure = (players = [], poolLabel = '') => {
+  if (!Array.isArray(players) || players.length === 0) {
+    return { finalGame: null, gamesByRound: [] };
+  }
 
   const p = (idx) => {
     if (idx >= players.length) {
       return {
-  team: {
-    id: `bye-${idx}`,
-    entryId: "",
-    name: "BYE",
-    team: "",
-    gender: "",
-    ageCategory: "",
-    weightCategory: "",
-    weight: "",
-    event: "",
-    subEvent: "",
-  },
-  score: { score: null },
-};
+        team: {
+          id: `bye-${idx}`,
+          entryId: '',
+          name: 'BYE',
+          team: '',
+          gender: '',
+          ageCategory: '',
+          weightCategory: '',
+          weight: '',
+          event: '',
+          subEvent: '',
+        },
+        score: { score: null },
+      };
     }
-    const player = players[idx];
+
+    const player = players[idx] || {};
+
     return {
       team: {
-  id: player.entryId || `player-${idx}`,
-  entryId: player.entryId || "",
-  name: player.name || "",
-  team: player.team || "",
-  gender: player.gender || "",
-  ageCategory: player.ageCategory || "",
-  weightCategory: player.weightCategory || "",
-  weight: player.weight || "",
-  event: player.event || "",
-  subEvent: player.subEvent || "",
-},
+        id: player.entryId || `player-${idx}`,
+        entryId: player.entryId || '',
+        name: player.name || '',
+        team: player.team || '',
+        gender: player.gender || '',
+        ageCategory: player.ageCategory || '',
+        weightCategory: player.weightCategory || '',
+        weight: player.weight || '',
+        event: player.event || '',
+        subEvent: player.subEvent || '',
+      },
       score: { score: null },
     };
   };
@@ -207,36 +236,43 @@ const generateSingleEliminationGameStructure = (players, poolLabel = '') => {
   const src = (game) => ({
     sourceGame: game,
     score: { score: null },
-    pool: game.pool
+    pool: game.pool,
   });
 
-  const getRoundName = (roundNumber, totalRounds, poolLabel) => {
-    if (poolLabel && roundNumber === totalRounds) {
-      return `${poolLabel} Final`;
+  const getRoundName = (roundNumber, totalRounds, currentPoolLabel) => {
+    if (currentPoolLabel && roundNumber === totalRounds) {
+      return `${currentPoolLabel} Final`;
     }
+
     const rounds = {
       [totalRounds]: 'Final',
       [totalRounds - 1]: 'Semifinals',
       [totalRounds - 2]: 'Quarterfinals',
-      [totalRounds - 3]: 'Round of 16'
+      [totalRounds - 3]: 'Round of 16',
     };
+
     return rounds[roundNumber] || `Round of ${Math.pow(2, totalRounds - roundNumber + 1)}`;
   };
 
   const playerCount = players.length;
   const poolNum = poolLabel ? poolLabel.charCodeAt(poolLabel.length - 1) - 64 : 0;
+
   let matchId = poolNum ? poolNum * 1000 + 1 : 1;
 
-  if (playerCount <= 0) return { finalGame: null, gamesByRound: [] };
+  if (playerCount <= 0) {
+    return { finalGame: null, gamesByRound: [] };
+  }
+
   if (playerCount === 1) {
     const game = {
-      id: matchId++,
+      id: matchId,
       name: poolLabel ? `${poolLabel} Final` : 'Final',
       round: 1,
       scheduled: Date.now(),
       pool: poolLabel?.replace('Pool ', '') || '',
-      sides: { home: p(0) }
+      sides: { home: p(0) },
     };
+
     return { finalGame: game, gamesByRound: [[game]] };
   }
 
@@ -245,135 +281,112 @@ const generateSingleEliminationGameStructure = (players, poolLabel = '') => {
   const matchesInFirstRound = targetPlayerCount / 2;
   const byesNeeded = targetPlayerCount - playerCount;
 
-  const gamesByRound = Array(totalRounds).fill().map(() => []);
+  const gamesByRound = Array(totalRounds)
+    .fill()
+    .map(() => []);
+
   const byePositions = new Set();
 
   if (byesNeeded > 0) {
-    for (let i = 0; i < byesNeeded; i++) {
-      const pos = matchesInFirstRound - 1 - Math.floor(i * matchesInFirstRound / byesNeeded);
+    for (let index = 0; index < byesNeeded; index += 1) {
+      const pos =
+        matchesInFirstRound -
+        1 -
+        Math.floor((index * matchesInFirstRound) / byesNeeded);
+
       byePositions.add(pos);
     }
   }
 
   let playerIndex = 0;
+
   const firstRoundGames = [];
   const directAdvancers = [];
 
-  for (let slot = 0; slot < matchesInFirstRound; slot++) {
+  for (let slot = 0; slot < matchesInFirstRound; slot += 1) {
     if (byePositions.has(slot)) {
       if (playerIndex < playerCount) {
         const byePlayer = p(playerIndex);
-        playerIndex++;
+        playerIndex += 1;
+
         byePlayer.slot = slot;
         directAdvancers.push(byePlayer);
       }
-    } else {
-      if (playerIndex + 1 < playerCount) {
-        const home = p(playerIndex);
-        playerIndex++;
-        const away = p(playerIndex);
-        playerIndex++;
-        const game = {
-          id: matchId++,
-          name: getRoundName(1, totalRounds, poolLabel),
-          round: 1,
-          scheduled: Date.now(),
-          pool: poolLabel?.replace('Pool ', '') || '',
-          sides: { home, away }
-        };
-        game.slot = slot;
-        firstRoundGames.push(game);
-        directAdvancers.push(game);
-      }
+    } else if (playerIndex + 1 < playerCount) {
+      const home = p(playerIndex);
+      playerIndex += 1;
+
+      const away = p(playerIndex);
+      playerIndex += 1;
+
+      const game = {
+        id: matchId,
+        name: getRoundName(1, totalRounds, poolLabel),
+        round: 1,
+        scheduled: Date.now(),
+        pool: poolLabel?.replace('Pool ', '') || '',
+        sides: { home, away },
+        slot,
+      };
+
+      matchId += 1;
+
+      firstRoundGames.push(game);
+      directAdvancers.push(game);
     }
   }
 
   gamesByRound[0] = firstRoundGames;
+
   let currentAdvancers = [...directAdvancers];
   let roundNumber = 2;
 
   while (currentAdvancers.length > 1) {
     const nextRound = [];
-    for (let i = 0; i < currentAdvancers.length; i += 2) {
-      const homeAdvancer = currentAdvancers[i];
-      const awayAdvancer = i + 1 < currentAdvancers.length ? currentAdvancers[i + 1] : null;
+
+    for (let index = 0; index < currentAdvancers.length; index += 2) {
+      const homeAdvancer = currentAdvancers[index];
+      const awayAdvancer =
+        index + 1 < currentAdvancers.length ? currentAdvancers[index + 1] : null;
+
       const game = {
-        id: matchId++,
+        id: matchId,
         name: getRoundName(roundNumber, totalRounds, poolLabel),
         round: roundNumber,
         scheduled: Date.now(),
         pool: poolLabel?.replace('Pool ', '') || '',
-        sides: { home: null, away: null }
+        sides: { home: null, away: null },
       };
-      game.sides.home = homeAdvancer ? (homeAdvancer.round ? src(homeAdvancer) : homeAdvancer) : null;
-      if (awayAdvancer) game.sides.away = awayAdvancer.round ? src(awayAdvancer) : awayAdvancer;
+
+      matchId += 1;
+
+      game.sides.home = homeAdvancer
+        ? homeAdvancer.round
+          ? src(homeAdvancer)
+          : homeAdvancer
+        : null;
+
+      if (awayAdvancer) {
+        game.sides.away = awayAdvancer.round ? src(awayAdvancer) : awayAdvancer;
+      }
+
       nextRound.push(game);
     }
+
     gamesByRound[roundNumber - 1] = nextRound;
     currentAdvancers = nextRound;
-    roundNumber++;
+    roundNumber += 1;
   }
 
-  return { finalGame: currentAdvancers[0] || null, gamesByRound };
-};
-
-// ── Memoized Medal Calculator ──────────────────────────────────────────────
-const computeMedals = (brackets, outcomes) => {
-  const medalsByCategory = {};
-
-  const baseKeys = [...new Set(brackets.map(b => b.key.replace(/_Pool.*$/, '')))];
-
-  baseKeys.forEach(baseKey => {
-    const poolFinal = brackets.find(b => b.key === `${baseKey}_PoolFinal`);
-    const single = brackets.find(b => b.key === baseKey);
-    const categoryCount = brackets.find(b => b.key.startsWith(baseKey))?.categoryPlayerCount || 0;
-
-    let gold = MEDAL_PLACEHOLDER;
-    let silver = MEDAL_PLACEHOLDER;
-    let bronze1 = MEDAL_PLACEHOLDER;
-    let bronze2 = MEDAL_PLACEHOLDER;
-
-    if (poolFinal) {
-      const finalOutcomes = outcomes[poolFinal.key] || {};
-      const finalGame = poolFinal.game;
-      const winnerSide = finalOutcomes[finalGame.id];
-      if (winnerSide) {
-        gold = getName(finalGame.sides[winnerSide], poolFinal.key, null, outcomes) || gold;
-        silver = getName(finalGame.sides[winnerSide === 'home' ? 'away' : 'home'], poolFinal.key, null, outcomes) || silver;
-      }
-    } else if (single) {
-      const finalOutcomes = outcomes[single.key] || {};
-      const finalGame = single.game;
-      const winnerSide = finalOutcomes[finalGame.id];
-      if (winnerSide) {
-        gold = getName(finalGame.sides[winnerSide], single.key, null, outcomes) || gold;
-        silver = getName(finalGame.sides[winnerSide === 'home' ? 'away' : 'home'], single.key, null, outcomes) || silver;
-      }
-
-      if (categoryCount === 3 && single.gamesByRound?.[0]?.length === 1) {
-        const match = single.gamesByRound[0][0];
-        const loserSide = finalOutcomes[match.id] === 'home' ? 'away' : 'home';
-        bronze1 = getName(match.sides[loserSide], single.key, null, outcomes) || 'BYE Player';
-      } else if (categoryCount >= 4 && single.gamesByRound?.length >= 2) {
-        const semi = single.gamesByRound[single.gamesByRound.length - 2];
-        if (semi?.length >= 2) {
-          const semi1Loser = finalOutcomes[semi[0].id] === 'home' ? 'away' : 'home';
-          bronze1 = getName(semi[0].sides[semi1Loser], single.key, null, outcomes) || bronze1;
-          const semi2Loser = finalOutcomes[semi[1].id] === 'home' ? 'away' : 'home';
-          bronze2 = getName(semi[1].sides[semi2Loser], single.key, null, outcomes) || bronze2;
-        }
-      }
-    }
-
-    medalsByCategory[baseKey] = { gold, silver, bronze1, bronze2 };
-  });
-
-  return medalsByCategory;
+  return {
+    finalGame: currentAdvancers[0] || null,
+    gamesByRound,
+  };
 };
 
 // ── Main Hook ───────────────────────────────────────────────────────────────
 export default function useBracketGenerator({
-  players,
+  players = [],
   lockedBrackets = new Set(),
   brackets = [],
   bracketsOutcomes = {},
@@ -384,166 +397,219 @@ export default function useBracketGenerator({
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationError, setGenerationError] = useState(null);
   const [computedMedals, setComputedMedals] = useState({});
-  
-  // Add a ref to track manual updates
-  const skipGenerationRef = useRef(false);
- const lastPlayerCountRef = useRef(0);
-const lastPlayerCategorySignatureRef = useRef("");
 
-  // Debounced generation to prevent UI freeze during rapid changes
+  const skipGenerationRef = useRef(false);
+  const lastPlayerCountRef = useRef(0);
+  const lastPlayerCategorySignatureRef = useRef('');
+
+  const safeLockedBrackets = useMemo(() => {
+    if (lockedBrackets instanceof Set) return lockedBrackets;
+    if (Array.isArray(lockedBrackets)) return new Set(lockedBrackets);
+    return new Set();
+  }, [lockedBrackets]);
+
+  const buildPlayerCategorySignature = useCallback((playersList = []) => {
+    return JSON.stringify(
+      playersList
+        .map((player) => ({
+          entryId: String(player?.entryId || '').trim(),
+          gender: normalizeCategoryText(player?.gender),
+          ageCategory: getCanonicalAgeCategoryKey(player?.ageCategory),
+          weightCategory: getCanonicalWeightCategoryKey(player?.weightCategory),
+        }))
+        .sort((a, b) =>
+          `${a.entryId}_${a.gender}_${a.ageCategory}_${a.weightCategory}`.localeCompare(
+            `${b.entryId}_${b.gender}_${b.ageCategory}_${b.weightCategory}`
+          )
+        )
+    );
+  }, []);
+
+  const sortBrackets = useCallback((items = []) => {
+    return [...items].sort((a, b) => {
+      const genderCompare =
+        GENDER_ORDER.indexOf(a.gender) - GENDER_ORDER.indexOf(b.gender);
+
+      if (genderCompare !== 0) return genderCompare;
+
+      const aAgeIndex = AGE_CATEGORY_ORDER.indexOf(a.ageCategory);
+      const bAgeIndex = AGE_CATEGORY_ORDER.indexOf(b.ageCategory);
+
+      if (aAgeIndex !== bAgeIndex) return aAgeIndex - bAgeIndex;
+
+      const weightCompare = compareWeightCategories(a, b);
+
+      if (weightCompare !== 0) return weightCompare;
+
+      const aPoolOrder = a.pool ? (a.pool === 'Final' ? 999 : a.pool.charCodeAt(0)) : 0;
+      const bPoolOrder = b.pool ? (b.pool === 'Final' ? 999 : b.pool.charCodeAt(0)) : 0;
+
+      return aPoolOrder - bPoolOrder;
+    });
+  }, []);
+
   const generateBrackets = useCallback(
     debounce(async () => {
-      // Skip if we just performed a manual operation (like shuffle)
       if (skipGenerationRef.current) {
-       
         skipGenerationRef.current = false;
         return;
       }
-      
-      if (players.length === 0) {
-       
+
+      if (!Array.isArray(players) || players.length === 0) {
         return;
       }
-      
-      // Check if player count actually changed
-const buildPlayerCategorySignature = (playersList = []) => {
-  return JSON.stringify(
-    playersList
-      .map((p) => ({
-        entryId: String(p?.entryId || "").trim(),
-       gender: normalizeCategoryText(p?.gender),
-ageCategory: getCanonicalAgeCategoryKey(p?.ageCategory),
-weightCategory: getCanonicalWeightCategoryKey(p?.weightCategory),
-      }))
-      .sort((a, b) =>
-        `${a.entryId}_${a.gender}_${a.ageCategory}_${a.weightCategory}`.localeCompare(
-          `${b.entryId}_${b.gender}_${b.ageCategory}_${b.weightCategory}`
-        )
-      )
-  );
-};
 
-const playerCountChanged = players.length !== lastPlayerCountRef.current;
-const currentCategorySignature = buildPlayerCategorySignature(players);
-const categorySignatureChanged =
-  currentCategorySignature !== lastPlayerCategorySignatureRef.current;
+      const playerCountChanged = players.length !== lastPlayerCountRef.current;
+      const currentCategorySignature = buildPlayerCategorySignature(players);
+      const categorySignatureChanged =
+        currentCategorySignature !== lastPlayerCategorySignatureRef.current;
 
-lastPlayerCountRef.current = players.length;
-lastPlayerCategorySignatureRef.current = currentCategorySignature;
+      lastPlayerCountRef.current = players.length;
+      lastPlayerCategorySignatureRef.current = currentCategorySignature;
 
-if (brackets.length > 0 && !playerCountChanged && !categorySignatureChanged) {
-  
-  return;
-}
+      if (brackets.length > 0 && !playerCountChanged && !categorySignatureChanged) {
+        const currentMedals = buildMedalsByCategory({
+          bracketsSnapshot: brackets,
+          outcomesSnapshot: bracketsOutcomes,
+        });
+
+        setComputedMedals(currentMedals);
+
+        if (typeof setMedalsByCategory === 'function') {
+          setMedalsByCategory(currentMedals);
+        }
+
+        return;
+      }
 
       setIsGenerating(true);
       setGenerationError(null);
 
       try {
-      
-
-        // Preserve locked brackets & outcomes
-        const preservedLocked = brackets.filter(b => {
-          return lockedBrackets.has(b.key);
+        const preservedLocked = brackets.filter((bracket) => {
+          return safeLockedBrackets.has(bracket.key);
         });
 
-        console.log('🔒 Preserved Locked:', preservedLocked.map(b => b.key));
+        console.log(
+          '🔒 Preserved Locked:',
+          preservedLocked.map((bracket) => bracket.key)
+        );
 
         let preservedOutcomes = {};
-        preservedLocked.forEach(b => {
-          preservedOutcomes[b.key] = { ...(bracketsOutcomes[b.key] || {}) };
+
+        preservedLocked.forEach((bracket) => {
+          preservedOutcomes[bracket.key] = {
+            ...(bracketsOutcomes[bracket.key] || {}),
+          };
         });
 
-      const grouped = players.reduce((acc, p) => {
-  const genderDisplay = String(p?.gender || "").trim();
-  const ageDisplay = normalizeAgeCategoryForDisplay(p?.ageCategory);
-  const weightDisplay = normalizeWeightCategoryForDisplay(p?.weightCategory);
+        const grouped = players.reduce((acc, player) => {
+          const genderDisplay = String(player?.gender || '').trim();
+          const ageDisplay = normalizeAgeCategoryForDisplay(player?.ageCategory);
+          const weightDisplay = normalizeWeightCategoryForDisplay(player?.weightCategory);
 
-  const genderKey = normalizeCategoryText(genderDisplay)
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+          const genderKey = normalizeCategoryText(genderDisplay)
+            .replace(/[^a-z0-9]+/g, '_')
+            .replace(/^_+|_+$/g, '');
 
-  const ageKey = getCanonicalAgeCategoryKey(p?.ageCategory);
-  const weightKey = getCanonicalWeightCategoryKey(p?.weightCategory);
+          const ageKey = getCanonicalAgeCategoryKey(player?.ageCategory);
+          const weightKey = getCanonicalWeightCategoryKey(player?.weightCategory);
 
-  const key = `${genderKey}_${ageKey}_${weightKey}`;
+          const key = `${genderKey}_${ageKey}_${weightKey}`;
 
-  if (!acc[key]) {
-    acc[key] = {
-      gender: genderDisplay,
-      ageCategory: ageDisplay,
-      weightCategory: weightDisplay,
-      players: [],
-    };
-  }
+          if (!acc[key]) {
+            acc[key] = {
+              gender: genderDisplay,
+              ageCategory: ageDisplay,
+              weightCategory: weightDisplay,
+              players: [],
+            };
+          }
 
-  acc[key].players.push({
-    ...p,
-    gender: genderDisplay,
-    ageCategory: ageDisplay,
-    weightCategory: weightDisplay,
-  });
+          acc[key].players.push({
+            ...player,
+            gender: genderDisplay,
+            ageCategory: ageDisplay,
+            weightCategory: weightDisplay,
+          });
 
-  return acc;
-}, {});
-
-
+          return acc;
+        }, {});
 
         const generatedBrackets = [];
 
         Object.entries(grouped).forEach(([key, group]) => {
-  const { gender, ageCategory, weightCategory } = group;
-  const groupPlayers = group.players;
-  const categoryPlayerCount = groupPlayers.length;
+          const { gender, ageCategory, weightCategory } = group;
+          const groupPlayers = group.players;
+          const categoryPlayerCount = groupPlayers.length;
 
           if (categoryPlayerCount <= 16) {
             const seededPlayers = smartSeedPlayers([...groupPlayers]);
-            const { finalGame, gamesByRound } = generateSingleEliminationGameStructure(seededPlayers);
+            const { finalGame, gamesByRound } =
+              generateSingleEliminationGameStructure(seededPlayers);
 
-            // ✅ 3-player debug (DEV only) — logs structure without changing behavior
             if (import.meta.env.DEV && categoryPlayerCount === 3) {
-              const n = categoryPlayerCount;
-              const rounds = Math.ceil(Math.log2(n));
+              const rounds = Math.ceil(Math.log2(categoryPlayerCount));
               const target = Math.pow(2, rounds);
-              const byes = target - n;
+              const byes = target - categoryPlayerCount;
 
               const safeSide = (side) => {
                 if (!side) return null;
-                if (side.team) return { kind: 'team', name: side.team.name, slot: side.slot };
-                if (side.sourceGame) return { kind: 'sourceGame', id: side.sourceGame.id, round: side.sourceGame.round };
-                return { kind: 'unknown', slot: side.slot };
+
+                if (side.team) {
+                  return {
+                    kind: 'team',
+                    name: side.team.name,
+                    slot: side.slot,
+                  };
+                }
+
+                if (side.sourceGame) {
+                  return {
+                    kind: 'sourceGame',
+                    id: side.sourceGame.id,
+                    round: side.sourceGame.round,
+                  };
+                }
+
+                return {
+                  kind: 'unknown',
+                  slot: side.slot,
+                };
               };
 
               console.log('🧪 3-PLAYER BRACKET STRUCTURE', {
                 key,
                 categoryPlayerCount,
                 computed: { rounds, target, byes },
-                gamesByRoundMeta: gamesByRound.map((r, idx) => ({
-                  roundIndex: idx,
-                  roundNumber: idx + 1,
-                  roundName: r?.[0]?.name,
-                  games: (r || []).map(g => ({
-                    id: g.id,
-                    round: g.round,
-                    name: g.name,
-                    slot: g.slot,
-                    home: safeSide(g.sides?.home),
-                    away: safeSide(g.sides?.away),
+                gamesByRoundMeta: gamesByRound.map((round, index) => ({
+                  roundIndex: index,
+                  roundNumber: index + 1,
+                  roundName: round?.[0]?.name,
+                  games: (round || []).map((game) => ({
+                    id: game.id,
+                    round: game.round,
+                    name: game.name,
+                    slot: game.slot,
+                    home: safeSide(game.sides?.home),
+                    away: safeSide(game.sides?.away),
                   })),
                 })),
-                finalGame: finalGame ? {
-                  id: finalGame.id,
-                  name: finalGame.name,
-                  round: finalGame.round,
-                  home: safeSide(finalGame.sides?.home),
-                  away: safeSide(finalGame.sides?.away),
-                } : null
+                finalGame: finalGame
+                  ? {
+                      id: finalGame.id,
+                      name: finalGame.name,
+                      round: finalGame.round,
+                      home: safeSide(finalGame.sides?.home),
+                      away: safeSide(finalGame.sides?.away),
+                    }
+                  : null,
               });
             }
 
             generatedBrackets.push({
               key,
-              sanitizedKey: key.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '').replace(/-+/g, '-'),
+              sanitizedKey: sanitizeBracketKey(key),
               gender,
               ageCategory,
               weightCategory,
@@ -554,252 +620,293 @@ if (brackets.length > 0 && !playerCountChanged && !categorySignatureChanged) {
               gamesByRound,
               outcomes: {},
             });
-          } else {
-            // ── Pool Logic ─────────────────────────────────────────────────────
-            const minPools = Math.ceil(categoryPlayerCount / 16);
-            let numPools = 1;
-            while (numPools < minPools) numPools *= 2;
 
-            const poolSizes = Array(numPools).fill(Math.floor(categoryPlayerCount / numPools));
-            const extras = categoryPlayerCount % numPools;
-            for (let i = 0; i < extras; i++) poolSizes[i]++;
+            return;
+          }
 
-            const allSeededPlayers = smartSeedPlayers([...groupPlayers]);
-            let playerStart = 0;
-            const pools = [];
+          // ── Pool Logic ─────────────────────────────────────────────────────
+          const minPools = Math.ceil(categoryPlayerCount / 16);
 
-            for (let i = 0; i < numPools; i++) {
-              const poolLabelChar = String.fromCharCode(65 + i);
-              const poolPlayersRaw = allSeededPlayers.slice(playerStart, playerStart + poolSizes[i]);
-              const poolPlayers = poolPlayersRaw.length > 2 ? smartSeedPlayers(poolPlayersRaw) : poolPlayersRaw;
-              playerStart += poolSizes[i];
+          let numPools = 1;
 
-              const poolStruct = generateSingleEliminationGameStructure(poolPlayers, `Pool ${poolLabelChar}`);
+          while (numPools < minPools) {
+            numPools *= 2;
+          }
 
-              pools.push({
-                key: `${key}_Pool${poolLabelChar}`,
-                sanitizedKey: `${key}_Pool${poolLabelChar}`.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '').replace(/-+/g, '-'),
-                gender,
-                ageCategory,
-                weightCategory,
-                playerCount: poolPlayers.length,
-                categoryPlayerCount,
-                shuffledPlayers: poolPlayers,
-                game: poolStruct.finalGame,
-                gamesByRound: poolStruct.gamesByRound,
-                pool: poolLabelChar,
-                outcomes: {},
-              });
-            }
+          const poolSizes = Array(numPools).fill(
+            Math.floor(categoryPlayerCount / numPools)
+          );
 
-            // ── Pool Final Bracket ─────────────────────────────────────────────
-           const dummyPlayoffPlayers = pools.map((_, idx) => ({
-  entryId: `pool-winner-${idx}`,
-  name: `Winner Pool ${String.fromCharCode(65 + idx)}`,
-  team: "",
-}));
+          const extras = categoryPlayerCount % numPools;
 
-            let playoffStruct = generateSingleEliminationGameStructure(dummyPlayoffPlayers);
-            let poolIndex = 0;
-            playoffStruct.gamesByRound[0].forEach(game => {
-              game.sides.home = {
+          for (let index = 0; index < extras; index += 1) {
+            poolSizes[index] += 1;
+          }
+
+          const allSeededPlayers = smartSeedPlayers([...groupPlayers]);
+
+          let playerStart = 0;
+
+          const pools = [];
+
+          for (let index = 0; index < numPools; index += 1) {
+            const poolLabelChar = String.fromCharCode(65 + index);
+            const poolPlayersRaw = allSeededPlayers.slice(
+              playerStart,
+              playerStart + poolSizes[index]
+            );
+
+            const poolPlayers =
+              poolPlayersRaw.length > 2
+                ? smartSeedPlayers(poolPlayersRaw)
+                : poolPlayersRaw;
+
+            playerStart += poolSizes[index];
+
+            const poolStruct = generateSingleEliminationGameStructure(
+              poolPlayers,
+              `Pool ${poolLabelChar}`
+            );
+
+            pools.push({
+              key: `${key}_Pool${poolLabelChar}`,
+              sanitizedKey: sanitizeBracketKey(`${key}_Pool${poolLabelChar}`),
+              gender,
+              ageCategory,
+              weightCategory,
+              playerCount: poolPlayers.length,
+              categoryPlayerCount,
+              shuffledPlayers: poolPlayers,
+              game: poolStruct.finalGame,
+              gamesByRound: poolStruct.gamesByRound,
+              pool: poolLabelChar,
+              outcomes: {},
+            });
+          }
+
+          // ── Pool Final Bracket ─────────────────────────────────────────────
+          const dummyPlayoffPlayers = pools.map((_, index) => ({
+            entryId: `pool-winner-${index}`,
+            name: `Winner Pool ${String.fromCharCode(65 + index)}`,
+            team: '',
+          }));
+
+          const playoffStruct =
+            generateSingleEliminationGameStructure(dummyPlayoffPlayers);
+
+          let poolIndex = 0;
+
+          playoffStruct.gamesByRound[0].forEach((game) => {
+            game.sides.home = {
+              sourceGame: pools[poolIndex].game,
+              score: { score: null },
+              pool: pools[poolIndex].pool,
+            };
+
+            poolIndex += 1;
+
+            if (game.sides.away) {
+              game.sides.away = {
                 sourceGame: pools[poolIndex].game,
                 score: { score: null },
                 pool: pools[poolIndex].pool,
               };
-              poolIndex++;
-              if (game.sides.away) {
-                game.sides.away = {
-                  sourceGame: pools[poolIndex].game,
-                  score: { score: null },
-                  pool: pools[poolIndex].pool,
-                };
-                poolIndex++;
-              }
-            });
 
-            generatedBrackets.push(...pools);
-            generatedBrackets.push({
-              key: `${key}_PoolFinal`,
-              sanitizedKey: `${key}_PoolFinal`.replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-_]/g, '').replace(/-+/g, '-'),
-              gender,
-              ageCategory,
-              weightCategory,
-              playerCount: numPools,
-              categoryPlayerCount,
-              shuffledPlayers: [],
-              game: playoffStruct.finalGame,
-              gamesByRound: playoffStruct.gamesByRound,
-              pool: 'Final',
-              outcomes: {},
-            });
-          }
+              poolIndex += 1;
+            }
+          });
+
+          generatedBrackets.push(...pools);
+
+          generatedBrackets.push({
+            key: `${key}_PoolFinal`,
+            sanitizedKey: sanitizeBracketKey(`${key}_PoolFinal`),
+            gender,
+            ageCategory,
+            weightCategory,
+            playerCount: numPools,
+            categoryPlayerCount,
+            shuffledPlayers: [],
+            game: playoffStruct.finalGame,
+            gamesByRound: playoffStruct.gamesByRound,
+            pool: 'Final',
+            outcomes: {},
+          });
         });
 
-        // ── Sorting ────────────────────────────────────────────────────────────
-        generatedBrackets.sort((a, b) => {
-          const g = GENDER_ORDER.indexOf(a.gender) - GENDER_ORDER.indexOf(b.gender);
-          if (g !== 0) return g;
-          const aIdx = AGE_CATEGORY_ORDER.indexOf(a.ageCategory);
-          const bIdx = AGE_CATEGORY_ORDER.indexOf(b.ageCategory);
-          if (aIdx !== bIdx) return aIdx - bIdx;
-        const weightCmp = compareWeightCategories(a, b);
-if (weightCmp !== 0) return weightCmp;
-          const poolOrder = a.pool ? (a.pool === 'Final' ? 999 : a.pool.charCodeAt(0)) : 0;
-          const pbOrder = b.pool ? (b.pool === 'Final' ? 999 : b.pool.charCodeAt(0)) : 0;
-          return poolOrder - pbOrder;
-        });
+        const sortedGeneratedBrackets = sortBrackets(generatedBrackets);
 
         // ── Merge preserved locked brackets ────────────────────────────────────
         const finalBrackets = [...preservedLocked];
-        
-        generatedBrackets.forEach(newB => {
-          // ✅ Pehle check karo ki kya ye bracket locked hai
-          if (lockedBrackets.has(newB.key)) {
-            console.log(`⏸️ Skipping locked bracket in generation: ${newB.key}`);
+
+        sortedGeneratedBrackets.forEach((newBracket) => {
+          if (safeLockedBrackets.has(newBracket.key)) {
+            console.log(`⏸️ Skipping locked bracket in generation: ${newBracket.key}`);
             return;
           }
-          
-          // Find existing bracket with same key in finalBrackets
-          const existingIndex = finalBrackets.findIndex(b => b.key === newB.key);
-          
+
+          const existingIndex = finalBrackets.findIndex(
+            (bracket) => bracket.key === newBracket.key
+          );
+
           if (existingIndex !== -1) {
             const existingBracket = finalBrackets[existingIndex];
-            
-           const getPlayerIdentity = (p) =>
-  String(p?.entryId || p?.name || "").trim();
 
-const existingPlayerIds = existingBracket.shuffledPlayers
-  ?.map(getPlayerIdentity)
-  .filter(Boolean)
-  .sort();
+            const getPlayerIdentity = (player) =>
+              String(player?.entryId || player?.name || '').trim();
 
-const newPlayerIds = newB.shuffledPlayers
-  ?.map(getPlayerIdentity)
-  .filter(Boolean)
-  .sort();
+            const existingPlayerIds = existingBracket.shuffledPlayers
+              ?.map(getPlayerIdentity)
+              .filter(Boolean)
+              .sort();
 
-const playersChanged = JSON.stringify(existingPlayerIds) !== JSON.stringify(newPlayerIds);
+            const newPlayerIds = newBracket.shuffledPlayers
+              ?.map(getPlayerIdentity)
+              .filter(Boolean)
+              .sort();
 
+            const playersChanged =
+              JSON.stringify(existingPlayerIds) !== JSON.stringify(newPlayerIds);
 
             if (!playersChanged) {
-              // Players same hain, preserve existing (shuffled) bracket
-              console.log(`🔁 Preserving existing bracket (players same): ${newB.key}`);
+              console.log(`🔁 Preserving existing bracket (players same): ${newBracket.key}`);
               return;
-            } else {
-              // Players different hain, update with new
-              console.log(`🔄 Updating bracket with new players: ${newB.key}`);
-              finalBrackets[existingIndex] = newB;
             }
-          } else {
-            // New bracket, add it
-            finalBrackets.push(newB);
+
+            console.log(`🔄 Updating bracket with new players: ${newBracket.key}`);
+            finalBrackets[existingIndex] = newBracket;
+            return;
           }
+
+          finalBrackets.push(newBracket);
         });
 
-        // Final sort again
-        finalBrackets.sort((a, b) => {
-          const g = GENDER_ORDER.indexOf(a.gender) - GENDER_ORDER.indexOf(b.gender);
-          if (g !== 0) return g;
-          const aIdx = AGE_CATEGORY_ORDER.indexOf(a.ageCategory);
-          const bIdx = AGE_CATEGORY_ORDER.indexOf(b.ageCategory);
-          if (aIdx !== bIdx) return aIdx - bIdx;
-       const weightCmp = compareWeightCategories(a, b);
-if (weightCmp !== 0) return weightCmp;
-          const poolOrder = a.pool ? (a.pool === 'Final' ? 999 : a.pool.charCodeAt(0)) : 0;
-          const pbOrder = b.pool ? (b.pool === 'Final' ? 999 : b.pool.charCodeAt(0)) : 0;
-          return poolOrder - pbOrder;
-        });
+        const sortedFinalBrackets = sortBrackets(finalBrackets);
 
         // ── Update state only if changed ──────────────────────────────────────
-        const bracketsChanged = JSON.stringify(finalBrackets.map(b => b.key)) !== JSON.stringify(brackets.map(b => b.key));
+        const bracketsChanged =
+          JSON.stringify(sortedFinalBrackets.map((bracket) => bracket.key)) !==
+          JSON.stringify(brackets.map((bracket) => bracket.key));
+
         if (bracketsChanged) {
           console.log('✅ Updating brackets (changed detected)');
-          setBrackets(finalBrackets);
+          setBrackets(sortedFinalBrackets);
         } else {
           console.log('⏸️ Skipping brackets update (no change)');
         }
 
-        let newOutcomes = { ...bracketsOutcomes }; // पहले से जो outcomes हैं रखो
+        let newOutcomes = { ...bracketsOutcomes };
 
-        // अगर bracket नया है तो empty outcomes
-        finalBrackets.forEach(br => {
-          if (!newOutcomes[br.key]) {
-            newOutcomes[br.key] = {};
+        sortedFinalBrackets.forEach((bracket) => {
+          if (!newOutcomes[bracket.key]) {
+            newOutcomes[bracket.key] = {};
           }
         });
 
-        // preserved को merge करो (locked वाले priority)
-        newOutcomes = { ...newOutcomes, ...preservedOutcomes };
+        newOutcomes = {
+          ...newOutcomes,
+          ...preservedOutcomes,
+        };
 
-        // outcomesChanged check
-        const outcomesChanged = JSON.stringify(newOutcomes) !== JSON.stringify(bracketsOutcomes);
+        const outcomesChanged =
+          JSON.stringify(newOutcomes) !== JSON.stringify(bracketsOutcomes);
+
         if (outcomesChanged) {
           setBracketsOutcomes(newOutcomes);
         }
 
-        // ── Compute & Update Medals ───────────────────────────────────────────
-        const newMedals = computeMedals(finalBrackets, newOutcomes);
-        setComputedMedals(newMedals);           // ← NEW: update local state
-        setMedalsByCategory(newMedals);         // keep for parent compatibility
+        // ── Compute & Update Medals through centralized medalUtils ─────────────
+        const newMedals = buildMedalsByCategory({
+          bracketsSnapshot: sortedFinalBrackets,
+          outcomesSnapshot: newOutcomes,
+        });
+
+        setComputedMedals(newMedals);
+
+        if (typeof setMedalsByCategory === 'function') {
+          setMedalsByCategory(newMedals);
+        }
 
         console.log('Bracket generation completed successfully');
       } catch (err) {
         console.error('Bracket generation failed:', err);
-        setGenerationError('Failed to generate brackets. Please try again or reduce the number of players.');
+        setGenerationError(
+          'Failed to generate brackets. Please try again or reduce the number of players.'
+        );
       } finally {
         setIsGenerating(false);
       }
-    }, 600), // 600ms debounce
+    }, 600),
     [
       players,
-      lockedBrackets,
+      safeLockedBrackets,
       brackets,
       bracketsOutcomes,
       setBrackets,
       setBracketsOutcomes,
       setMedalsByCategory,
+      buildPlayerCategorySignature,
+      sortBrackets,
     ]
   );
 
-  // Trigger generation on relevant changes
+  // Keep computed medals updated when only outcomes change.
+ const lastComputedMedalsHashRef = useRef('');
+
+useEffect(() => {
+  const newMedals = buildMedalsByCategory({
+    bracketsSnapshot: brackets,
+    outcomesSnapshot: bracketsOutcomes,
+  });
+
+  const hash = JSON.stringify(newMedals);
+
+  if (lastComputedMedalsHashRef.current === hash) {
+    return;
+  }
+
+  lastComputedMedalsHashRef.current = hash;
+  setComputedMedals(newMedals);
+
+  if (typeof setMedalsByCategory === 'function') {
+    setMedalsByCategory(newMedals);
+  }
+}, [brackets, bracketsOutcomes]);
+
+  // Trigger generation on relevant changes.
   useEffect(() => {
     console.log('🔍 Generator useEffect triggered', {
       playersCount: players.length,
       bracketsCount: brackets.length,
-      skipGen: skipGenerationRef.current
+      skipGen: skipGenerationRef.current,
     });
-    
-    // Skip generation if we're in a manual operation mode
+
     if (skipGenerationRef.current) {
       console.log('⏸️ Skipping useEffect generation');
-      return;
+      return undefined;
     }
-    
-    // Only generate initially or when players significantly change
-    if (players.length === 0) {
+
+    if (!Array.isArray(players) || players.length === 0) {
       console.log('⏸️ No players, skipping generation');
-      return;
+      return undefined;
     }
-    
+
     console.log('🚀 Triggering bracket generation');
     generateBrackets();
-    
-    return () => generateBrackets.cancel(); // Cleanup debounce on unmount
-  }, [generateBrackets, players.length]); // Only depend on player count
 
-  // Function to manually skip next generation (for shuffle operations)
+    return () => generateBrackets.cancel();
+  }, [generateBrackets, players.length, brackets.length]);
+
   const skipNextGeneration = useCallback(() => {
     console.log('⏸️ Setting skip generation flag');
     skipGenerationRef.current = true;
   }, []);
 
-  // Return current state + generation status
   return {
     generatedBrackets: brackets,
     computedMedals,
     isGenerating,
     generationError,
-    skipNextGeneration, // Export this function for shuffle operations
+    skipNextGeneration,
   };
 }

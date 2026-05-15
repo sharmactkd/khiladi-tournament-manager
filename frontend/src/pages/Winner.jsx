@@ -44,7 +44,14 @@ const normalizeAgeCategory = (value) => {
   const v = String(value || "").trim();
   const lower = v.toLowerCase();
 
-  if (lower === "sub-junior" || lower === "sub junior") return "Sub-Junior";
+  if (
+  lower === "sub-junior" ||
+  lower === "sub junior" ||
+  lower === "sub - junior" ||
+  lower === "subjunior"
+) {
+  return "Sub-Junior";
+}
   if (lower === "cadet") return "Cadet";
   if (lower === "junior") return "Junior";
   if (lower === "senior") return "Senior";
@@ -101,15 +108,25 @@ const ageCategoryOrder = [
 const genderOrder = ["Male", "Female"];
 
 const sortByAgeGenderWeight = (a, b) => {
-  const ageA = ageCategoryOrder.indexOf(a.age);
-  const ageB = ageCategoryOrder.indexOf(b.age);
+  const ageAValue = normalizeAgeCategory(a.age);
+  const ageBValue = normalizeAgeCategory(b.age);
 
-  if (ageA !== ageB) return (ageA === -1 ? 999 : ageA) - (ageB === -1 ? 999 : ageB);
+  const ageA = ageCategoryOrder.indexOf(ageAValue);
+  const ageB = ageCategoryOrder.indexOf(ageBValue);
 
-  const genderA = genderOrder.indexOf(a.gender);
-  const genderB = genderOrder.indexOf(b.gender);
+  if (ageA !== ageB) {
+    return (ageA === -1 ? 999 : ageA) - (ageB === -1 ? 999 : ageB);
+  }
 
-  if (genderA !== genderB) return (genderA === -1 ? 999 : genderA) - (genderB === -1 ? 999 : genderB);
+  const genderAValue = normalizeGender(a.gender);
+  const genderBValue = normalizeGender(b.gender);
+
+  const genderA = genderOrder.indexOf(genderAValue);
+  const genderB = genderOrder.indexOf(genderBValue);
+
+  if (genderA !== genderB) {
+    return (genderA === -1 ? 999 : genderA) - (genderB === -1 ? 999 : genderB);
+  }
 
   return getWeightSortValue(a.weightCategory) - getWeightSortValue(b.weightCategory);
 };
@@ -235,7 +252,13 @@ setAvailableEventsFromServer(winnersRes.data?.availableEvents || ["OVERALL"]);
     }
   }, [availableEvents, selectedEvent]);
 
- const grouped = groupedFromServer;
+const grouped = useMemo(() => {
+  const safeGrouped = Array.isArray(groupedFromServer)
+    ? [...groupedFromServer]
+    : [];
+
+  return safeGrouped.sort(sortByAgeGenderWeight);
+}, [groupedFromServer]);
 
   const hasWinners = grouped.length > 0;
 
@@ -396,7 +419,10 @@ setAvailableEventsFromServer(winnersRes.data?.availableEvents || ["OVERALL"]);
                 <tbody>
                   {page.weights.map((group) =>
                     group.rows.map((r, i) => (
-                      <tr key={`${page.gender}_${page.age}_${group.weightCategory}_${r.medal}_${r.name}_${i}`}>
+                      <tr
+  key={`${page.gender}_${page.age}_${group.weightCategory}_${r.medal}_${r.name}_${i}`}
+  className={i === 0 ? styles.weightGroupStart : ""}
+>
                         {i === 0 && (
                           <td rowSpan={group.rows.length} className={`${styles.weightCell} ${styles.weightCellFirst}`}>
                             {group.weightCategory}

@@ -1402,3 +1402,20 @@
     justify-content: flex-start;
   }
 }
+
+.virtualRow:hover {
+  background: linear-gradient(
+    to right,
+    rgba(59, 130, 246, 0.10),
+    rgba(59, 130, 246, 0.04)
+  ) !important;
+
+  box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.18);
+
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+
+.virtualRow:hover .virtualCell {
+  background: transparent !important;
+}

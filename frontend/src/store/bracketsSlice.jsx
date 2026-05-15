@@ -361,47 +361,73 @@ const bracketsSlice = createSlice({
           return Array.isArray(b?.gamesByRound) ? b.gamesByRound : [];
         };
 
-      const findDirectCrossBracketDependents = (
-  sourceBracketKey,
-  sourceGameId
-) => {
+const findDirectCrossBracketDependents = (sourceBracketKey, sourceGameId) => {
   const res = [];
-  const brackets = Array.isArray(state.brackets)
-    ? state.brackets
-    : [];
+  const brackets = Array.isArray(state.brackets) ? state.brackets : [];
 
-  for (const b of brackets) {
-    const bKey = b?.key;
-    const gbr = Array.isArray(b?.gamesByRound)
-      ? b.gamesByRound
+  const sourceBracket = brackets.find(
+    (bracket) => String(bracket?.key || '') === String(sourceBracketKey || '')
+  );
+
+  const sourcePool = String(sourceBracket?.pool || '').trim();
+  const sourceBaseKey = String(sourceBracketKey || '').replace(/_Pool.*$/i, '');
+
+  for (const bracket of brackets) {
+    const targetBracketKey = bracket?.key;
+    const gamesByRound = Array.isArray(bracket?.gamesByRound)
+      ? bracket.gamesByRound
       : [];
 
-    if (!bKey || !gbr.length) continue;
+    if (!targetBracketKey || !gamesByRound.length) continue;
 
-    for (const round of gbr) {
-      for (const g of round || []) {
-        const sides = [
-          g?.sides?.home,
-          g?.sides?.away,
-        ].filter(Boolean);
+    for (const round of gamesByRound) {
+      for (const game of round || []) {
+        const sides = [game?.sides?.home, game?.sides?.away].filter(Boolean);
 
-        for (const s of sides) {
-          const srcGame = s?.sourceGame;
-
+        for (const sideObj of sides) {
+          const srcGame = sideObj?.sourceGame;
           if (!srcGame?.id) continue;
 
-          // ✅ STRICT CHECK
           const sameGame =
             String(srcGame.id) === String(sourceGameId);
 
-          const sameBracket =
-            String(srcGame.bracketKey || "") ===
-            String(sourceBracketKey || "");
+          if (!sameGame) continue;
 
-          if (sameGame && sameBracket) {
+          const explicitSameBracket =
+            srcGame.bracketKey &&
+            String(srcGame.bracketKey) === String(sourceBracketKey);
+
+          const sameBracketObject =
+            srcGame === sourceBracket?.game;
+
+          const targetIsPoolFinal =
+            String(targetBracketKey || '').toLowerCase().includes('poolfinal');
+
+          const targetBaseKey = String(targetBracketKey || '').replace(/_Pool.*$/i, '');
+
+          const poolFinalSourceMatch =
+            targetIsPoolFinal &&
+            sourcePool &&
+            sourceBaseKey === targetBaseKey &&
+            String(sideObj.pool || '') === sourcePool;
+
+          const legacyMatchWithoutBracketKey =
+            !srcGame.bracketKey &&
+            sourceBaseKey === targetBaseKey &&
+            (
+              poolFinalSourceMatch ||
+              String(targetBracketKey) === String(sourceBracketKey)
+            );
+
+          if (
+            explicitSameBracket ||
+            sameBracketObject ||
+            poolFinalSourceMatch ||
+            legacyMatchWithoutBracketKey
+          ) {
             res.push({
-              bracketKey: bKey,
-              gameId: g.id,
+              bracketKey: targetBracketKey,
+              gameId: game.id,
             });
 
             break;
@@ -412,28 +438,24 @@ const bracketsSlice = createSlice({
   }
 
   return res;
-};
+}; 
 
         const queue = [];
         const visited = new Set();
 
-        const seedFrom = (srcBracketKey, srcGameId) => {
-          const depsSame = findDependentGames(srcGameId, getGamesByRound(srcBracketKey));
+       const seedFrom = (srcBracketKey, srcGameId) => {
+  const depsSame = findDependentGames(srcGameId, getGamesByRound(srcBracketKey));
 
-          for (const depId of depsSame) {
-            queue.push({ bracketKey: srcBracketKey, gameId: depId });
-          }
+  for (const depId of depsSame) {
+    queue.push({ bracketKey: srcBracketKey, gameId: depId });
+  }
 
-          const depsCross =
-  findDirectCrossBracketDependents(
-    srcBracketKey,
-    srcGameId
-  );
+  const depsCross = findDirectCrossBracketDependents(srcBracketKey, srcGameId);
 
-          for (const dep of depsCross) {
-            queue.push(dep);
-          }
-        };
+  for (const dep of depsCross) {
+    queue.push(dep);
+  }
+};
 
         seedFrom(bracketKey, gameId);
 

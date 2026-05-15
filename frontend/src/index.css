@@ -38,3 +38,26 @@ body {
   background: #cf0006;
   border-radius: 4px;
 }
+
+/* TieSheet medal locked warning toast */
+.Toastify__toast-theme--colored.Toastify__toast--warning {
+  background: #cf0006 !important;
+  color: #ffffff !important;
+  font-family: Verdana, Geneva, Tahoma, sans-serif;
+}
+
+/* progress bar */
+.Toastify__progress-bar-theme--colored.Toastify__progress-bar--warning {
+  background: rgba(255, 255, 255, 0.85) !important;
+}
+
+/* icon */
+.Toastify__toast--warning .Toastify__toast-icon svg {
+  fill: #ffffff !important;
+}
+
+/* close button */
+.Toastify__close-button--colored {
+  color: #ffffff !important;
+  opacity: 0.9;
+}
