@@ -16,7 +16,7 @@ const toObjectId = (id) =>
 
 const writeAdminLog = async (req, action, targetUserId = null, details = {}) => {
   try {
-    await AdminLog.create({
+    return await AdminLog.create({
       adminId: req.user._id,
       action,
       targetUserId,
@@ -24,8 +24,20 @@ const writeAdminLog = async (req, action, targetUserId = null, details = {}) => 
       ip: req.ip || "",
       userAgent: req.get("user-agent") || "",
     });
-  } catch {
-    // Never block admin action because audit write failed.
+  } catch (error) {
+    console.error("CRITICAL: Admin audit log write failed", {
+      action,
+      targetUserId,
+      details,
+      adminId: req.user?._id,
+      error: error.message,
+    });
+
+    const auditError = new Error(
+      "Security audit log failed. Action was blocked for safety."
+    );
+    auditError.statusCode = 500;
+    throw auditError;
   }
 };
 
@@ -34,6 +46,42 @@ const addDays = (date, days) => {
   d.setDate(d.getDate() + Number(days));
   return d;
 };
+
+const normalizePage = (page) => Math.max(Number(page) || 1, 1);
+
+const normalizeLimit = (limit) => {
+  return Math.min(Math.max(Number(limit) || 20, 1), 100);
+};
+
+const normalizeDateRange = ({ from, to }) => {
+  const createdAt = {};
+
+  if (from) {
+    const start = new Date(from);
+    if (!Number.isNaN(start.getTime())) {
+      createdAt.$gte = start;
+    }
+  }
+
+  if (to) {
+    const end = new Date(to);
+    if (!Number.isNaN(end.getTime())) {
+      end.setHours(23, 59, 59, 999);
+      createdAt.$lte = end;
+    }
+  }
+
+  return Object.keys(createdAt).length > 0 ? createdAt : null;
+};
+
+const buildPagination = ({ page, limit, total }) => ({
+  page,
+  limit,
+  total,
+  pages: Math.ceil(total / limit),
+  hasNextPage: page * limit < total,
+  hasPrevPage: page > 1,
+});
 
 export const getBillingDashboard = async (req, res) => {
   const now = new Date();
@@ -240,6 +288,14 @@ export const updatePlatformSettings = async (req, res) => {
       const currentPlan = currentPlans[planType] || {};
       const currentVersion = Number(currentPlan.version || 1);
 
+      const incomingFeatures = Array.isArray(incomingPlan.features)
+        ? incomingPlan.features.map((item) => String(item || "").trim()).filter(Boolean)
+        : [];
+
+      const currentFeatures = Array.isArray(currentPlan.features)
+        ? currentPlan.features.map((item) => String(item || "").trim()).filter(Boolean)
+        : [];
+
       const comparableFields = [
         "label",
         "enabled",
@@ -250,15 +306,27 @@ export const updatePlatformSettings = async (req, res) => {
         "description",
       ];
 
-      const changed = comparableFields.some((field) => {
+      const scalarChanged = comparableFields.some((field) => {
         const oldValue = currentPlan[field];
         const newValue = incomingPlan[field];
 
         return String(oldValue ?? "") !== String(newValue ?? "");
       });
 
+      const featuresChanged =
+        JSON.stringify([...new Set(currentFeatures)].sort()) !==
+        JSON.stringify([...new Set(incomingFeatures)].sort());
+
+      const changed = scalarChanged || featuresChanged;
+
       versionedPlans[planType] = {
         ...incomingPlan,
+        features:
+          incomingFeatures.length > 0
+            ? [...new Set(incomingFeatures)]
+            : currentFeatures.length > 0
+              ? [...new Set(currentFeatures)]
+              : ["tiesheet", "officials", "team_payments", "tiesheet_record"],
         version: changed ? currentVersion + 1 : currentVersion,
         updatedAt: changed ? new Date() : currentPlan.updatedAt || new Date(),
       };
@@ -282,7 +350,7 @@ export const updatePlatformSettings = async (req, res) => {
     message: "Platform settings updated successfully",
     settings,
   });
-};
+}; 
 
 export const getBillingUsers = async (req, res) => {
   const { search = "", filter = "all", page = 1, limit = 20 } = req.query;
@@ -646,8 +714,19 @@ export const forceLogoutUser = async (req, res) => {
 };
 
 export const listCoupons = async (req, res) => {
-  const coupons = await Coupon.find({})
+  const { includeDeleted = "false" } = req.query;
+
+  const query =
+    includeDeleted === "true"
+      ? {}
+      : {
+          deletedAt: null,
+        };
+
+  const coupons = await Coupon.find(query)
     .populate("createdBy", "name email role")
+    .populate("updatedBy", "name email role")
+    .populate("deletedBy", "name email role")
     .sort({ createdAt: -1 })
     .lean();
 
@@ -661,7 +740,10 @@ export const createCoupon = async (req, res) => {
     createdBy: req.user._id,
   };
 
-  const existing = await Coupon.findOne({ code: payload.code });
+  const existing = await Coupon.findOne({
+  code: payload.code,
+  deletedAt: null,
+});
 
   if (existing) {
     return res.status(409).json({
@@ -690,10 +772,17 @@ export const updateCoupon = async (req, res) => {
 
   if (update.code) update.code = String(update.code).trim().toUpperCase();
 
-  const coupon = await Coupon.findByIdAndUpdate(couponId, update, {
-    new: true,
-    runValidators: true,
-  });
+  const coupon = await Coupon.findOneAndUpdate(
+    {
+      _id: couponId,
+      deletedAt: null,
+    },
+    update,
+    {
+      new: true,
+      runValidators: true,
+    }
+  );
 
   if (!coupon) {
     return res.status(404).json({ success: false, message: "Coupon not found" });
@@ -706,14 +795,20 @@ export const updateCoupon = async (req, res) => {
     message: "Coupon updated successfully",
     coupon,
   });
-};
+}; 
 
 export const disableCoupon = async (req, res) => {
   const { couponId } = req.params;
 
-  const coupon = await Coupon.findByIdAndUpdate(
-    couponId,
-    { active: false, updatedBy: req.user._id },
+  const coupon = await Coupon.findOneAndUpdate(
+    {
+      _id: couponId,
+      deletedAt: null,
+    },
+    {
+      active: false,
+      updatedBy: req.user._id,
+    },
     { new: true }
   );
 
@@ -732,18 +827,37 @@ export const disableCoupon = async (req, res) => {
 
 export const deleteCoupon = async (req, res) => {
   const { couponId } = req.params;
+  const { reason = "" } = req.body || {};
 
-  const coupon = await Coupon.findByIdAndDelete(couponId);
+  const coupon = await Coupon.findOneAndUpdate(
+    {
+      _id: couponId,
+      deletedAt: null,
+    },
+    {
+      active: false,
+      deletedAt: new Date(),
+      deletedBy: req.user._id,
+      deleteReason: String(reason || "").trim(),
+      updatedBy: req.user._id,
+    },
+    { new: true }
+  );
 
   if (!coupon) {
     return res.status(404).json({ success: false, message: "Coupon not found" });
   }
 
-  await writeAdminLog(req, "coupon_deleted", null, { couponId, code: coupon.code });
+  await writeAdminLog(req, "coupon_soft_deleted", null, {
+    couponId,
+    code: coupon.code,
+    reason,
+  });
 
   return res.json({
     success: true,
     message: "Coupon deleted successfully",
+    coupon,
   });
 };
 
@@ -759,10 +873,11 @@ export const validateCoupon = async (req, res) => {
     });
   }
 
-  const coupon = await Coupon.findOne({
-    code: String(code).trim().toUpperCase(),
-    active: true,
-  });
+ const coupon = await Coupon.findOne({
+  code: String(code).trim().toUpperCase(),
+  active: true,
+  deletedAt: null,
+});
 
   if (!coupon) {
     return res.status(404).json({
@@ -831,10 +946,11 @@ export const applyCoupon = async (req, res) => {
   const normalizedCode = String(code || "").trim().toUpperCase();
   const now = new Date();
 
-  const coupon = await Coupon.findOne({
-    code: normalizedCode,
-    active: true,
-  });
+ const coupon = await Coupon.findOne({
+  code: normalizedCode,
+  active: true,
+  deletedAt: null,
+});
 
   if (!coupon) {
     return res.status(404).json({ success: false, message: "Invalid coupon" });
@@ -855,9 +971,10 @@ export const applyCoupon = async (req, res) => {
   }
 
   const updatedCoupon = await Coupon.findOneAndUpdate(
-    {
-      _id: coupon._id,
-      active: true,
+  {
+  _id: coupon._id,
+  active: true,
+  deletedAt: null,
       $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
       $expr: {
         $or: [
@@ -929,24 +1046,171 @@ export const applyCoupon = async (req, res) => {
 };
 
 export const listTransactions = async (req, res) => {
-  const transactions = await PaymentTransaction.find({})
-    .populate("userId", "name email phone")
-    .sort({ createdAt: -1 })
-    .limit(500)
-    .lean();
+  const {
+    page = 1,
+    limit = 20,
+    search = "",
+    status = "",
+    gateway = "",
+    planType = "",
+    from = "",
+    to = "",
+  } = req.query;
 
-  return res.json({ success: true, transactions });
+  const safePage = normalizePage(page);
+  const safeLimit = normalizeLimit(limit);
+
+  const query = {};
+
+  if (status) {
+    query.status = status;
+  }
+
+  if (gateway) {
+    query.paymentGateway = gateway;
+  }
+
+  if (planType) {
+    query.planType = planType;
+  }
+
+  const dateRange = normalizeDateRange({ from, to });
+
+  if (dateRange) {
+    query.createdAt = dateRange;
+  }
+
+  if (search) {
+    const safeSearch = String(search).trim();
+
+    query.$or = [
+      { paymentId: { $regex: safeSearch, $options: "i" } },
+      { orderId: { $regex: safeSearch, $options: "i" } },
+      { couponUsed: { $regex: safeSearch, $options: "i" } },
+      { planType: { $regex: safeSearch, $options: "i" } },
+      { paymentGateway: { $regex: safeSearch, $options: "i" } },
+    ];
+
+    if (mongoose.Types.ObjectId.isValid(safeSearch)) {
+      query.$or.push({ userId: new mongoose.Types.ObjectId(safeSearch) });
+    }
+  }
+
+  const skip = (safePage - 1) * safeLimit;
+
+  const [transactions, total] = await Promise.all([
+    PaymentTransaction.find(query)
+      .populate("userId", "name email phone")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .lean(),
+    PaymentTransaction.countDocuments(query),
+  ]);
+
+  return res.json({
+    success: true,
+    transactions,
+    filters: {
+      search,
+      status,
+      gateway,
+      planType,
+      from,
+      to,
+    },
+    pagination: buildPagination({
+      page: safePage,
+      limit: safeLimit,
+      total,
+    }),
+  });
 };
 
 export const listAuditLogs = async (req, res) => {
-  const logs = await AdminLog.find({})
-    .populate("adminId", "name email role")
-    .populate("targetUserId", "name email role")
-    .sort({ timestamp: -1 })
-    .limit(500)
-    .lean();
+  const {
+    page = 1,
+    limit = 20,
+    search = "",
+    action = "",
+    adminId = "",
+    targetUserId = "",
+    from = "",
+    to = "",
+  } = req.query;
 
-  return res.json({ success: true, logs });
+  const safePage = normalizePage(page);
+  const safeLimit = normalizeLimit(limit);
+
+  const query = {};
+
+  if (action) {
+    query.action = { $regex: String(action).trim(), $options: "i" };
+  }
+
+  if (adminId && mongoose.Types.ObjectId.isValid(adminId)) {
+    query.adminId = new mongoose.Types.ObjectId(adminId);
+  }
+
+  if (targetUserId && mongoose.Types.ObjectId.isValid(targetUserId)) {
+    query.targetUserId = new mongoose.Types.ObjectId(targetUserId);
+  }
+
+  const dateRange = normalizeDateRange({ from, to });
+
+  if (dateRange) {
+    query.timestamp = dateRange;
+  }
+
+  if (search) {
+    const safeSearch = String(search).trim();
+
+    query.$or = [
+      { action: { $regex: safeSearch, $options: "i" } },
+      { ip: { $regex: safeSearch, $options: "i" } },
+      { userAgent: { $regex: safeSearch, $options: "i" } },
+      { "details.reason": { $regex: safeSearch, $options: "i" } },
+      { "details.code": { $regex: safeSearch, $options: "i" } },
+    ];
+
+    if (mongoose.Types.ObjectId.isValid(safeSearch)) {
+      query.$or.push(
+        { adminId: new mongoose.Types.ObjectId(safeSearch) },
+        { targetUserId: new mongoose.Types.ObjectId(safeSearch) }
+      );
+    }
+  }
+
+  const skip = (safePage - 1) * safeLimit;
+
+  const [logs, total] = await Promise.all([
+    AdminLog.find(query)
+      .populate("adminId", "name email role")
+      .populate("targetUserId", "name email role")
+      .sort({ timestamp: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .lean(),
+    AdminLog.countDocuments(query),
+  ]);
+
+  return res.json({
+    success: true,
+    logs,
+    filters: {
+      search,
+      action,
+      adminId,
+      targetUserId,
+      from,
+      to,
+    },
+    pagination: buildPagination({
+      page: safePage,
+      limit: safeLimit,
+      total,
+    }),
+  });
 };
 
 export const reconcileBillingPayments = async (req, res) => {

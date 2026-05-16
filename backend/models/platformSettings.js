@@ -1,5 +1,20 @@
 import mongoose from "mongoose";
 
+export const PREMIUM_FEATURES = {
+  TIESHEET: "tiesheet",
+  OFFICIALS: "officials",
+  TEAM_PAYMENTS: "team_payments",
+  TIESHEET_RECORD: "tiesheet_record",
+};
+
+const normalizeFeatures = (features) => {
+  if (!Array.isArray(features)) {
+    return Object.values(PREMIUM_FEATURES);
+  }
+
+  return [...new Set(features.map((item) => String(item || "").trim()).filter(Boolean))];
+};
+
 const planSchema = new mongoose.Schema(
   {
     label: { type: String, required: true, trim: true },
@@ -13,6 +28,12 @@ const planSchema = new mongoose.Schema(
       default: "unlimited",
     },
     description: { type: String, default: "", trim: true },
+
+    features: {
+      type: [String],
+      default: () => Object.values(PREMIUM_FEATURES),
+      set: normalizeFeatures,
+    },
 
     version: {
       type: Number,
@@ -37,6 +58,7 @@ const defaultPlans = () => ({
     currency: "INR",
     accessType: "tournament",
     description: "Premium access for one tournament",
+    features: Object.values(PREMIUM_FEATURES),
     version: 1,
     updatedAt: new Date(),
   },
@@ -48,6 +70,7 @@ const defaultPlans = () => ({
     currency: "INR",
     accessType: "unlimited",
     description: "Unlimited premium access for 6 months",
+    features: Object.values(PREMIUM_FEATURES),
     version: 1,
     updatedAt: new Date(),
   },
@@ -59,6 +82,7 @@ const defaultPlans = () => ({
     currency: "INR",
     accessType: "unlimited",
     description: "Unlimited premium access for 1 year",
+    features: Object.values(PREMIUM_FEATURES),
     version: 1,
     updatedAt: new Date(),
   },
@@ -118,6 +142,10 @@ platformSettingsSchema.statics.getSettings = async function () {
     },
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
+};
+
+platformSettingsSchema.statics.getPremiumFeatures = function () {
+  return PREMIUM_FEATURES;
 };
 
 const PlatformSettings = mongoose.model(

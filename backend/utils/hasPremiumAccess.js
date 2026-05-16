@@ -1,6 +1,8 @@
 import mongoose from "mongoose";
 import User from "../models/user.js";
-import PlatformSettings from "../models/platformSettings.js";
+import PlatformSettings, {
+  PREMIUM_FEATURES,
+} from "../models/platformSettings.js";
 import Coupon from "../models/coupon.js";
 import Payment from "../models/payment.js";
 
@@ -16,6 +18,16 @@ const normalizeDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
+const normalizeFeature = (feature) => String(feature || "").trim();
+
+const normalizeFeatureList = (features) => {
+  if (!Array.isArray(features) || features.length === 0) {
+    return Object.values(PREMIUM_FEATURES);
+  }
+
+  return [...new Set(features.map((item) => normalizeFeature(item)).filter(Boolean))];
+};
+
 const buildResult = ({
   hasAccess = false,
   reason = "premium-access-required",
@@ -26,6 +38,8 @@ const buildResult = ({
   paymentId = null,
   tournamentId = null,
   feature = null,
+  featureAllowed = null,
+  accessPriority = null,
 } = {}) => ({
   hasAccess,
   reason,
@@ -36,26 +50,25 @@ const buildResult = ({
   paymentId,
   tournamentId,
   feature,
+  featureAllowed,
+  accessPriority,
 });
 
-const isFeatureAllowedByLegacyPlan = (planType, feature) => {
-  const legacyFeatures = {
-    single: ["tiesheet", "officials", "team_payments", "tiesheet_record"],
-    six_months: ["tiesheet", "officials", "team_payments", "tiesheet_record"],
-    one_year: ["tiesheet", "officials", "team_payments", "tiesheet_record"],
-    monthly: ["tiesheet", "officials", "team_payments", "tiesheet_record"],
-    yearly: ["tiesheet", "officials", "team_payments", "tiesheet_record"],
-    lifetime: ["tiesheet", "officials", "team_payments", "tiesheet_record"],
-  };
+const isFeatureAllowedByPayment = (payment, feature) => {
+  const safeFeature = normalizeFeature(feature);
 
-  if (!feature) return true;
-  return legacyFeatures[planType]?.includes(feature) || false;
+  if (!safeFeature) return true;
+
+  const features = normalizeFeatureList(payment?.planSnapshot?.features);
+
+  return features.includes(safeFeature);
 };
 
 const findCouponAccess = async ({ userId, planType, now }) => {
-  const coupons = await Coupon.find({
-    active: true,
-    type: "full_access",
+ const coupons = await Coupon.find({
+  active: true,
+  deletedAt: null,
+  type: "full_access",
     "usedBy.userId": userId,
     $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
   })
@@ -84,10 +97,11 @@ const hasPremiumAccess = async ({
 } = {}) => {
   const safeUserId = normalizeId(userId || user?._id || user?.id);
   const safeTournamentId = normalizeId(tournamentId);
+  const safeFeature = normalizeFeature(feature);
   const now = new Date();
 
   if (!safeUserId) {
-    return buildResult({ reason: "invalid-user" });
+    return buildResult({ reason: "invalid-user", feature: safeFeature });
   }
 
   const [settings, freshUser] = await Promise.all([
@@ -102,15 +116,15 @@ const hasPremiumAccess = async ({
   ]);
 
   if (!freshUser) {
-    return buildResult({ reason: "user-not-found" });
+    return buildResult({ reason: "user-not-found", feature: safeFeature });
   }
 
   if (freshUser.isDeleted) {
-    return buildResult({ reason: "user-deleted" });
+    return buildResult({ reason: "user-deleted", feature: safeFeature });
   }
 
   if (freshUser.isSuspended || freshUser.blocked) {
-    return buildResult({ reason: "user-blocked" });
+    return buildResult({ reason: "user-blocked", feature: safeFeature });
   }
 
   if (settings?.maintenanceFreeAccess) {
@@ -121,35 +135,41 @@ const hasPremiumAccess = async ({
       expiresAt: null,
       accessType: "global",
       tournamentId: safeTournamentId,
-      feature,
+      feature: safeFeature,
+      featureAllowed: true,
+      accessPriority: 1,
     });
   }
 
   if (freshUser.adminAccessOverride) {
-  const overrideExpiry = normalizeDate(freshUser.premiumExpiresAt);
+    const overrideExpiry = normalizeDate(freshUser.premiumExpiresAt);
 
-  if (!overrideExpiry || overrideExpiry > now) {
+    if (!overrideExpiry || overrideExpiry > now) {
+      return buildResult({
+        hasAccess: true,
+        reason: "admin-override",
+        source: "admin",
+        expiresAt: overrideExpiry,
+        accessType: "override",
+        tournamentId: safeTournamentId,
+        feature: safeFeature,
+        featureAllowed: true,
+        accessPriority: 2,
+      });
+    }
+
     return buildResult({
-      hasAccess: true,
-      reason: "admin-override",
+      hasAccess: false,
+      reason: "admin-override-expired",
       source: "admin",
       expiresAt: overrideExpiry,
       accessType: "override",
       tournamentId: safeTournamentId,
-      feature,
+      feature: safeFeature,
+      featureAllowed: false,
+      accessPriority: 2,
     });
   }
-
-  return buildResult({
-    hasAccess: false,
-    reason: "admin-override-expired",
-    source: "admin",
-    expiresAt: overrideExpiry,
-    accessType: "override",
-    tournamentId: safeTournamentId,
-    feature,
-  });
-}
 
   if (freshUser.lifetimeAccess) {
     return buildResult({
@@ -160,7 +180,9 @@ const hasPremiumAccess = async ({
       accessType: "lifetime",
       planType: "lifetime",
       tournamentId: safeTournamentId,
-      feature,
+      feature: safeFeature,
+      featureAllowed: true,
+      accessPriority: 3,
     });
   }
 
@@ -179,7 +201,9 @@ const hasPremiumAccess = async ({
       accessType: "coupon",
       planType,
       tournamentId: safeTournamentId,
-      feature,
+      feature: safeFeature,
+      featureAllowed: true,
+      accessPriority: 4,
     });
   }
 
@@ -190,16 +214,34 @@ const hasPremiumAccess = async ({
     activePremiumExpiry &&
     activePremiumExpiry > now
   ) {
-    return buildResult({
-      hasAccess: true,
-      reason: "active-subscription",
-      source: freshUser.accessSource || "payment",
-      expiresAt: activePremiumExpiry,
-      accessType: "subscription",
-      planType: freshUser.subscriptionType || planType,
-      tournamentId: safeTournamentId,
-      feature,
-    });
+    const userPlanType = freshUser.subscriptionType || planType;
+
+    const paidSubscription = await Payment.findOne({
+      userId: safeUserId,
+      status: "paid",
+      accessType: "unlimited",
+      planType: userPlanType,
+      accessStartsAt: { $ne: null, $lte: now },
+      $or: [{ accessExpiresAt: null }, { accessExpiresAt: { $gt: now } }],
+    })
+      .sort({ accessExpiresAt: -1, createdAt: -1 })
+      .lean();
+
+    if (!paidSubscription || isFeatureAllowedByPayment(paidSubscription, safeFeature)) {
+      return buildResult({
+        hasAccess: true,
+        reason: "active-subscription",
+        source: freshUser.accessSource || "payment",
+        expiresAt: activePremiumExpiry,
+        accessType: "subscription",
+        planType: userPlanType,
+        paymentId: paidSubscription?._id || null,
+        tournamentId: safeTournamentId,
+        feature: safeFeature,
+        featureAllowed: true,
+        accessPriority: 5,
+      });
+    }
   }
 
   const unlimitedAccess = await Payment.findOne({
@@ -212,10 +254,7 @@ const hasPremiumAccess = async ({
     .sort({ accessExpiresAt: -1, createdAt: -1 })
     .lean();
 
-  if (
-    unlimitedAccess &&
-    isFeatureAllowedByLegacyPlan(unlimitedAccess.planType, feature)
-  ) {
+  if (unlimitedAccess && isFeatureAllowedByPayment(unlimitedAccess, safeFeature)) {
     return buildResult({
       hasAccess: true,
       reason: "active-paid-subscription",
@@ -225,30 +264,29 @@ const hasPremiumAccess = async ({
       planType: unlimitedAccess.planType,
       paymentId: unlimitedAccess._id,
       tournamentId: safeTournamentId,
-      feature,
+      feature: safeFeature,
+      featureAllowed: true,
+      accessPriority: 6,
     });
   }
 
   if (safeTournamentId) {
-   const tournamentAccess = await Payment.findOne({
-  userId: safeUserId,
-  tournamentId: safeTournamentId,
-  status: "paid",
-  accessType: "tournament",
-  accessStartsAt: { $ne: null, $lte: now },
-  $or: [
-    { accessLifecycle: "single_tournament_lifetime" },
-    { accessExpiresAt: null },
-    { accessExpiresAt: { $gt: now } },
-  ],
-})
+    const tournamentAccess = await Payment.findOne({
+      userId: safeUserId,
+      tournamentId: safeTournamentId,
+      status: "paid",
+      accessType: "tournament",
+      accessStartsAt: { $ne: null, $lte: now },
+      $or: [
+        { accessLifecycle: "single_tournament_lifetime" },
+        { accessExpiresAt: null },
+        { accessExpiresAt: { $gt: now } },
+      ],
+    })
       .sort({ createdAt: -1 })
       .lean();
 
-    if (
-      tournamentAccess &&
-      isFeatureAllowedByLegacyPlan(tournamentAccess.planType, feature)
-    ) {
+    if (tournamentAccess && isFeatureAllowedByPayment(tournamentAccess, safeFeature)) {
       return buildResult({
         hasAccess: true,
         reason: "active-tournament-access",
@@ -258,7 +296,9 @@ const hasPremiumAccess = async ({
         planType: tournamentAccess.planType,
         paymentId: tournamentAccess._id,
         tournamentId: tournamentAccess.tournamentId,
-        feature,
+        feature: safeFeature,
+        featureAllowed: true,
+        accessPriority: 7,
       });
     }
   }
@@ -274,7 +314,9 @@ const hasPremiumAccess = async ({
       accessType: "trial",
       planType: "trial",
       tournamentId: safeTournamentId,
-      feature,
+      feature: safeFeature,
+      featureAllowed: true,
+      accessPriority: 8,
     });
   }
 
@@ -284,7 +326,9 @@ const hasPremiumAccess = async ({
     source: null,
     expiresAt: null,
     tournamentId: safeTournamentId,
-    feature,
+    feature: safeFeature,
+    featureAllowed: false,
+    accessPriority: null,
   });
 };
 

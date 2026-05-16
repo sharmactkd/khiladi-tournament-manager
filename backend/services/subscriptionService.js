@@ -1,12 +1,9 @@
-import PlatformSettings from "../models/platformSettings.js";
+import PlatformSettings, {
+  PREMIUM_FEATURES,
+} from "../models/platformSettings.js";
 import hasPremiumAccess from "../utils/hasPremiumAccess.js";
 
-export const PREMIUM_FEATURES = {
-  TIESHEET: "tiesheet",
-  OFFICIALS: "officials",
-  TEAM_PAYMENTS: "team_payments",
-  TIESHEET_RECORD: "tiesheet_record",
-};
+export { PREMIUM_FEATURES };
 
 export const PLAN_CONFIG = {
   single: {
@@ -38,6 +35,14 @@ export const PLAN_CONFIG = {
   },
 };
 
+const normalizeFeatures = (features) => {
+  if (!Array.isArray(features) || features.length === 0) {
+    return Object.values(PREMIUM_FEATURES);
+  }
+
+  return [...new Set(features.map((item) => String(item || "").trim()).filter(Boolean))];
+};
+
 const getPlanFromSettings = (settings, planType) => {
   if (!settings?.plans || !planType) return null;
 
@@ -62,7 +67,7 @@ export const getPlanConfig = async (planType) => {
         dynamicPlan.durationDays === null || dynamicPlan.durationDays === undefined
           ? null
           : Number(dynamicPlan.durationDays),
-      features: Object.values(PREMIUM_FEATURES),
+      features: normalizeFeatures(dynamicPlan.features),
       version: Number(dynamicPlan.version || 1),
       source: "platform_settings",
       planUpdatedAt: dynamicPlan.updatedAt || null,
@@ -76,6 +81,7 @@ export const getPlanConfig = async (planType) => {
   return {
     ...legacyPlan,
     currency: settings.defaultCurrency || "INR",
+    features: normalizeFeatures(legacyPlan.features),
     version: Number(legacyPlan.version || 1),
     source: "legacy_config",
     planUpdatedAt: null,
@@ -113,6 +119,14 @@ export const getPaymentAccessFields = async (planType, now = new Date()) => {
     accessStartsAt: now,
     accessExpiresAt: await getAccessExpiry(planType, now),
   };
+};
+
+export const isFeatureAllowedByPlanSnapshot = (planSnapshot, feature) => {
+  if (!feature) return true;
+
+  const features = normalizeFeatures(planSnapshot?.features);
+
+  return features.includes(feature);
 };
 
 export const hasActiveAccess = async ({
