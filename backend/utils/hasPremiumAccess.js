@@ -230,13 +230,18 @@ const hasPremiumAccess = async ({
   }
 
   if (safeTournamentId) {
-    const tournamentAccess = await Payment.findOne({
-      userId: safeUserId,
-      tournamentId: safeTournamentId,
-      status: "paid",
-      accessType: "tournament",
-      accessStartsAt: { $ne: null, $lte: now },
-    })
+   const tournamentAccess = await Payment.findOne({
+  userId: safeUserId,
+  tournamentId: safeTournamentId,
+  status: "paid",
+  accessType: "tournament",
+  accessStartsAt: { $ne: null, $lte: now },
+  $or: [
+    { accessLifecycle: "single_tournament_lifetime" },
+    { accessExpiresAt: null },
+    { accessExpiresAt: { $gt: now } },
+  ],
+})
       .sort({ createdAt: -1 })
       .lean();
 

@@ -20,16 +20,20 @@ const buildUserAccessUpdate = (payment) => {
   };
 };
 
-/**
- * Single safe payment processor.
- *
- * IMPORTANT:
- * Both frontend verifyPayment and Razorpay webhook should call this same function.
- * This function makes payment processing idempotent using:
- * 1. MongoDB transaction
- * 2. Atomic status condition: status must be "created"
- * 3. Shared User + PaymentTransaction update
- */
+const buildAccessResponse = (payment) => ({
+  planType: payment.planType,
+  accessType: payment.accessType,
+  tournamentId: payment.tournamentId,
+  accessStartsAt: payment.accessStartsAt,
+  accessExpiresAt: payment.accessExpiresAt,
+});
+
+const getAccessLifecycle = (payment) => {
+  if (payment.planType === "single") return "single_tournament_lifetime";
+  if (payment.planType === "lifetime") return "lifetime";
+  return "fixed_duration";
+};
+
 export const processPaidPayment = async ({
   razorpayOrderId,
   razorpayPaymentId,
@@ -39,6 +43,7 @@ export const processPaidPayment = async ({
   const safeOrderId = normalizeString(razorpayOrderId);
   const safePaymentId = normalizeString(razorpayPaymentId);
   const safeSignature = normalizeString(razorpaySignature);
+  const safeVerifiedBy = normalizeString(verifiedBy) || "unknown";
 
   if (!safeOrderId || !safePaymentId) {
     const error = new Error("razorpayOrderId and razorpayPaymentId are required");
@@ -66,20 +71,16 @@ export const processPaidPayment = async ({
         result = {
           alreadyProcessed: true,
           payment: existingPayment,
-          access: {
-            planType: existingPayment.planType,
-            accessType: existingPayment.accessType,
-            tournamentId: existingPayment.tournamentId,
-            accessStartsAt: existingPayment.accessStartsAt,
-            accessExpiresAt: existingPayment.accessExpiresAt,
-          },
+          access: buildAccessResponse(existingPayment),
         };
 
         return;
       }
 
-      if (existingPayment.status !== "created") {
-        const error = new Error(`Payment cannot be processed from status: ${existingPayment.status}`);
+      if (!["created", "attempted", "authorized", "captured"].includes(existingPayment.status)) {
+        const error = new Error(
+          `Payment cannot be processed from status: ${existingPayment.status}`
+        );
         error.statusCode = 409;
         throw error;
       }
@@ -92,16 +93,25 @@ export const processPaidPayment = async ({
       const payment = await Payment.findOneAndUpdate(
         {
           _id: existingPayment._id,
-          status: "created",
+          status: { $in: ["created", "attempted", "authorized", "captured"] },
         },
         {
-          $set: {
-            status: "paid",
-            razorpayPaymentId: safePaymentId,
-            razorpaySignature: safeSignature,
-            accessType: accessFields.accessType,
-            accessStartsAt: accessFields.accessStartsAt,
-            accessExpiresAt: accessFields.accessExpiresAt,
+        $set: {
+  status: "paid",
+  razorpayPaymentId: safePaymentId,
+  razorpaySignature: safeSignature,
+  accessType: accessFields.accessType,
+  accessStartsAt: accessFields.accessStartsAt,
+  accessExpiresAt: accessFields.accessExpiresAt,
+  accessLifecycle: getAccessLifecycle(existingPayment),
+},
+          $push: {
+            statusHistory: {
+              status: "paid",
+              changedAt: new Date(),
+              source: safeVerifiedBy,
+              note: "Payment verified and premium access activated",
+            },
           },
         },
         {
@@ -116,15 +126,7 @@ export const processPaidPayment = async ({
         result = {
           alreadyProcessed: true,
           payment: latestPayment,
-          access: latestPayment
-            ? {
-                planType: latestPayment.planType,
-                accessType: latestPayment.accessType,
-                tournamentId: latestPayment.tournamentId,
-                accessStartsAt: latestPayment.accessStartsAt,
-                accessExpiresAt: latestPayment.accessExpiresAt,
-              }
-            : null,
+          access: latestPayment ? buildAccessResponse(latestPayment) : null,
         };
 
         return;
@@ -144,8 +146,9 @@ export const processPaidPayment = async ({
           $set: {
             status: "paid",
             paymentId: safePaymentId,
+            planSnapshot: payment.planSnapshot || null,
             "metadata.legacyPaymentId": payment._id,
-            "metadata.verifiedBy": verifiedBy,
+            "metadata.verifiedBy": safeVerifiedBy,
             "metadata.accessStartsAt": payment.accessStartsAt,
             "metadata.accessExpiresAt": payment.accessExpiresAt,
             "metadata.processedAt": new Date(),
@@ -160,24 +163,19 @@ export const processPaidPayment = async ({
       result = {
         alreadyProcessed: false,
         payment,
-        access: {
-          planType: payment.planType,
-          accessType: payment.accessType,
-          tournamentId: payment.tournamentId,
-          accessStartsAt: payment.accessStartsAt,
-          accessExpiresAt: payment.accessExpiresAt,
-        },
+        access: buildAccessResponse(payment),
       };
     });
 
     logger.info("Payment processed safely", {
       razorpayOrderId: safeOrderId,
       razorpayPaymentId: safePaymentId,
-      verifiedBy,
+      verifiedBy: safeVerifiedBy,
       alreadyProcessed: result?.alreadyProcessed || false,
       paymentId: result?.payment?._id,
       userId: result?.payment?.userId,
       planType: result?.payment?.planType,
+      status: result?.payment?.status,
     });
 
     return result;
@@ -187,7 +185,7 @@ export const processPaidPayment = async ({
       stack: error.stack,
       razorpayOrderId: safeOrderId,
       razorpayPaymentId: safePaymentId,
-      verifiedBy,
+      verifiedBy: safeVerifiedBy,
     });
 
     throw error;

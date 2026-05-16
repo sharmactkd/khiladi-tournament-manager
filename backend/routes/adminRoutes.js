@@ -42,6 +42,8 @@ import {
   applyCoupon,
   listTransactions,
   listAuditLogs,
+  reconcileBillingPayments,
+reconcileBillingPaymentById,
 } from "../controllers/billingController.js";
 import { requireCsrfToken } from "../middleware/csrfProtection.js";
 import {
@@ -329,4 +331,19 @@ router.get(
   listAuditLogs
 );
 
+router.post(
+  "/billing/reconcile-payments",
+  requireCsrfToken,
+  requireAdminPermission("payments:manage"),
+  superAdminMiddleware,
+  reconcileBillingPayments
+);
+
+router.post(
+  "/billing/reconcile-payments/:paymentId",
+  requireCsrfToken,
+  requireAdminPermission("payments:manage"),
+  superAdminMiddleware,
+  reconcileBillingPaymentById
+);
 export default router;

@@ -15,6 +15,8 @@ export const PLAN_CONFIG = {
     accessType: "tournament",
     durationDays: null,
     features: Object.values(PREMIUM_FEATURES),
+    version: 1,
+    source: "legacy_config",
   },
   six_months: {
     label: "6 Months",
@@ -22,6 +24,8 @@ export const PLAN_CONFIG = {
     accessType: "unlimited",
     durationDays: 180,
     features: Object.values(PREMIUM_FEATURES),
+    version: 1,
+    source: "legacy_config",
   },
   one_year: {
     label: "1 Year",
@@ -29,6 +33,8 @@ export const PLAN_CONFIG = {
     accessType: "unlimited",
     durationDays: 365,
     features: Object.values(PREMIUM_FEATURES),
+    version: 1,
+    source: "legacy_config",
   },
 };
 
@@ -57,10 +63,23 @@ export const getPlanConfig = async (planType) => {
           ? null
           : Number(dynamicPlan.durationDays),
       features: Object.values(PREMIUM_FEATURES),
+      version: Number(dynamicPlan.version || 1),
+      source: "platform_settings",
+      planUpdatedAt: dynamicPlan.updatedAt || null,
     };
   }
 
-  return PLAN_CONFIG[planType] || null;
+  const legacyPlan = PLAN_CONFIG[planType];
+
+  if (!legacyPlan) return null;
+
+  return {
+    ...legacyPlan,
+    currency: settings.defaultCurrency || "INR",
+    version: Number(legacyPlan.version || 1),
+    source: "legacy_config",
+    planUpdatedAt: null,
+  };
 };
 
 export const getLegacyPlanConfig = (planType) => PLAN_CONFIG[planType] || null;

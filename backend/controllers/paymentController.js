@@ -27,6 +27,29 @@ const getRazorpayInstance = () => {
   });
 };
 
+const buildPlanSnapshot = ({ planType, selectedPlan, amountInRupees, amountInPaise, currency }) => {
+  return {
+    planType,
+    label: selectedPlan.label || planType,
+    amount: amountInRupees,
+    amountInPaise,
+    currency,
+    accessType: selectedPlan.accessType,
+    durationDays:
+      selectedPlan.durationDays === null || selectedPlan.durationDays === undefined
+        ? null
+        : Number(selectedPlan.durationDays),
+    features: Array.isArray(selectedPlan.features) ? selectedPlan.features : [],
+    version: Number(selectedPlan.version || 1),
+    source: selectedPlan.source || "platform_settings",
+  };
+};
+
+const getInitialAccessLifecycle = (planType) => {
+  if (planType === "single") return "single_tournament_lifetime";
+  if (planType === "lifetime") return "lifetime";
+  return "fixed_duration";
+};
 export const createPaymentOrder = async (req, res) => {
   let userId;
   let planType;
@@ -101,7 +124,16 @@ export const createPaymentOrder = async (req, res) => {
     const amountInPaise = amountInRupees * 100;
     const currency = selectedPlan.currency || settings.defaultCurrency || "INR";
 
+    const planSnapshot = buildPlanSnapshot({
+      planType,
+      selectedPlan,
+      amountInRupees,
+      amountInPaise,
+      currency,
+    });
+
     const razorpay = getRazorpayInstance();
+
     const order = await razorpay.orders.create({
       amount: amountInPaise,
       currency,
@@ -113,15 +145,26 @@ export const createPaymentOrder = async (req, res) => {
       },
     });
 
-    const payment = await Payment.create({
-      userId,
-      tournamentId: planType === "single" ? tournamentId : null,
-      planType,
-      amount: amountInRupees,
-      currency,
-      razorpayOrderId: order.id,
-      status: "created",
-      accessType: selectedPlan.accessType,
+   const payment = await Payment.create({
+  userId,
+  tournamentId: planType === "single" ? tournamentId : null,
+  planType,
+  planSnapshot,
+  amount: amountInRupees,
+  currency,
+  razorpayOrderId: order.id,
+  status: "created",
+  accessType: selectedPlan.accessType,
+  accessLifecycle: getInitialAccessLifecycle(planType),
+  gateway: "razorpay",
+  statusHistory: [
+        {
+          status: "created",
+          changedAt: new Date(),
+          source: "create_order",
+          note: "Razorpay order created",
+        },
+      ],
     });
 
     await PaymentTransaction.create({
@@ -131,6 +174,7 @@ export const createPaymentOrder = async (req, res) => {
       paymentGateway: "razorpay",
       orderId: order.id,
       planType,
+      planSnapshot,
       status: "created",
       metadata: {
         legacyPaymentId: payment._id,
@@ -144,6 +188,7 @@ export const createPaymentOrder = async (req, res) => {
       tournamentId,
       planType,
       razorpayOrderId: order.id,
+      planSnapshot,
     });
 
     return res.status(201).json({
@@ -159,6 +204,9 @@ export const createPaymentOrder = async (req, res) => {
         planType,
         amount: amountInRupees,
         accessType: selectedPlan.accessType,
+        durationDays: selectedPlan.durationDays,
+        features: selectedPlan.features || [],
+        version: planSnapshot.version,
       },
     });
   } catch (error) {
@@ -176,7 +224,6 @@ export const createPaymentOrder = async (req, res) => {
     });
   }
 };
-
 export const verifyPayment = async (req, res) => {
   let userId;
   let payment;

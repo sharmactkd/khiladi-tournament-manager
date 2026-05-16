@@ -6,6 +6,10 @@ import PaymentTransaction from "../models/paymentTransaction.js";
 import AdminLog from "../models/adminLog.js";
 import Payment from "../models/payment.js";
 import hasPremiumAccess from "../utils/hasPremiumAccess.js";
+import {
+  reconcileOnePayment,
+  reconcilePayments,
+} from "../services/paymentReconciliationService.js";
 
 const toObjectId = (id) =>
   mongoose.Types.ObjectId.isValid(String(id)) ? new mongoose.Types.ObjectId(id) : null;
@@ -33,7 +37,28 @@ const addDays = (date, days) => {
 
 export const getBillingDashboard = async (req, res) => {
   const now = new Date();
+const summarizeGatewayRevenue = (items = []) => {
+  const summary = {
+    totalRevenue: 0,
+    totalTransactions: 0,
+    byGateway: {},
+  };
 
+  items.forEach((item) => {
+    const gateway = item._id || "unknown";
+    const total = Number(item.total || 0);
+    const count = Number(item.count || 0);
+
+    summary.totalRevenue += total;
+    summary.totalTransactions += count;
+    summary.byGateway[gateway] = {
+      totalRevenue: total,
+      totalTransactions: count,
+    };
+  });
+
+  return summary;
+};
   const [
     totalUsers,
     activePremiumUsers,
@@ -44,6 +69,8 @@ export const getBillingDashboard = async (req, res) => {
     couponsUsedAgg,
     revenueAgg,
     monthlyRevenueAgg,
+    nonCashAccessAgg,
+monthlyNonCashAccessAgg,
     settings,
   ] = await Promise.all([
     User.countDocuments({ isDeleted: { $ne: true } }),
@@ -64,21 +91,75 @@ export const getBillingDashboard = async (req, res) => {
     User.countDocuments({ isDeleted: { $ne: true }, lifetimeAccess: true }),
     User.countDocuments({ isDeleted: { $ne: true }, blocked: true }),
     Coupon.aggregate([{ $group: { _id: null, total: { $sum: "$usedCount" } } }]),
-    PaymentTransaction.aggregate([
-      { $match: { status: "paid" } },
-      { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
-    ]),
-    PaymentTransaction.aggregate([
-      {
-        $match: {
-          status: "paid",
-          createdAt: {
-            $gte: new Date(now.getFullYear(), now.getMonth(), 1),
-          },
-        },
+   PaymentTransaction.aggregate([
+  {
+    $match: {
+      status: "paid",
+      paymentGateway: { $in: ["razorpay", "stripe"] },
+      amount: { $gt: 0 },
+    },
+  },
+  {
+    $group: {
+      _id: "$paymentGateway",
+      total: { $sum: "$amount" },
+      count: { $sum: 1 },
+    },
+  },
+]),
+PaymentTransaction.aggregate([
+  {
+    $match: {
+      status: "paid",
+      paymentGateway: { $in: ["razorpay", "stripe"] },
+      amount: { $gt: 0 },
+      createdAt: {
+        $gte: new Date(now.getFullYear(), now.getMonth(), 1),
       },
-      { $group: { _id: null, total: { $sum: "$amount" }, count: { $sum: 1 } } },
-    ]),
+    },
+  },
+  {
+    $group: {
+      _id: "$paymentGateway",
+      total: { $sum: "$amount" },
+      count: { $sum: 1 },
+    },
+  },
+]),
+
+PaymentTransaction.aggregate([
+  {
+    $match: {
+      status: "paid",
+      paymentGateway: { $in: ["coupon", "manual", "system"] },
+    },
+  },
+  {
+    $group: {
+      _id: "$paymentGateway",
+      total: { $sum: "$amount" },
+      count: { $sum: 1 },
+    },
+  },
+]),
+PaymentTransaction.aggregate([
+  {
+    $match: {
+      status: "paid",
+      paymentGateway: { $in: ["coupon", "manual", "system"] },
+      createdAt: {
+        $gte: new Date(now.getFullYear(), now.getMonth(), 1),
+      },
+    },
+  },
+  {
+    $group: {
+      _id: "$paymentGateway",
+      total: { $sum: "$amount" },
+      count: { $sum: 1 },
+    },
+  },
+]),
     PlatformSettings.getSettings(),
   ]);
 
@@ -92,13 +173,17 @@ export const getBillingDashboard = async (req, res) => {
       lifetimeUsers,
       blockedUsers,
       couponsUsed: couponsUsedAgg[0]?.total || 0,
-      revenueSummary: {
-        totalRevenue: revenueAgg[0]?.total || 0,
-        totalTransactions: revenueAgg[0]?.count || 0,
-        monthlyRevenue: monthlyRevenueAgg[0]?.total || 0,
-        monthlyTransactions: monthlyRevenueAgg[0]?.count || 0,
-        currency: settings.defaultCurrency || "INR",
-      },
+     revenueSummary: {
+  realMoney: {
+    ...summarizeGatewayRevenue(revenueAgg),
+    monthly: summarizeGatewayRevenue(monthlyRevenueAgg),
+  },
+  nonCashAccess: {
+    ...summarizeGatewayRevenue(nonCashAccessAgg),
+    monthly: summarizeGatewayRevenue(monthlyNonCashAccessAgg),
+  },
+  currency: settings.defaultCurrency || "INR",
+},
       activePlans: settings.plans,
       globalControls: {
         paymentsEnabled: settings.paymentsEnabled,
@@ -132,11 +217,55 @@ export const updatePlatformSettings = async (req, res) => {
   ];
 
   const update = {};
+
   allowedFields.forEach((field) => {
     if (Object.prototype.hasOwnProperty.call(req.body, field)) {
       update[field] = req.body[field];
     }
   });
+
+  if (update.plans && typeof update.plans === "object") {
+    const currentSettings = await PlatformSettings.getSettings();
+    const currentPlans =
+      currentSettings.plans instanceof Map
+        ? Object.fromEntries(currentSettings.plans)
+        : currentSettings.plans || {};
+
+    const incomingPlans =
+      update.plans instanceof Map ? Object.fromEntries(update.plans) : update.plans;
+
+    const versionedPlans = {};
+
+    Object.entries(incomingPlans).forEach(([planType, incomingPlan]) => {
+      const currentPlan = currentPlans[planType] || {};
+      const currentVersion = Number(currentPlan.version || 1);
+
+      const comparableFields = [
+        "label",
+        "enabled",
+        "price",
+        "durationDays",
+        "currency",
+        "accessType",
+        "description",
+      ];
+
+      const changed = comparableFields.some((field) => {
+        const oldValue = currentPlan[field];
+        const newValue = incomingPlan[field];
+
+        return String(oldValue ?? "") !== String(newValue ?? "");
+      });
+
+      versionedPlans[planType] = {
+        ...incomingPlan,
+        version: changed ? currentVersion + 1 : currentVersion,
+        updatedAt: changed ? new Date() : currentPlan.updatedAt || new Date(),
+      };
+    });
+
+    update.plans = versionedPlans;
+  }
 
   update.updatedBy = req.user._id;
 
@@ -818,4 +947,41 @@ export const listAuditLogs = async (req, res) => {
     .lean();
 
   return res.json({ success: true, logs });
+};
+
+export const reconcileBillingPayments = async (req, res) => {
+  const dryRun = String(req.query.dryRun || "true") !== "false";
+  const limit = Number(req.query.limit || 50);
+
+  const result = await reconcilePayments({
+    dryRun,
+    limit,
+  });
+
+  return res.json({
+    success: true,
+    message: dryRun
+      ? "Payment reconciliation dry-run completed"
+      : "Payment reconciliation completed",
+    ...result,
+  });
+};
+
+export const reconcileBillingPaymentById = async (req, res) => {
+  const { paymentId } = req.params;
+  const dryRun = String(req.query.dryRun || "true") !== "false";
+
+  const result = await reconcileOnePayment({
+    paymentId,
+    dryRun,
+  });
+
+  return res.json({
+    success: true,
+    message: dryRun
+      ? "Single payment reconciliation dry-run completed"
+      : "Single payment reconciliation completed",
+    dryRun,
+    result,
+  });
 };

@@ -13,6 +13,17 @@ const planSchema = new mongoose.Schema(
       default: "unlimited",
     },
     description: { type: String, default: "", trim: true },
+
+    version: {
+      type: Number,
+      default: 1,
+      min: 1,
+    },
+
+    updatedAt: {
+      type: Date,
+      default: Date.now,
+    },
   },
   { _id: false }
 );
@@ -26,6 +37,8 @@ const defaultPlans = () => ({
     currency: "INR",
     accessType: "tournament",
     description: "Premium access for one tournament",
+    version: 1,
+    updatedAt: new Date(),
   },
   six_months: {
     label: "6 Months",
@@ -35,6 +48,8 @@ const defaultPlans = () => ({
     currency: "INR",
     accessType: "unlimited",
     description: "Unlimited premium access for 6 months",
+    version: 1,
+    updatedAt: new Date(),
   },
   one_year: {
     label: "1 Year",
@@ -44,6 +59,8 @@ const defaultPlans = () => ({
     currency: "INR",
     accessType: "unlimited",
     description: "Unlimited premium access for 1 year",
+    version: 1,
+    updatedAt: new Date(),
   },
 });
 

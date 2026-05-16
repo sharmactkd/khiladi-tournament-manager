@@ -39,6 +39,7 @@ import UserAccessManager from "./pages/admin/UserAccessManager";
 import CouponManager from "./pages/admin/CouponManager";
 import Transactions from "./pages/admin/Transactions";
 import AuditLogs from "./pages/admin/AuditLogs";
+import PremiumAccessGuard from "./components/PremiumAccessGuard";
 
 import "./App.css";
 
@@ -222,13 +223,44 @@ function App() {
           >
             <Route index element={<TournamentDetails />} />
             <Route path="entry" element={requireTournamentLogin(<Entry />)} />
-            <Route path="tie-sheet" element={requireTournamentLogin(<TieSheet />)} />
-            <Route path="tie-sheet-record" element={requireTournamentLogin(<TieSheetRecord />)} />
+          <Route
+  path="tie-sheet"
+  element={requireTournamentLogin(
+    <PremiumAccessGuard featureLabel="Tie Sheet">
+      <TieSheet />
+    </PremiumAccessGuard>
+  )}
+/>
+
+<Route
+  path="tie-sheet-record"
+  element={requireTournamentLogin(
+    <PremiumAccessGuard featureLabel="Tie Sheet Record">
+      <TieSheetRecord />
+    </PremiumAccessGuard>
+  )}
+/>
+
+<Route
+  path="official"
+  element={requireTournamentLogin(
+    <PremiumAccessGuard featureLabel="Officials">
+      <Official />
+    </PremiumAccessGuard>
+  )}
+/>
+
+<Route
+  path="team"
+  element={requireTournamentLogin(
+    <PremiumAccessGuard featureLabel="Team Payments">
+      <Team />
+    </PremiumAccessGuard>
+  )}
+/>
             <Route path="winner" element={requireTournamentLogin(<Winner />)} />
             <Route path="team-championship" element={requireTournamentLogin(<TeamChampionship />)} />
-            <Route path="official" element={requireTournamentLogin(<Official />)} />
-            <Route path="team" element={requireTournamentLogin(<Team />)} />
-            <Route path="team-submissions" element={requireTournamentLogin(<TeamSubmissions />)} />
+             <Route path="team-submissions" element={requireTournamentLogin(<TeamSubmissions />)} />
           </Route>
 
           <Route path="/about" element={<About />} />
