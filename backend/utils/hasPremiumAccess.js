@@ -126,16 +126,30 @@ const hasPremiumAccess = async ({
   }
 
   if (freshUser.adminAccessOverride) {
+  const overrideExpiry = normalizeDate(freshUser.premiumExpiresAt);
+
+  if (!overrideExpiry || overrideExpiry > now) {
     return buildResult({
       hasAccess: true,
       reason: "admin-override",
       source: "admin",
-      expiresAt: normalizeDate(freshUser.premiumExpiresAt),
+      expiresAt: overrideExpiry,
       accessType: "override",
       tournamentId: safeTournamentId,
       feature,
     });
   }
+
+  return buildResult({
+    hasAccess: false,
+    reason: "admin-override-expired",
+    source: "admin",
+    expiresAt: overrideExpiry,
+    accessType: "override",
+    tournamentId: safeTournamentId,
+    feature,
+  });
+}
 
   if (freshUser.lifetimeAccess) {
     return buildResult({

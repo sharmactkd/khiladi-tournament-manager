@@ -1,9 +1,9 @@
 import express from "express";
 import crypto from "crypto";
 import Payment from "../models/payment.js";
-import Tournament from "../models/tournament.js";
+
 import logger from "../utils/logger.js";
-import { getPaymentAccessFields } from "../services/subscriptionService.js";
+import processPaidPayment from "../services/paymentProcessingService.js";
 
 const router = express.Router();
 
@@ -106,7 +106,8 @@ const isValidWebhookPayment =
   paymentEntity.status === "captured" &&
   paymentEntity.captured === true &&
   Number(paymentEntity.amount) === expectedAmountInPaise &&
-  String(paymentEntity.currency || "").toUpperCase() === "INR";
+  String(paymentEntity.currency || "").toUpperCase() ===
+  String(payment.currency || "INR").toUpperCase();
 
 if (!isValidWebhookPayment) {
   logger.warn("Razorpay webhook payment validation failed", {
@@ -162,38 +163,25 @@ if (
   });
 }
 
-let accessTournament = null;
+const processed = await processPaidPayment({
+  razorpayOrderId: paymentEntity.order_id,
+  razorpayPaymentId: paymentEntity.id,
+  razorpaySignature: signature,
+  verifiedBy: "razorpay_webhook",
+});
 
-if (payment.planType === "single" && payment.tournamentId) {
-  accessTournament = await Tournament.findById(payment.tournamentId).lean();
-}
-
-    const accessFields = getPaymentAccessFields(
-  payment.planType,
-  new Date(),
-  accessTournament
-);
-
-    payment.status = "paid";
-    payment.razorpayPaymentId = paymentEntity.id;
-    payment.razorpaySignature = signature;
-    payment.accessType = accessFields.accessType;
-    payment.accessStartsAt = accessFields.accessStartsAt;
-    payment.accessExpiresAt = accessFields.accessExpiresAt;
-
-    await payment.save();
-
-    logger.info("Payment marked paid via Razorpay webhook", {
-      paymentId: payment._id,
-      userId: payment.userId,
-      tournamentId: payment.tournamentId,
-      planType: payment.planType,
-      razorpayOrderId: payment.razorpayOrderId,
-      razorpayPaymentId: payment.razorpayPaymentId,
-      accessType: payment.accessType,
-      accessStartsAt: payment.accessStartsAt,
-      accessExpiresAt: payment.accessExpiresAt,
-    });
+logger.info("Payment processed via Razorpay webhook", {
+  paymentId: processed?.payment?._id,
+  userId: processed?.payment?.userId,
+  tournamentId: processed?.payment?.tournamentId,
+  planType: processed?.payment?.planType,
+  razorpayOrderId: paymentEntity.order_id,
+  razorpayPaymentId: paymentEntity.id,
+  accessType: processed?.access?.accessType,
+  accessStartsAt: processed?.access?.accessStartsAt,
+  accessExpiresAt: processed?.access?.accessExpiresAt,
+  alreadyProcessed: processed?.alreadyProcessed || false,
+});
 
     return res.status(200).json({
       success: true,

@@ -11,6 +11,7 @@ import Payment from "../models/payment.js";
 import Tournament from "../models/tournament.js";
 import User from "../models/user.js";
 import PlatformSettings from "../models/platformSettings.js";
+import processPaidPayment from "../services/paymentProcessingService.js";
 import PaymentTransaction from "../models/paymentTransaction.js";
 
 const getUserId = (req) => req.user?._id || req.user?.id || req.user?.userId;
@@ -209,20 +210,6 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
-    if (payment.status === "paid") {
-      return res.status(200).json({
-        success: true,
-        message: "Payment already verified",
-        access: {
-          planType: payment.planType,
-          accessType: payment.accessType,
-          tournamentId: payment.tournamentId,
-          accessStartsAt: payment.accessStartsAt,
-          accessExpiresAt: payment.accessExpiresAt,
-        },
-      });
-    }
-
     const body = `${razorpay_order_id}|${razorpay_payment_id}`;
 
     const expectedSignature = crypto
@@ -231,17 +218,29 @@ export const verifyPayment = async (req, res) => {
       .digest("hex");
 
     if (expectedSignature !== razorpay_signature) {
-      payment.status = "failed";
-      payment.razorpayPaymentId = razorpay_payment_id;
-      payment.razorpaySignature = razorpay_signature;
-      await payment.save();
+      await Payment.findOneAndUpdate(
+        {
+          razorpayOrderId: razorpay_order_id,
+          userId,
+          status: "created",
+        },
+        {
+          $set: {
+            status: "failed",
+            razorpayPaymentId: razorpay_payment_id,
+            razorpaySignature: razorpay_signature,
+          },
+        }
+      );
 
       await PaymentTransaction.findOneAndUpdate(
         { orderId: razorpay_order_id },
         {
-          status: "failed",
-          paymentId: razorpay_payment_id,
-          metadata: { signatureError: true },
+          $set: {
+            status: "failed",
+            paymentId: razorpay_payment_id,
+            "metadata.signatureError": true,
+          },
         }
       );
 
@@ -275,17 +274,29 @@ export const verifyPayment = async (req, res) => {
       Number(razorpayOrder.amount) === expectedAmountInPaise;
 
     if (!isValidRazorpayPayment || !isValidRazorpayOrder) {
-      payment.status = "failed";
-      payment.razorpayPaymentId = razorpay_payment_id;
-      payment.razorpaySignature = razorpay_signature;
-      await payment.save();
+      await Payment.findOneAndUpdate(
+        {
+          razorpayOrderId: razorpay_order_id,
+          userId,
+          status: "created",
+        },
+        {
+          $set: {
+            status: "failed",
+            razorpayPaymentId: razorpay_payment_id,
+            razorpaySignature: razorpay_signature,
+          },
+        }
+      );
 
       await PaymentTransaction.findOneAndUpdate(
         { orderId: razorpay_order_id },
         {
-          status: "failed",
-          paymentId: razorpay_payment_id,
-          metadata: { serverVerificationFailed: true },
+          $set: {
+            status: "failed",
+            paymentId: razorpay_payment_id,
+            "metadata.serverVerificationFailed": true,
+          },
         }
       );
 
@@ -295,58 +306,20 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
-    const accessFields = await getPaymentAccessFields(payment.planType, new Date());
-
-    payment.status = "paid";
-    payment.razorpayPaymentId = razorpay_payment_id;
-    payment.razorpaySignature = razorpay_signature;
-    payment.accessType = accessFields.accessType;
-    payment.accessStartsAt = accessFields.accessStartsAt;
-    payment.accessExpiresAt = accessFields.accessExpiresAt;
-
-    await payment.save();
-
-    await User.findByIdAndUpdate(userId, {
-      subscriptionStatus: payment.planType === "lifetime" ? "lifetime" : "active",
-      subscriptionType: payment.planType,
-      premiumExpiresAt: payment.planType === "single" ? null : payment.accessExpiresAt,
-      lifetimeAccess: payment.planType === "lifetime",
-      accessSource: payment.planType === "lifetime" ? "lifetime" : "payment",
-      lastPaymentDate: new Date(),
-    });
-
-    await PaymentTransaction.findOneAndUpdate(
-      { orderId: razorpay_order_id },
-      {
-        status: "paid",
-        paymentId: razorpay_payment_id,
-        metadata: {
-          legacyPaymentId: payment._id,
-          accessStartsAt: payment.accessStartsAt,
-          accessExpiresAt: payment.accessExpiresAt,
-        },
-      }
-    );
-
-    logger.info("Payment verified successfully", {
-      paymentId: payment._id,
-      userId,
-      tournamentId: payment.tournamentId,
-      planType: payment.planType,
-      razorpayOrderId: payment.razorpayOrderId,
-      razorpayPaymentId: payment.razorpayPaymentId,
+    const processed = await processPaidPayment({
+      razorpayOrderId: razorpay_order_id,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpaySignature: razorpay_signature,
+      verifiedBy: "frontend_verify",
     });
 
     return res.status(200).json({
       success: true,
-      message: "Payment verified successfully",
-      access: {
-        planType: payment.planType,
-        accessType: payment.accessType,
-        tournamentId: payment.tournamentId,
-        accessStartsAt: payment.accessStartsAt,
-        accessExpiresAt: payment.accessExpiresAt,
-      },
+      alreadyProcessed: processed.alreadyProcessed,
+      message: processed.alreadyProcessed
+        ? "Payment already verified"
+        : "Payment verified successfully",
+      access: processed.access,
     });
   } catch (error) {
     logger.error("Verify payment failed", {
@@ -356,9 +329,9 @@ export const verifyPayment = async (req, res) => {
       paymentId: payment?._id,
     });
 
-    return res.status(500).json({
+    return res.status(error.statusCode || 500).json({
       success: false,
-      message: "Failed to verify payment",
+      message: error.statusCode ? error.message : "Failed to verify payment",
     });
   }
 };

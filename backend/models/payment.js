@@ -40,11 +40,10 @@ const paymentSchema = new mongoose.Schema(
       index: true,
     },
 
-    razorpayPaymentId: {
-      type: String,
-      default: null,
-      index: true,
-    },
+  razorpayPaymentId: {
+  type: String,
+  default: null,
+},
 
     razorpaySignature: {
       type: String,
@@ -82,6 +81,16 @@ const paymentSchema = new mongoose.Schema(
 paymentSchema.index({ userId: 1, status: 1, accessType: 1 });
 paymentSchema.index({ userId: 1, tournamentId: 1, status: 1 });
 paymentSchema.index({ userId: 1, accessType: 1, accessExpiresAt: 1 });
+
+paymentSchema.index(
+  { razorpayPaymentId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      razorpayPaymentId: { $type: "string" },
+    },
+  }
+);
 
 const Payment = mongoose.model("Payment", paymentSchema);
 

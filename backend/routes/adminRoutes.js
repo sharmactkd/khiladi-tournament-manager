@@ -148,6 +148,7 @@ router.patch(
   "/billing/settings",
   requireCsrfToken,
   requireAdminPermission("billing:manage"),
+  superAdminMiddleware,
   validatePlatformSettingsUpdate,
   updatePlatformSettings
 );
@@ -163,6 +164,7 @@ router.patch(
   "/billing/users/:userId/grant-premium",
   requireCsrfToken,
   requireAdminPermission("billing:manage"),
+  superAdminMiddleware,
   validateAccessAction,
   grantPremium
 );
@@ -171,6 +173,7 @@ router.patch(
   "/billing/users/:userId/remove-premium",
   requireCsrfToken,
   requireAdminPermission("billing:manage"),
+  superAdminMiddleware,
   validateAccessAction,
   removePremium
 );
@@ -179,6 +182,7 @@ router.patch(
   "/billing/users/:userId/extend-premium",
   requireCsrfToken,
   requireAdminPermission("billing:manage"),
+  superAdminMiddleware,
   validateAccessAction,
   extendPremium
 );
@@ -187,6 +191,7 @@ router.patch(
   "/billing/users/:userId/lifetime",
   requireCsrfToken,
   requireAdminPermission("billing:manage"),
+  superAdminMiddleware,
   validateAccessAction,
   setLifetimeAccess
 );
@@ -195,6 +200,7 @@ router.patch(
   "/billing/users/:userId/start-trial",
   requireCsrfToken,
   requireAdminPermission("billing:manage"),
+  superAdminMiddleware,
   validateAccessAction,
   startTrial
 );
@@ -203,6 +209,7 @@ router.patch(
   "/billing/users/:userId/remove-trial",
   requireCsrfToken,
   requireAdminPermission("billing:manage"),
+  superAdminMiddleware,
   validateAccessAction,
   removeTrial
 );
@@ -211,6 +218,7 @@ router.patch(
   "/billing/users/:userId/enable-override",
   requireCsrfToken,
   requireAdminPermission("billing:manage"),
+  superAdminMiddleware,
   validateAccessAction,
   enableOverride
 );
@@ -219,6 +227,7 @@ router.patch(
   "/billing/users/:userId/disable-override",
   requireCsrfToken,
   requireAdminPermission("billing:manage"),
+  superAdminMiddleware,
   validateAccessAction,
   disableOverride
 );
@@ -227,6 +236,7 @@ router.patch(
   "/billing/users/:userId/block",
   requireCsrfToken,
   requireAdminPermission("billing:manage"),
+  superAdminMiddleware,
   validateAccessAction,
   blockUser
 );
@@ -235,6 +245,7 @@ router.patch(
   "/billing/users/:userId/unblock",
   requireCsrfToken,
   requireAdminPermission("billing:manage"),
+  superAdminMiddleware,
   validateAccessAction,
   unblockUser
 );
@@ -243,6 +254,7 @@ router.patch(
   "/billing/users/:userId/force-logout",
   requireCsrfToken,
   requireAdminPermission("billing:manage"),
+  superAdminMiddleware,
   validateAccessAction,
   forceLogoutUser
 );
@@ -257,6 +269,7 @@ router.post(
   "/billing/coupons",
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
+  superAdminMiddleware,
   validateCouponCreate,
   createCoupon
 );
@@ -265,6 +278,7 @@ router.patch(
   "/billing/coupons/:couponId",
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
+  superAdminMiddleware,
   validateCouponUpdate,
   updateCoupon
 );
@@ -273,6 +287,7 @@ router.patch(
   "/billing/coupons/:couponId/disable",
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
+  superAdminMiddleware,
   validateCouponParam,
   disableCoupon
 );
@@ -281,6 +296,7 @@ router.delete(
   "/billing/coupons/:couponId",
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
+  superAdminMiddleware,
   validateCouponParam,
   deleteCoupon
 );
@@ -296,6 +312,7 @@ router.post(
   "/billing/coupons/apply",
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
+  superAdminMiddleware,
   validateCouponValidate,
   applyCoupon
 );

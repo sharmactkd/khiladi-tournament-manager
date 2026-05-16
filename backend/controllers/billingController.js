@@ -699,8 +699,11 @@ export const applyCoupon = async (req, res) => {
     });
   }
 
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  const now = new Date();
+
   const coupon = await Coupon.findOne({
-    code: String(code).trim().toUpperCase(),
+    code: normalizedCode,
     active: true,
   });
 
@@ -722,26 +725,43 @@ export const applyCoupon = async (req, res) => {
     });
   }
 
-  const alreadyUsed = coupon.usedBy.some(
-    (item) => String(item.userId) === String(req.user._id)
+  const updatedCoupon = await Coupon.findOneAndUpdate(
+    {
+      _id: coupon._id,
+      active: true,
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+      $expr: {
+        $or: [
+          { $eq: ["$maxUses", null] },
+          { $lt: ["$usedCount", "$maxUses"] },
+        ],
+      },
+      "usedBy.userId": { $ne: req.user._id },
+    },
+    {
+      $inc: { usedCount: 1 },
+      $push: {
+        usedBy: {
+          userId: req.user._id,
+          usedAt: now,
+          planType,
+        },
+      },
+    },
+    {
+      new: true,
+      runValidators: true,
+    }
   );
 
-  if (alreadyUsed) {
+  if (!updatedCoupon) {
     return res.status(409).json({
       success: false,
-      message: "You have already used this coupon",
+      message: "Coupon already used, expired, inactive, or usage limit reached",
     });
   }
 
-  coupon.usedBy.push({
-    userId: req.user._id,
-    usedAt: new Date(),
-    planType,
-  });
-  coupon.usedCount += 1;
-  await coupon.save();
-
-  if (coupon.type === "full_access") {
+  if (updatedCoupon.type === "full_access") {
     await User.findByIdAndUpdate(req.user._id, {
       subscriptionStatus: planType === "lifetime" ? "lifetime" : "active",
       subscriptionType: planType,
@@ -757,14 +777,14 @@ export const applyCoupon = async (req, res) => {
     amount: 0,
     currency: settings.defaultCurrency || "INR",
     paymentGateway: "coupon",
-    paymentId: `coupon_${coupon.code}_${Date.now()}`,
+    paymentId: `coupon_${updatedCoupon.code}_${Date.now()}`,
     planType,
     status: "paid",
-    couponUsed: coupon.code,
+    couponUsed: updatedCoupon.code,
     metadata: {
-      couponId: coupon._id,
-      couponType: coupon.type,
-      couponValue: coupon.value,
+      couponId: updatedCoupon._id,
+      couponType: updatedCoupon.type,
+      couponValue: updatedCoupon.value,
     },
   });
 
@@ -772,9 +792,9 @@ export const applyCoupon = async (req, res) => {
     success: true,
     message: "Coupon applied successfully",
     coupon: {
-      code: coupon.code,
-      type: coupon.type,
-      value: coupon.value,
+      code: updatedCoupon.code,
+      type: updatedCoupon.type,
+      value: updatedCoupon.value,
     },
   });
 };
