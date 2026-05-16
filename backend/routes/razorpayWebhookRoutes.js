@@ -25,15 +25,33 @@ const getEntity = (event, entityName) => {
   return event?.payload?.[entityName]?.entity || {};
 };
 
-const getRazorpayEventId = (event) => {
+const getEntityIdForEvent = (event) => {
+  const paymentEntity = getEntity(event, "payment");
+  const orderEntity = getEntity(event, "order");
+  const refundEntity = getEntity(event, "refund");
+  const disputeEntity = getEntity(event, "dispute");
+
   return (
-    event?.id ||
-    getEntity(event, "payment")?.id ||
-    getEntity(event, "order")?.id ||
-    getEntity(event, "refund")?.id ||
-    getEntity(event, "dispute")?.id ||
-    `razorpay_${event?.event || "unknown"}_${Date.now()}`
+    paymentEntity?.id ||
+    orderEntity?.id ||
+    refundEntity?.id ||
+    refundEntity?.payment_id ||
+    disputeEntity?.id ||
+    disputeEntity?.payment_id ||
+    "unknown"
   );
+};
+
+const getRazorpayEventId = (event) => {
+  const eventType = event?.event || "unknown";
+  const providerEventId = event?.id || "";
+  const entityId = getEntityIdForEvent(event);
+
+  if (providerEventId) {
+    return `${eventType}:${providerEventId}`;
+  }
+
+  return `${eventType}:${entityId}`;
 };
 
 const markWebhookEvent = async (webhookEventId, update) => {
@@ -51,6 +69,11 @@ const markWebhookEvent = async (webhookEventId, update) => {
 const getPaymentByOrderId = async (orderId) => {
   if (!orderId) return null;
   return Payment.findOne({ razorpayOrderId: orderId });
+};
+
+const getCapturedPaymentFromOrder = async ({ orderEntity }) => {
+  const payments = Array.isArray(orderEntity?.payments) ? orderEntity.payments : [];
+  return payments.find((payment) => payment?.status === "captured") || null;
 };
 
 const validateCapturedPayment = ({ payment, paymentEntity }) => {
@@ -246,18 +269,47 @@ const handleDisputeCreated = async ({ disputeEntity }) => {
   });
 };
 
-const handleOrderPaid = async ({ orderEntity }) => {
+const handleOrderPaid = async ({ orderEntity, signature }) => {
   if (!orderEntity?.id) {
     const error = new Error("Invalid order paid payload");
     error.statusCode = 400;
     throw error;
   }
 
+  const localPayment = await getPaymentByOrderId(orderEntity.id);
+
+  if (!localPayment) {
+    const error = new Error("Payment order not found for order.paid");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  const capturedPayment = getCapturedPaymentFromOrder({ orderEntity });
+
+  if (capturedPayment?.id) {
+    return handlePaymentCaptured({
+      paymentEntity: {
+        ...capturedPayment,
+        order_id: capturedPayment.order_id || orderEntity.id,
+      },
+      signature,
+    });
+  }
+
+  if (localPayment.razorpayPaymentId) {
+    return processPaidPayment({
+      razorpayOrderId: localPayment.razorpayOrderId,
+      razorpayPaymentId: localPayment.razorpayPaymentId,
+      razorpaySignature: signature,
+      verifiedBy: "razorpay_webhook_order_paid_fallback",
+    });
+  }
+
   return processPaymentStatusUpdate({
     razorpayOrderId: orderEntity.id,
     status: "captured",
     source: "razorpay_webhook_order_paid",
-    note: "Razorpay order marked paid",
+    note: "Razorpay order marked paid but payment entity was not available",
   });
 };
 
@@ -288,7 +340,7 @@ const processRazorpayWebhookEvent = async ({ eventType, event, signature }) => {
       return handleDisputeCreated({ disputeEntity });
 
     case "order.paid":
-      return handleOrderPaid({ orderEntity });
+      return handleOrderPaid({ orderEntity, signature });
 
     default:
       return {
@@ -401,6 +453,8 @@ router.post("/", async (req, res) => {
       userId: processed?.payment?.userId,
       planType: processed?.payment?.planType,
       alreadyProcessed: processed?.alreadyProcessed || false,
+      ignored: processed?.ignored || false,
+      reason: processed?.reason || "",
     });
 
     return res.status(200).json({

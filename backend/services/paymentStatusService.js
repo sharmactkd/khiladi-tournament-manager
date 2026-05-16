@@ -8,6 +8,22 @@ const normalizeString = (value) => String(value || "").trim();
 
 const REFUND_STATUSES = ["refunded", "partially_refunded"];
 
+const FINAL_LOCKED_STATUSES = ["paid", "refunded", "partially_refunded", "disputed"];
+
+const STATUS_PRIORITY = {
+  created: 10,
+  attempted: 20,
+  authorized: 30,
+  captured: 40,
+  paid: 50,
+  failed: 15,
+  cancelled: 15,
+  expired: 15,
+  partially_refunded: 60,
+  refunded: 70,
+  disputed: 80,
+};
+
 const buildHistoryEntry = ({ status, source, note }) => ({
   status,
   changedAt: new Date(),
@@ -15,23 +31,102 @@ const buildHistoryEntry = ({ status, source, note }) => ({
   note: normalizeString(note),
 });
 
-const shouldClearUserAccess = (status) => {
+const isValidStatusTransition = ({ currentStatus, nextStatus }) => {
+  if (!currentStatus || !nextStatus) return false;
+  if (currentStatus === nextStatus) return true;
+
+  if (currentStatus === "paid") {
+    return ["partially_refunded", "refunded", "disputed"].includes(nextStatus);
+  }
+
+  if (currentStatus === "partially_refunded") {
+    return ["refunded", "disputed"].includes(nextStatus);
+  }
+
+  if (currentStatus === "refunded") {
+    return nextStatus === "disputed";
+  }
+
+  if (currentStatus === "disputed") {
+    return false;
+  }
+
+  if (["failed", "cancelled", "expired"].includes(currentStatus)) {
+    return ["authorized", "captured", "paid"].includes(nextStatus);
+  }
+
+  return (STATUS_PRIORITY[nextStatus] || 0) >= (STATUS_PRIORITY[currentStatus] || 0);
+};
+
+const shouldRecalculateUserAccess = (status) => {
   return ["refunded", "cancelled", "expired", "disputed"].includes(status);
 };
 
-const clearUserPaymentAccessIfNeeded = async ({ payment, status, session }) => {
-  if (!payment?.userId || !shouldClearUserAccess(status)) return;
+const calculateUserPaymentAccess = async ({ userId, session }) => {
+  const now = new Date();
+
+  const latestValidPayment = await Payment.findOne({
+    userId,
+    status: "paid",
+    accessStartsAt: { $ne: null, $lte: now },
+    $or: [
+      { accessExpiresAt: null },
+      { accessExpiresAt: { $gt: now } },
+    ],
+  })
+    .sort({
+      accessExpiresAt: -1,
+      createdAt: -1,
+    })
+    .session(session);
+
+  if (!latestValidPayment) {
+    return {
+      subscriptionStatus: "none",
+      subscriptionType: "none",
+      premiumExpiresAt: null,
+      lifetimeAccess: false,
+      accessSource: null,
+    };
+  }
+
+  const isLifetime =
+    latestValidPayment.planType === "lifetime" ||
+    latestValidPayment.accessLifecycle === "lifetime";
+
+  return {
+    subscriptionStatus: isLifetime ? "lifetime" : "active",
+    subscriptionType: latestValidPayment.planType,
+    premiumExpiresAt:
+      latestValidPayment.planType === "single"
+        ? null
+        : latestValidPayment.accessExpiresAt,
+    lifetimeAccess: isLifetime,
+    accessSource: isLifetime ? "lifetime" : "payment",
+    lastPaymentDate: latestValidPayment.updatedAt || latestValidPayment.createdAt || new Date(),
+  };
+};
+
+const recalculateUserAccessIfNeeded = async ({ payment, status, session }) => {
+  if (!payment?.userId || !shouldRecalculateUserAccess(status)) return;
+
+  const user = await User.findById(payment.userId).session(session);
+
+  if (!user) return;
+
+  if (user.adminAccessOverride || user.lifetimeAccess || user.accessSource === "admin") {
+    return;
+  }
+
+  const recalculatedAccess = await calculateUserPaymentAccess({
+    userId: payment.userId,
+    session,
+  });
 
   await User.findByIdAndUpdate(
     payment.userId,
     {
-      $set: {
-        subscriptionStatus: "none",
-        subscriptionType: "none",
-        premiumExpiresAt: null,
-        lifetimeAccess: false,
-        accessSource: null,
-      },
+      $set: recalculatedAccess,
     },
     { session }
   );
@@ -81,6 +176,27 @@ export const processPaymentStatusUpdate = async ({
       if (payment.status === status) {
         result = {
           alreadyProcessed: true,
+          ignored: false,
+          payment,
+        };
+        return;
+      }
+
+      if (!isValidStatusTransition({ currentStatus: payment.status, nextStatus: status })) {
+        logger.warn("Invalid payment status transition ignored", {
+          paymentId: payment._id,
+          userId: payment.userId,
+          currentStatus: payment.status,
+          nextStatus: status,
+          razorpayOrderId: safeOrderId,
+          razorpayPaymentId: safePaymentId,
+          source,
+        });
+
+        result = {
+          alreadyProcessed: true,
+          ignored: true,
+          reason: "invalid-status-transition",
           payment,
         };
         return;
@@ -104,6 +220,10 @@ export const processPaymentStatusUpdate = async ({
       }
 
       if (REFUND_STATUSES.includes(status)) {
+        update.$set.accessExpiresAt = new Date();
+      }
+
+      if (status === "disputed") {
         update.$set.accessExpiresAt = new Date();
       }
 
@@ -137,7 +257,7 @@ export const processPaymentStatusUpdate = async ({
         }
       );
 
-      await clearUserPaymentAccessIfNeeded({
+      await recalculateUserAccessIfNeeded({
         payment: updatedPayment,
         status,
         session,
@@ -145,6 +265,7 @@ export const processPaymentStatusUpdate = async ({
 
       result = {
         alreadyProcessed: false,
+        ignored: false,
         payment: updatedPayment,
       };
     });
@@ -155,6 +276,8 @@ export const processPaymentStatusUpdate = async ({
       status,
       source,
       alreadyProcessed: result?.alreadyProcessed || false,
+      ignored: result?.ignored || false,
+      reason: result?.reason || "",
       paymentId: result?.payment?._id,
       userId: result?.payment?.userId,
     });

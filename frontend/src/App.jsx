@@ -1,8 +1,12 @@
 import React from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
+
 import Header from "./components/Header";
 import Footer from "./components/Footer";
+import TournamentLayout from "./components/TournamentLayout";
+import PremiumAccessGuard from "./components/PremiumAccessGuard";
+
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
@@ -23,7 +27,6 @@ import Official from "./pages/Official";
 import Team from "./pages/Team";
 import TeamEntryForm from "./pages/TeamEntryForm";
 import TeamSubmissions from "./pages/TeamSubmissions";
-import TournamentLayout from "./components/TournamentLayout";
 
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -39,7 +42,6 @@ import UserAccessManager from "./pages/admin/UserAccessManager";
 import CouponManager from "./pages/admin/CouponManager";
 import Transactions from "./pages/admin/Transactions";
 import AuditLogs from "./pages/admin/AuditLogs";
-import PremiumAccessGuard from "./components/PremiumAccessGuard";
 
 import "./App.css";
 
@@ -54,60 +56,38 @@ function App() {
 
   const isAdminUser = user?.role === "admin" || user?.role === "superadmin";
 
+  const loginRedirect = (
+    <Navigate
+      to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
+      replace
+    />
+  );
+
   const requireAuth = (element) => {
-    if (!isAuthenticated) {
-      return (
-        <Navigate
-          to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
-          replace
-        />
-      );
-    }
-
-    if (needsProfileCompletion) {
-      return <Navigate to="/complete-profile" replace />;
-    }
-
+    if (!isAuthenticated) return loginRedirect;
+    if (needsProfileCompletion) return <Navigate to="/complete-profile" replace />;
     return element;
   };
 
   const requireAdmin = (element) => {
-    if (!isAuthenticated) {
-      return (
-        <Navigate
-          to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
-          replace
-        />
-      );
-    }
-
-    if (needsProfileCompletion) {
-      return <Navigate to="/complete-profile" replace />;
-    }
-
-    if (!isAdminUser) {
-      return <Navigate to="/" replace />;
-    }
-
+    if (!isAuthenticated) return loginRedirect;
+    if (needsProfileCompletion) return <Navigate to="/complete-profile" replace />;
+    if (!isAdminUser) return <Navigate to="/" replace />;
     return element;
   };
 
   const requireTournamentLogin = (element) => {
-    if (!isAuthenticated) {
-      return (
-        <Navigate
-          to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
-          replace
-        />
-      );
-    }
-
-    if (needsProfileCompletion) {
-      return <Navigate to="/complete-profile" replace />;
-    }
-
+    if (!isAuthenticated) return loginRedirect;
+    if (needsProfileCompletion) return <Navigate to="/complete-profile" replace />;
     return element;
   };
+
+  const requirePremiumTournamentFeature = (element, featureLabel) =>
+    requireTournamentLogin(
+      <PremiumAccessGuard featureLabel={featureLabel}>
+        {element}
+      </PremiumAccessGuard>
+    );
 
   return (
     <div className="appLayout">
@@ -199,7 +179,10 @@ function App() {
             <Route path="users" element={<AdminUsers />} />
             <Route path="users/:userId" element={<AdminUserDetails />} />
             <Route path="tournaments" element={<AdminTournaments />} />
-            <Route path="tournaments/:tournamentId" element={<AdminTournamentDetails />} />
+            <Route
+              path="tournaments/:tournamentId"
+              element={<AdminTournamentDetails />}
+            />
             <Route path="payments" element={<AdminPayments />} />
             <Route path="entries" element={<AdminEntries />} />
 
@@ -223,44 +206,39 @@ function App() {
           >
             <Route index element={<TournamentDetails />} />
             <Route path="entry" element={requireTournamentLogin(<Entry />)} />
-          <Route
-  path="tie-sheet"
-  element={requireTournamentLogin(
-    <PremiumAccessGuard featureLabel="Tie Sheet">
-      <TieSheet />
-    </PremiumAccessGuard>
-  )}
-/>
 
-<Route
-  path="tie-sheet-record"
-  element={requireTournamentLogin(
-    <PremiumAccessGuard featureLabel="Tie Sheet Record">
-      <TieSheetRecord />
-    </PremiumAccessGuard>
-  )}
-/>
+            <Route
+              path="tie-sheet"
+              element={requirePremiumTournamentFeature(<TieSheet />, "Tie Sheet")}
+            />
 
-<Route
-  path="official"
-  element={requireTournamentLogin(
-    <PremiumAccessGuard featureLabel="Officials">
-      <Official />
-    </PremiumAccessGuard>
-  )}
-/>
+            <Route
+              path="tie-sheet-record"
+              element={requirePremiumTournamentFeature(
+                <TieSheetRecord />,
+                "Tie Sheet Record"
+              )}
+            />
 
-<Route
-  path="team"
-  element={requireTournamentLogin(
-    <PremiumAccessGuard featureLabel="Team Payments">
-      <Team />
-    </PremiumAccessGuard>
-  )}
-/>
+            <Route
+              path="official"
+              element={requirePremiumTournamentFeature(<Official />, "Officials")}
+            />
+
+            <Route
+              path="team"
+              element={requirePremiumTournamentFeature(<Team />, "Team Payments")}
+            />
+
             <Route path="winner" element={requireTournamentLogin(<Winner />)} />
-            <Route path="team-championship" element={requireTournamentLogin(<TeamChampionship />)} />
-             <Route path="team-submissions" element={requireTournamentLogin(<TeamSubmissions />)} />
+            <Route
+              path="team-championship"
+              element={requireTournamentLogin(<TeamChampionship />)}
+            />
+            <Route
+              path="team-submissions"
+              element={requireTournamentLogin(<TeamSubmissions />)}
+            />
           </Route>
 
           <Route path="/about" element={<About />} />
