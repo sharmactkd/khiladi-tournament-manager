@@ -4,8 +4,9 @@ import styles from "./Admin.module.css";
 
 const defaultForm = {
   code: "",
-  type: "percentage",
+  category: "discount_coupon",
   value: 0,
+  type: "percentage",
   active: true,
   maxUses: "",
   expiresAt: "",
@@ -14,8 +15,17 @@ const defaultForm = {
 
 const planOptions = ["single", "six_months", "one_year", "monthly", "yearly", "lifetime"];
 
+const categoryOptions = [
+  { value: "discount_coupon", label: "Discount Coupon" },
+  { value: "trial_coupon", label: "Trial Coupon" },
+  { value: "free_tournament_coupon", label: "Free Tournament Coupon" },
+  { value: "academy_coupon", label: "Academy Coupon" },
+  { value: "full_access_coupon", label: "Full Access Coupon" },
+];
+
 const formatDate = (value) => {
   if (!value) return "-";
+
   return new Date(value).toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
@@ -28,15 +38,23 @@ const CouponManager = () => {
   const [form, setForm] = useState(defaultForm);
   const [editingId, setEditingId] = useState("");
   const [search, setSearch] = useState("");
+  const [includeDeleted, setIncludeDeleted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [actionLoadingId, setActionLoadingId] = useState("");
   const [error, setError] = useState("");
 
   const loadCoupons = async () => {
     try {
       setLoading(true);
       setError("");
-      const res = await api.get("/admin/billing/coupons");
+
+      const res = await api.get("/admin/billing/coupons", {
+        params: {
+          includeDeleted: includeDeleted ? "true" : "false",
+        },
+      });
+
       setCoupons(res.data?.coupons || []);
     } catch (err) {
       setError(err.response?.data?.message || err.message || "Failed to load coupons");
@@ -47,7 +65,8 @@ const CouponManager = () => {
 
   useEffect(() => {
     loadCoupons();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [includeDeleted]);
 
   const filteredCoupons = useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -55,11 +74,15 @@ const CouponManager = () => {
     if (!query) return coupons;
 
     return coupons.filter((coupon) =>
-      [
-        coupon.code,
-        coupon.type,
+     [
+  coupon.code,
+  coupon.category,
+  coupon.type,
         coupon.createdBy?.name,
         coupon.createdBy?.email,
+        coupon.deletedBy?.name,
+        coupon.deletedBy?.email,
+        coupon.deleteReason,
         coupon.applicablePlans?.join(" "),
       ]
         .join(" ")
@@ -97,7 +120,7 @@ const CouponManager = () => {
   const buildPayload = () => {
     const payload = {
       code: form.code.trim().toUpperCase(),
-      type: form.type,
+      category: form.category,
       value: Number(form.value || 0),
       active: Boolean(form.active),
       applicablePlans: form.applicablePlans || [],
@@ -146,10 +169,16 @@ const CouponManager = () => {
   };
 
   const editCoupon = (coupon) => {
+    if (coupon.deletedAt) {
+      alert("Deleted coupons cannot be edited.");
+      return;
+    }
+
     setEditingId(coupon._id);
+
     setForm({
       code: coupon.code || "",
-      type: coupon.type || "percentage",
+      category: coupon.category || "discount_coupon",
       value: coupon.value || 0,
       active: coupon.active !== false,
       maxUses: coupon.maxUses || "",
@@ -160,29 +189,52 @@ const CouponManager = () => {
     });
   };
 
-  const disableCoupon = async (couponId) => {
-    const ok = window.confirm("Disable this coupon?");
-    if (!ok) return;
+  const disableCoupon = async (coupon) => {
+    const typed = window.prompt(
+      `Disable coupon ${coupon.code}?\n\nThis will prevent future usage but keep audit history.\n\nType DISABLE to confirm.`
+    );
+
+    if (typed !== "DISABLE") return;
 
     try {
-      await api.patch(`/admin/billing/coupons/${couponId}/disable`);
+      setActionLoadingId(`${coupon._id}:disable`);
+      await api.patch(`/admin/billing/coupons/${coupon._id}/disable`);
       await loadCoupons();
     } catch (err) {
       alert(err.response?.data?.message || err.message || "Failed to disable coupon");
+    } finally {
+      setActionLoadingId("");
     }
   };
 
-  const deleteCoupon = async (couponId) => {
-    const ok = window.confirm("Delete this coupon permanently?");
-    if (!ok) return;
+  const deleteCoupon = async (coupon) => {
+    const typed = window.prompt(
+      `Soft delete coupon ${coupon.code}?\n\nThis will disable the coupon and preserve audit history. It will not be permanently removed.\n\nType DELETE to confirm.`
+    );
+
+    if (typed !== "DELETE") return;
+
+    const reason = window.prompt("Enter delete reason for audit log:") || "";
+
+    if (!reason.trim()) {
+      alert("Delete reason is required.");
+      return;
+    }
 
     try {
-      await api.delete(`/admin/billing/coupons/${couponId}`);
+      setActionLoadingId(`${coupon._id}:delete`);
+      await api.delete(`/admin/billing/coupons/${coupon._id}`, {
+        data: { reason },
+      });
       await loadCoupons();
     } catch (err) {
       alert(err.response?.data?.message || err.message || "Failed to delete coupon");
+    } finally {
+      setActionLoadingId("");
     }
   };
+
+  const isActionDisabled = Boolean(actionLoadingId);
 
   return (
     <div className={styles.pageStack}>
@@ -324,6 +376,15 @@ const CouponManager = () => {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search coupons"
           />
+
+          <label className={styles.inlineCheck}>
+            <input
+              type="checkbox"
+              checked={includeDeleted}
+              onChange={(e) => setIncludeDeleted(e.target.checked)}
+            />
+            Include deleted
+          </label>
         </div>
 
         {loading && <div className={styles.stateBox}>Loading coupons...</div>}
@@ -335,8 +396,9 @@ const CouponManager = () => {
               <thead>
                 <tr>
                   <th>Code</th>
-                  <th>Type</th>
-                  <th>Value</th>
+                 <th>Category</th>
+<th>Type</th>
+<th>Value</th>
                   <th>Uses</th>
                   <th>Plans</th>
                   <th>Status</th>
@@ -346,73 +408,99 @@ const CouponManager = () => {
               </thead>
 
               <tbody>
-                {filteredCoupons.map((coupon) => (
-                  <tr key={coupon._id}>
-                    <td>
-                      <strong>{coupon.code}</strong>
-                    </td>
+                {filteredCoupons.map((coupon) => {
+                  const deleted = Boolean(coupon.deletedAt);
 
-                    <td>
-                      <span className={styles.badge}>{coupon.type}</span>
-                    </td>
+                  return (
+                    <tr key={coupon._id}>
+                      <td>
+                        <strong>{coupon.code}</strong>
+                        {deleted && (
+                          <>
+                            <br />
+                            <span>Deleted: {formatDate(coupon.deletedAt)}</span>
+                          </>
+                        )}
+                      </td>
 
-                    <td>{coupon.value || 0}</td>
+                     <td>
+  <span className={styles.badge}>
+    {coupon.category || "discount_coupon"}
+  </span>
+</td>
 
-                    <td>
-                      {coupon.usedCount || 0}
-                      {coupon.maxUses ? ` / ${coupon.maxUses}` : " / Unlimited"}
-                    </td>
+<td>
+  <span className={styles.badge}>{coupon.type}</span>
+</td>
 
-                    <td>
-                      {coupon.applicablePlans?.length
-                        ? coupon.applicablePlans.join(", ")
-                        : "All"}
-                    </td>
+<td>{coupon.value || 0}</td>
 
-                    <td>
-                      {coupon.active ? (
-                        <span className={styles.successBadge}>Active</span>
-                      ) : (
-                        <span className={styles.mutedBadge}>Disabled</span>
-                      )}
-                    </td>
+                     
 
-                    <td>{formatDate(coupon.expiresAt)}</td>
+                      <td>
+                        {coupon.usedCount || 0}
+                        {coupon.maxUses ? ` / ${coupon.maxUses}` : " / Unlimited"}
+                      </td>
 
-                    <td>
-                      <div className={styles.actionGroup}>
-                        <button
-                          type="button"
-                          className={styles.secondaryBtn}
-                          onClick={() => editCoupon(coupon)}
-                        >
-                          Edit
-                        </button>
+                      <td>
+                        {coupon.applicablePlans?.length
+                          ? coupon.applicablePlans.join(", ")
+                          : "All"}
+                      </td>
 
-                        <button
-                          type="button"
-                          className={styles.dangerBtn}
-                          onClick={() => disableCoupon(coupon._id)}
-                          disabled={!coupon.active}
-                        >
-                          Disable
-                        </button>
+                      <td>
+                        {deleted ? (
+                          <span className={styles.errorBadge}>Deleted</span>
+                        ) : coupon.active ? (
+                          <span className={styles.successBadge}>Active</span>
+                        ) : (
+                          <span className={styles.mutedBadge}>Disabled</span>
+                        )}
+                      </td>
 
-                        <button
-                          type="button"
-                          className={styles.dangerBtn}
-                          onClick={() => deleteCoupon(coupon._id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                      <td>{formatDate(coupon.expiresAt)}</td>
+
+                      <td>
+                        <div className={styles.actionGroup}>
+                          <button
+                            type="button"
+                            className={styles.secondaryBtn}
+                            onClick={() => editCoupon(coupon)}
+                            disabled={deleted || isActionDisabled}
+                          >
+                            Edit
+                          </button>
+
+                          <button
+                            type="button"
+                            className={styles.dangerBtn}
+                            onClick={() => disableCoupon(coupon)}
+                            disabled={deleted || !coupon.active || isActionDisabled}
+                          >
+                            Disable
+                          </button>
+
+                          <button
+                            type="button"
+                            className={styles.dangerBtn}
+                            onClick={() => deleteCoupon(coupon)}
+                            disabled={deleted || isActionDisabled}
+                          >
+                            Delete
+                          </button>
+                        </div>
+
+                        {deleted && coupon.deleteReason && (
+                          <span>Reason: {coupon.deleteReason}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
 
                 {filteredCoupons.length === 0 && (
                   <tr>
-                    <td colSpan="8" className={styles.emptyCell}>
+                    <td colSpan="9" className={styles.emptyCell}>
                       No coupons found.
                     </td>
                   </tr>

@@ -44,6 +44,8 @@ import {
   listAuditLogs,
   reconcileBillingPayments,
 reconcileBillingPaymentById,
+cleanupStaleBillingPayments,
+listInvoices,
 } from "../controllers/billingController.js";
 import { requireCsrfToken } from "../middleware/csrfProtection.js";
 import {
@@ -346,4 +348,19 @@ router.post(
   superAdminMiddleware,
   reconcileBillingPaymentById
 );
+
+router.post(
+  "/billing/cleanup-stale-payments",
+  requireCsrfToken,
+  requireAdminPermission("payments:manage"),
+  superAdminMiddleware,
+  cleanupStaleBillingPayments
+);
+
+router.get(
+  "/billing/invoices",
+  requireAdminPermission("payments:read"),
+  listInvoices
+);
+
 export default router;

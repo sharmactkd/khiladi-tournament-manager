@@ -6,10 +6,14 @@ import PaymentTransaction from "../models/paymentTransaction.js";
 import AdminLog from "../models/adminLog.js";
 import Payment from "../models/payment.js";
 import hasPremiumAccess from "../utils/hasPremiumAccess.js";
+import { expireStalePayments } from "../services/paymentCleanupService.js";
 import {
   reconcileOnePayment,
   reconcilePayments,
 } from "../services/paymentReconciliationService.js";
+import BillingInvoice from "../models/billingInvoice.js";
+import { createInvoice } from "../services/billingInvoiceService.js";
+import { sendBillingInvoiceEmail } from "../services/billingEmailService.js";
 
 const toObjectId = (id) =>
   mongoose.Types.ObjectId.isValid(String(id)) ? new mongoose.Types.ObjectId(id) : null;
@@ -734,11 +738,12 @@ export const listCoupons = async (req, res) => {
 };
 
 export const createCoupon = async (req, res) => {
-  const payload = {
-    ...req.body,
-    code: String(req.body.code || "").trim().toUpperCase(),
-    createdBy: req.user._id,
-  };
+const payload = {
+  ...req.body,
+  code: String(req.body.code || "").trim().toUpperCase(),
+  category: String(req.body.category || "discount_coupon").trim(),
+  createdBy: req.user._id,
+};
 
   const existing = await Coupon.findOne({
   code: payload.code,
@@ -771,6 +776,7 @@ export const updateCoupon = async (req, res) => {
   };
 
   if (update.code) update.code = String(update.code).trim().toUpperCase();
+if (update.category) update.category = String(update.category).trim();
 
   const coupon = await Coupon.findOneAndUpdate(
     {
@@ -919,17 +925,18 @@ export const validateCoupon = async (req, res) => {
     });
   }
 
-  return res.json({
-    success: true,
-    valid: true,
-    coupon: {
-      code: coupon.code,
-      type: coupon.type,
-      value: coupon.value,
-      expiresAt: coupon.expiresAt,
-      applicablePlans: coupon.applicablePlans,
-    },
-  });
+ return res.json({
+  success: true,
+  valid: true,
+  coupon: {
+    code: coupon.code,
+    category: coupon.category || "discount_coupon",
+    type: coupon.type,
+    value: coupon.value,
+    expiresAt: coupon.expiresAt,
+    applicablePlans: coupon.applicablePlans,
+  },
+});
 };
 
 export const applyCoupon = async (req, res) => {
@@ -987,11 +994,12 @@ export const applyCoupon = async (req, res) => {
     {
       $inc: { usedCount: 1 },
       $push: {
-        usedBy: {
-          userId: req.user._id,
-          usedAt: now,
-          planType,
-        },
+     usedBy: {
+  userId: req.user._id,
+  usedAt: now,
+  planType,
+  category: coupon.category || "discount_coupon",
+},
       },
     },
     {
@@ -1018,7 +1026,7 @@ export const applyCoupon = async (req, res) => {
     });
   }
 
-  await PaymentTransaction.create({
+  const transaction = await PaymentTransaction.create({
     userId: req.user._id,
     amount: 0,
     currency: settings.defaultCurrency || "INR",
@@ -1027,21 +1035,45 @@ export const applyCoupon = async (req, res) => {
     planType,
     status: "paid",
     couponUsed: updatedCoupon.code,
-    metadata: {
-      couponId: updatedCoupon._id,
-      couponType: updatedCoupon.type,
-      couponValue: updatedCoupon.value,
-    },
+ metadata: {
+  couponId: updatedCoupon._id,
+  couponCategory: updatedCoupon.category || "discount_coupon",
+  couponType: updatedCoupon.type,
+  couponValue: updatedCoupon.value,
+},
   });
+
+  const invoice = await createInvoice({
+  userId: req.user._id,
+  transactionId: transaction._id,
+  invoiceType: "coupon",
+  planType,
+  amount: 0,
+  currency: settings.defaultCurrency || "INR",
+  paymentGateway: "coupon",
+  couponCode: updatedCoupon.code,
+  couponCategory: updatedCoupon.category || "discount_coupon",
+  metadata: {
+    couponId: updatedCoupon._id,
+    couponType: updatedCoupon.type,
+    couponValue: updatedCoupon.value,
+  },
+});
+
+await sendBillingInvoiceEmail({
+  user: req.user,
+  invoice,
+});
 
   return res.json({
     success: true,
     message: "Coupon applied successfully",
     coupon: {
-      code: updatedCoupon.code,
-      type: updatedCoupon.type,
-      value: updatedCoupon.value,
-    },
+  code: updatedCoupon.code,
+  category: updatedCoupon.category || "discount_coupon",
+  type: updatedCoupon.type,
+  value: updatedCoupon.value,
+},
   });
 };
 
@@ -1247,5 +1279,57 @@ export const reconcileBillingPaymentById = async (req, res) => {
       : "Single payment reconciliation completed",
     dryRun,
     result,
+  });
+};
+
+export const cleanupStaleBillingPayments = async (req, res) => {
+  const olderThanMinutes = Number(req.query.olderThanMinutes || 30);
+  const limit = Number(req.query.limit || 100);
+
+  const result = await expireStalePayments({
+    olderThanMinutes,
+    limit,
+    source: "admin_manual_cleanup",
+  });
+
+  return res.json({
+    success: true,
+    message: "Stale payment cleanup completed",
+    ...result,
+  });
+};
+
+export const listInvoices = async (req, res) => {
+  const { page = 1, limit = 20, invoiceType = "", status = "" } = req.query;
+
+  const safePage = Math.max(Number(page) || 1, 1);
+  const safeLimit = Math.min(Math.max(Number(limit) || 20, 1), 100);
+
+  const query = {};
+
+  if (invoiceType) query.invoiceType = invoiceType;
+  if (status) query.status = status;
+
+  const skip = (safePage - 1) * safeLimit;
+
+  const [invoices, total] = await Promise.all([
+    BillingInvoice.find(query)
+      .populate("userId", "name email phone")
+      .sort({ issuedAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .lean(),
+    BillingInvoice.countDocuments(query),
+  ]);
+
+  return res.json({
+    success: true,
+    invoices,
+    pagination: {
+      page: safePage,
+      limit: safeLimit,
+      total,
+      pages: Math.ceil(total / safeLimit),
+    },
   });
 };

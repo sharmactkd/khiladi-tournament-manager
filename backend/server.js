@@ -21,6 +21,10 @@ import razorpayWebhookRoutes from "./routes/razorpayWebhookRoutes.js";
 
 import logger, { logMiddleware } from "./utils/logger.js";
 import { generalRateLimiter, authRateLimiter } from "./middleware/rateLimiter.js";
+import {
+  startPaymentCleanupScheduler,
+  stopPaymentCleanupScheduler,
+} from "./services/paymentCleanupScheduler.js";
 
 console.log("SERVER FILE LOADED");
 process.on("uncaughtException", (err) => {
@@ -156,6 +160,7 @@ mongoose
     if (isDev) {
       logger.info("Development server MongoDB connection ready");
     }
+    startPaymentCleanupScheduler();
   })
   .catch((err) => {
     logger.error("MongoDB connection failed", {
@@ -224,10 +229,11 @@ process.on("SIGINT", shutDown);
 
 function shutDown() {
   logger.info("Received shutdown signal. Closing server gracefully...");
-  server.close(async () => {
-    logger.info("HTTP server closed.");
-    await mongoose.disconnect();
-    logger.info("MongoDB disconnected.");
-    process.exit(0);
-  });
+ server.close(async () => {
+  logger.info("HTTP server closed.");
+  stopPaymentCleanupScheduler();
+  await mongoose.disconnect();
+  logger.info("MongoDB disconnected.");
+  process.exit(0);
+});
 }

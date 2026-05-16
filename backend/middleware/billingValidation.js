@@ -1,5 +1,13 @@
 import { body, param, query, validationResult } from "express-validator";
 
+const couponCategories = [
+  "discount_coupon",
+  "trial_coupon",
+  "free_tournament_coupon",
+  "academy_coupon",
+  "full_access_coupon",
+];
+
 export const handleBillingValidation = (req, res, next) => {
   const errors = validationResult(req);
 
@@ -42,6 +50,7 @@ export const validatePlatformSettingsUpdate = [
 export const validateCouponCreate = [
   body("code").isString().trim().isLength({ min: 3, max: 40 }),
   body("type").isIn(["percentage", "fixed", "full_access"]),
+  body("category").optional().isIn(couponCategories),
   body("value").optional().isFloat({ min: 0 }),
   body("active").optional().isBoolean(),
   body("maxUses").optional({ nullable: true }).isInt({ min: 1 }),
@@ -55,6 +64,7 @@ export const validateCouponUpdate = [
   param("couponId").isMongoId(),
   body("code").optional().isString().trim().isLength({ min: 3, max: 40 }),
   body("type").optional().isIn(["percentage", "fixed", "full_access"]),
+  body("category").optional().isIn(couponCategories),
   body("value").optional().isFloat({ min: 0 }),
   body("active").optional().isBoolean(),
   body("maxUses").optional({ nullable: true }).isInt({ min: 1 }),

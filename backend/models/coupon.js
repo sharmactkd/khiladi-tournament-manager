@@ -1,15 +1,28 @@
 import mongoose from "mongoose";
 
+export const COUPON_CATEGORIES = [
+  "discount_coupon",
+  "trial_coupon",
+  "free_tournament_coupon",
+  "academy_coupon",
+  "full_access_coupon",
+];
+
 const couponSchema = new mongoose.Schema(
   {
     code: {
       type: String,
       required: true,
-      unique: true,
       uppercase: true,
       trim: true,
       minlength: 3,
       maxlength: 40,
+    },
+
+    category: {
+      type: String,
+      enum: COUPON_CATEGORIES,
+      default: "discount_coupon",
       index: true,
     },
 
@@ -79,26 +92,31 @@ const couponSchema = new mongoose.Schema(
           default: "",
           trim: true,
         },
+        category: {
+          type: String,
+          default: "",
+          trim: true,
+        },
       },
     ],
 
     deletedAt: {
-  type: Date,
-  default: null,
-  index: true,
-},
+      type: Date,
+      default: null,
+      index: true,
+    },
 
-deletedBy: {
-  type: mongoose.Schema.Types.ObjectId,
-  ref: "User",
-  default: null,
-},
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
 
-deleteReason: {
-  type: String,
-  default: "",
-  trim: true,
-},
+    deleteReason: {
+      type: String,
+      default: "",
+      trim: true,
+    },
 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -115,8 +133,19 @@ deleteReason: {
   { timestamps: true }
 );
 
-couponSchema.index({ code: 1, active: 1 });
+couponSchema.index(
+  { code: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      deletedAt: null,
+    },
+  }
+);
+
+couponSchema.index({ category: 1, active: 1, deletedAt: 1 });
 couponSchema.index({ expiresAt: 1, active: 1 });
+couponSchema.index({ active: 1, deletedAt: 1 });
 couponSchema.index({ "usedBy.userId": 1 });
 
 couponSchema.methods.isExpired = function () {
