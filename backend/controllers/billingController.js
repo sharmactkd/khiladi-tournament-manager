@@ -14,6 +14,70 @@ import {
 import BillingInvoice from "../models/billingInvoice.js";
 import { createInvoice } from "../services/billingInvoiceService.js";
 import { sendBillingInvoiceEmail } from "../services/billingEmailService.js";
+import CouponRedemption from "../models/couponRedemption.js";
+
+import { getPlanConfig } from "../services/subscriptionService.js";
+import {
+  createAccessEntitlement,
+  revokeAccessEntitlements,
+} from "../services/accessEntitlementService.js";
+
+
+const calculateCouponAccessDates = async ({ planType }) => {
+  const now = new Date();
+  const plan = await getPlanConfig(planType);
+
+  if (!plan) {
+    const error = new Error("Invalid plan for coupon access");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const isLifetime = planType === "lifetime";
+  const isTournament = plan.accessType === "tournament" || planType === "single";
+
+  return {
+    startsAt: now,
+    expiresAt:
+      isLifetime || isTournament || !plan.durationDays
+        ? null
+        : addDays(now, plan.durationDays),
+    accessType: isLifetime
+      ? "lifetime"
+      : isTournament
+        ? "tournament"
+        : "coupon",
+    scope: isTournament ? "tournament" : "global",
+    plan,
+  };
+};
+
+const calculateAdminAccessDates = async ({ planType, days = 30 }) => {
+  const now = new Date();
+
+  if (planType === "lifetime") {
+    return {
+      startsAt: now,
+      expiresAt: null,
+      accessType: "lifetime",
+      scope: "global",
+    };
+  }
+
+  const plan = await getPlanConfig(planType);
+
+  const durationDays =
+    plan?.durationDays && Number(plan.durationDays) > 0
+      ? Number(plan.durationDays)
+      : Number(days || 30);
+
+  return {
+    startsAt: now,
+    expiresAt: addDays(now, durationDays),
+    accessType: "admin",
+    scope: "global",
+  };
+};
 
 const toObjectId = (id) =>
   mongoose.Types.ObjectId.isValid(String(id)) ? new mongoose.Types.ObjectId(id) : null;
@@ -464,189 +528,567 @@ export const grantPremium = async (req, res) => {
 
 export const removePremium = async (req, res) => {
   const { userId } = req.params;
+  const { reason = "Admin removed premium access" } = req.body || {};
 
-  const user = await User.findByIdAndUpdate(
-    userId,
-    {
-      subscriptionStatus: "none",
-      subscriptionType: "none",
-      premiumExpiresAt: null,
-      lifetimeAccess: false,
-      adminAccessOverride: false,
-      accessSource: null,
-    },
-    { new: true }
-  ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+  const safeUserId = toObjectId(userId);
 
-  if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" });
+  if (!safeUserId) {
+    return res.status(400).json({ success: false, message: "Invalid userId" });
   }
 
-  await writeAdminLog(req, "premium_removed", userId);
+  const session = await mongoose.startSession();
 
-  return res.json({
-    success: true,
-    message: "Premium access removed successfully",
-    user,
-  });
+  try {
+    let updatedUser = null;
+
+    await session.withTransaction(async () => {
+      await revokeAccessEntitlements({
+        userId: safeUserId,
+        revokedBy: req.user._id,
+        reason,
+        session,
+      });
+
+      updatedUser = await User.findByIdAndUpdate(
+        safeUserId,
+        {
+          subscriptionStatus: "none",
+          subscriptionType: "none",
+          premiumExpiresAt: null,
+          lifetimeAccess: false,
+          adminAccessOverride: false,
+          accessSource: null,
+        },
+        { new: true, session }
+      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+
+      if (!updatedUser) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "premium_removed",
+            targetUserId: safeUserId,
+            details: { reason },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+    });
+
+    return res.json({
+      success: true,
+      message: "Premium access removed successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to remove premium access",
+    });
+  } finally {
+    session.endSession();
+  }
 };
 
 export const extendPremium = async (req, res) => {
   const { userId } = req.params;
   const { days = 30, reason = "" } = req.body;
 
-  const user = await User.findById(userId);
+  const safeUserId = toObjectId(userId);
 
-  if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" });
+  if (!safeUserId) {
+    return res.status(400).json({ success: false, message: "Invalid userId" });
   }
 
-  const baseDate =
-    user.premiumExpiresAt && user.premiumExpiresAt > new Date()
-      ? user.premiumExpiresAt
-      : new Date();
+  const session = await mongoose.startSession();
 
-  user.subscriptionStatus = "active";
-  user.premiumExpiresAt = addDays(baseDate, days);
-  user.accessSource = user.accessSource || "admin";
-  await user.save();
+  try {
+    let updatedUser = null;
+    let entitlement = null;
 
-  await writeAdminLog(req, "premium_extended", userId, { days, reason });
+    await session.withTransaction(async () => {
+      const user = await User.findById(safeUserId).session(session);
 
-  return res.json({
-    success: true,
-    message: "Premium access extended successfully",
-    user,
-  });
+      if (!user) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      const baseDate =
+        user.premiumExpiresAt && user.premiumExpiresAt > new Date()
+          ? user.premiumExpiresAt
+          : new Date();
+
+      const newExpiry = addDays(baseDate, days);
+
+      entitlement = await createAccessEntitlement({
+        userId: safeUserId,
+        scope: "global",
+        source: "admin",
+        sourceId: req.user._id,
+        planType: user.subscriptionType || "admin_extension",
+        accessType: "admin",
+        startsAt: new Date(),
+        expiresAt: newExpiry,
+        metadata: {
+          reason,
+          extendedBy: req.user._id,
+          days,
+          previousExpiry: user.premiumExpiresAt || null,
+        },
+        session,
+      });
+
+      updatedUser = await User.findByIdAndUpdate(
+        safeUserId,
+        {
+          subscriptionStatus: "active",
+          subscriptionType: user.subscriptionType || "monthly",
+          premiumExpiresAt: newExpiry,
+          accessSource: "admin",
+        },
+        { new: true, session }
+      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "premium_extended",
+            targetUserId: safeUserId,
+            details: {
+              days,
+              reason,
+              entitlementId: entitlement._id,
+              newExpiry,
+            },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+    });
+
+    return res.json({
+      success: true,
+      message: "Premium access extended successfully",
+      user: updatedUser,
+      entitlement,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to extend premium access",
+    });
+  } finally {
+    session.endSession();
+  }
 };
 
 export const setLifetimeAccess = async (req, res) => {
   const { userId } = req.params;
+  const { reason = "Lifetime access enabled by admin" } = req.body || {};
 
-  const user = await User.findByIdAndUpdate(
-    userId,
-    {
-      subscriptionStatus: "lifetime",
-      subscriptionType: "lifetime",
-      premiumExpiresAt: null,
-      lifetimeAccess: true,
-      accessSource: "lifetime",
-    },
-    { new: true }
-  ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+  const safeUserId = toObjectId(userId);
 
-  if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" });
+  if (!safeUserId) {
+    return res.status(400).json({ success: false, message: "Invalid userId" });
   }
 
-  await writeAdminLog(req, "lifetime_access_enabled", userId);
+  const session = await mongoose.startSession();
 
-  return res.json({
-    success: true,
-    message: "Lifetime access enabled successfully",
-    user,
-  });
+  try {
+    let updatedUser = null;
+    let entitlement = null;
+
+    await session.withTransaction(async () => {
+      entitlement = await createAccessEntitlement({
+        userId: safeUserId,
+        scope: "global",
+        source: "lifetime",
+        sourceId: req.user._id,
+        planType: "lifetime",
+        accessType: "lifetime",
+        startsAt: new Date(),
+        expiresAt: null,
+        metadata: {
+          reason,
+          grantedBy: req.user._id,
+        },
+        session,
+      });
+
+      updatedUser = await User.findByIdAndUpdate(
+        safeUserId,
+        {
+          subscriptionStatus: "lifetime",
+          subscriptionType: "lifetime",
+          premiumExpiresAt: null,
+          lifetimeAccess: true,
+          accessSource: "lifetime",
+        },
+        { new: true, session }
+      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+
+      if (!updatedUser) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "lifetime_access_enabled",
+            targetUserId: safeUserId,
+            details: {
+              reason,
+              entitlementId: entitlement._id,
+            },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+    });
+
+    return res.json({
+      success: true,
+      message: "Lifetime access enabled successfully",
+      user: updatedUser,
+      entitlement,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to enable lifetime access",
+    });
+  } finally {
+    session.endSession();
+  }
 };
 
 export const startTrial = async (req, res) => {
   const { userId } = req.params;
   const settings = await PlatformSettings.getSettings();
   const days = Number(req.body.days || settings.defaultTrialDays || 7);
+  const { reason = "" } = req.body || {};
 
-  const user = await User.findByIdAndUpdate(
-    userId,
-    {
-      subscriptionStatus: "trial",
-      subscriptionType: "trial",
-      trialUsed: true,
-      trialExpiresAt: addDays(new Date(), days),
-      accessSource: "trial",
-    },
-    { new: true }
-  ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+  const safeUserId = toObjectId(userId);
 
-  if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" });
+  if (!safeUserId) {
+    return res.status(400).json({ success: false, message: "Invalid userId" });
   }
 
-  await writeAdminLog(req, "trial_started", userId, { days });
+  const session = await mongoose.startSession();
 
-  return res.json({
-    success: true,
-    message: "Trial started successfully",
-    user,
-  });
+  try {
+    let updatedUser = null;
+    let entitlement = null;
+
+    await session.withTransaction(async () => {
+      const trialExpiresAt = addDays(new Date(), days);
+
+      entitlement = await createAccessEntitlement({
+        userId: safeUserId,
+        scope: "global",
+        source: "trial",
+        sourceId: req.user._id,
+        planType: "trial",
+        accessType: "trial",
+        startsAt: new Date(),
+        expiresAt: trialExpiresAt,
+        metadata: {
+          reason,
+          startedBy: req.user._id,
+          days,
+        },
+        session,
+      });
+
+      updatedUser = await User.findByIdAndUpdate(
+        safeUserId,
+        {
+          subscriptionStatus: "trial",
+          subscriptionType: "trial",
+          trialUsed: true,
+          trialExpiresAt,
+          accessSource: "trial",
+        },
+        { new: true, session }
+      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+
+      if (!updatedUser) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "trial_started",
+            targetUserId: safeUserId,
+            details: {
+              days,
+              reason,
+              entitlementId: entitlement._id,
+              trialExpiresAt,
+            },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+    });
+
+    return res.json({
+      success: true,
+      message: "Trial started successfully",
+      user: updatedUser,
+      entitlement,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to start trial",
+    });
+  } finally {
+    session.endSession();
+  }
 };
-
 export const removeTrial = async (req, res) => {
   const { userId } = req.params;
+  const { reason = "Trial removed by admin" } = req.body || {};
 
-  const user = await User.findByIdAndUpdate(
-    userId,
-    {
-      trialExpiresAt: null,
-      subscriptionStatus: "none",
-      subscriptionType: "none",
-      accessSource: null,
-    },
-    { new: true }
-  ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+  const safeUserId = toObjectId(userId);
 
-  if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" });
+  if (!safeUserId) {
+    return res.status(400).json({ success: false, message: "Invalid userId" });
   }
 
-  await writeAdminLog(req, "trial_removed", userId);
+  const session = await mongoose.startSession();
 
-  return res.json({
-    success: true,
-    message: "Trial removed successfully",
-    user,
-  });
+  try {
+    let updatedUser = null;
+
+    await session.withTransaction(async () => {
+      await revokeAccessEntitlements({
+        userId: safeUserId,
+        source: "trial",
+        revokedBy: req.user._id,
+        reason,
+        session,
+      });
+
+      updatedUser = await User.findByIdAndUpdate(
+        safeUserId,
+        {
+          trialExpiresAt: null,
+          subscriptionStatus: "none",
+          subscriptionType: "none",
+          accessSource: null,
+        },
+        { new: true, session }
+      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+
+      if (!updatedUser) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "trial_removed",
+            targetUserId: safeUserId,
+            details: { reason },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+    });
+
+    return res.json({
+      success: true,
+      message: "Trial removed successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to remove trial",
+    });
+  } finally {
+    session.endSession();
+  }
 };
 
 export const enableOverride = async (req, res) => {
   const { userId } = req.params;
+  const { reason = "Admin override enabled" } = req.body || {};
 
-  const user = await User.findByIdAndUpdate(
-    userId,
-    { adminAccessOverride: true, accessSource: "admin" },
-    { new: true }
-  ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+  const safeUserId = toObjectId(userId);
 
-  if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" });
+  if (!safeUserId) {
+    return res.status(400).json({ success: false, message: "Invalid userId" });
   }
 
-  await writeAdminLog(req, "admin_override_enabled", userId);
+  const session = await mongoose.startSession();
 
-  return res.json({
-    success: true,
-    message: "Admin override enabled successfully",
-    user,
-  });
+  try {
+    let updatedUser = null;
+    let entitlement = null;
+
+    await session.withTransaction(async () => {
+      entitlement = await createAccessEntitlement({
+        userId: safeUserId,
+        scope: "global",
+        source: "admin",
+        sourceId: req.user._id,
+        planType: "admin_override",
+        accessType: "admin",
+        startsAt: new Date(),
+        expiresAt: null,
+        metadata: {
+          reason,
+          override: true,
+          enabledBy: req.user._id,
+        },
+        session,
+      });
+
+      updatedUser = await User.findByIdAndUpdate(
+        safeUserId,
+        {
+          adminAccessOverride: true,
+          accessSource: "admin",
+        },
+        { new: true, session }
+      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+
+      if (!updatedUser) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "admin_override_enabled",
+            targetUserId: safeUserId,
+            details: {
+              reason,
+              entitlementId: entitlement._id,
+            },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+    });
+
+    return res.json({
+      success: true,
+      message: "Admin override enabled successfully",
+      user: updatedUser,
+      entitlement,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to enable admin override",
+    });
+  } finally {
+    session.endSession();
+  }
 };
 
 export const disableOverride = async (req, res) => {
   const { userId } = req.params;
+  const { reason = "Admin override disabled" } = req.body || {};
 
-  const user = await User.findByIdAndUpdate(
-    userId,
-    { adminAccessOverride: false },
-    { new: true }
-  ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+  const safeUserId = toObjectId(userId);
 
-  if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" });
+  if (!safeUserId) {
+    return res.status(400).json({ success: false, message: "Invalid userId" });
   }
 
-  await writeAdminLog(req, "admin_override_disabled", userId);
+  const session = await mongoose.startSession();
 
-  return res.json({
-    success: true,
-    message: "Admin override disabled successfully",
-    user,
-  });
+  try {
+    let updatedUser = null;
+
+    await session.withTransaction(async () => {
+      await revokeAccessEntitlements({
+        userId: safeUserId,
+        source: "admin",
+        revokedBy: req.user._id,
+        reason,
+        session,
+      });
+
+      updatedUser = await User.findByIdAndUpdate(
+        safeUserId,
+        { adminAccessOverride: false },
+        { new: true, session }
+      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+
+      if (!updatedUser) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "admin_override_disabled",
+            targetUserId: safeUserId,
+            details: { reason },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+    });
+
+    return res.json({
+      success: true,
+      message: "Admin override disabled successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to disable admin override",
+    });
+  } finally {
+    session.endSession();
+  }
 };
 
 export const blockUser = async (req, res) => {
@@ -939,8 +1381,8 @@ export const validateCoupon = async (req, res) => {
 });
 };
 
-export const applyCoupon = async (req, res) => {
-  const { code, planType = "monthly" } = req.body;
+const applyCouponCore = async ({ req, res, targetUserId, appliedByAdmin = false }) => {
+  const { code, planType = "monthly", tournamentId = null } = req.body;
   const settings = await PlatformSettings.getSettings();
 
   if (!settings.couponSystemEnabled) {
@@ -950,132 +1392,333 @@ export const applyCoupon = async (req, res) => {
     });
   }
 
-  const normalizedCode = String(code || "").trim().toUpperCase();
-  const now = new Date();
+  const safeTargetUserId = toObjectId(targetUserId);
 
- const coupon = await Coupon.findOne({
-  code: normalizedCode,
-  active: true,
-  deletedAt: null,
-});
-
-  if (!coupon) {
-    return res.status(404).json({ success: false, message: "Invalid coupon" });
-  }
-
-  if (coupon.isExpired() || !coupon.hasRemainingUses()) {
+  if (!safeTargetUserId) {
     return res.status(400).json({
       success: false,
-      message: "Coupon is expired or usage limit reached",
+      message: "Valid target userId is required",
     });
   }
 
-  if (!coupon.isUserAllowed(req.user._id) || !coupon.isPlanAllowed(planType)) {
-    return res.status(403).json({
+  if (planType === "single" && !tournamentId) {
+    return res.status(400).json({
       success: false,
-      message: "Coupon is not applicable",
+      message: "tournamentId is required for single tournament coupon",
     });
   }
 
-  const updatedCoupon = await Coupon.findOneAndUpdate(
-  {
-  _id: coupon._id,
-  active: true,
-  deletedAt: null,
-      $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
-      $expr: {
-        $or: [
-          { $eq: ["$maxUses", null] },
-          { $lt: ["$usedCount", "$maxUses"] },
-        ],
-      },
-      "usedBy.userId": { $ne: req.user._id },
-    },
-    {
-      $inc: { usedCount: 1 },
-      $push: {
-     usedBy: {
-  userId: req.user._id,
-  usedAt: now,
-  planType,
-  category: coupon.category || "discount_coupon",
-},
-      },
-    },
-    {
-      new: true,
-      runValidators: true,
-    }
+  if (tournamentId && !mongoose.Types.ObjectId.isValid(String(tournamentId))) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid tournamentId",
+    });
+  }
+
+  const targetUser = await User.findById(safeTargetUserId).select(
+    "-password -refreshTokens -resetPasswordToken -resetPasswordExpire"
   );
 
-  if (!updatedCoupon) {
-    return res.status(409).json({
+  if (!targetUser) {
+    return res.status(404).json({
       success: false,
-      message: "Coupon already used, expired, inactive, or usage limit reached",
+      message: "Target user not found",
     });
   }
 
-  if (updatedCoupon.type === "full_access") {
-    await User.findByIdAndUpdate(req.user._id, {
-      subscriptionStatus: planType === "lifetime" ? "lifetime" : "active",
-      subscriptionType: planType,
-      premiumExpiresAt: planType === "lifetime" ? null : addDays(new Date(), 30),
-      lifetimeAccess: planType === "lifetime",
-      accessSource: "coupon",
-      lastPaymentDate: new Date(),
+  const normalizedCode = String(code || "").trim().toUpperCase();
+  const now = new Date();
+  const session = await mongoose.startSession();
+
+  try {
+    let responsePayload = null;
+
+    await session.withTransaction(async () => {
+      const coupon = await Coupon.findOne({
+        code: normalizedCode,
+        active: true,
+        deletedAt: null,
+      }).session(session);
+
+      if (!coupon) {
+        const error = new Error("Invalid coupon");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      if (coupon.isExpired() || !coupon.hasRemainingUses()) {
+        const error = new Error("Coupon is expired or usage limit reached");
+        error.statusCode = 400;
+        throw error;
+      }
+
+      if (!coupon.isUserAllowed(safeTargetUserId) || !coupon.isPlanAllowed(planType)) {
+        const error = new Error("Coupon is not applicable");
+        error.statusCode = 403;
+        throw error;
+      }
+
+      const existingRedemption = await CouponRedemption.findOne({
+        couponId: coupon._id,
+        userId: safeTargetUserId,
+      }).session(session);
+
+      if (existingRedemption) {
+        const error = new Error("Coupon already used by this account");
+        error.statusCode = 409;
+        throw error;
+      }
+
+      const updatedCoupon = await Coupon.findOneAndUpdate(
+        {
+          _id: coupon._id,
+          active: true,
+          deletedAt: null,
+          $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+          $expr: {
+            $or: [
+              { $eq: ["$maxUses", null] },
+              { $lt: ["$usedCount", "$maxUses"] },
+            ],
+          },
+          "usedBy.userId": { $ne: safeTargetUserId },
+        },
+        {
+          $inc: { usedCount: 1 },
+          $push: {
+            usedBy: {
+              userId: safeTargetUserId,
+              usedAt: now,
+              planType,
+              category: coupon.category || "discount_coupon",
+            },
+          },
+        },
+        {
+          new: true,
+          runValidators: true,
+          session,
+        }
+      );
+
+      if (!updatedCoupon) {
+        const error = new Error(
+          "Coupon already used, expired, inactive, or usage limit reached"
+        );
+        error.statusCode = 409;
+        throw error;
+      }
+
+      let entitlement = null;
+      let accessDates = null;
+
+      if (updatedCoupon.type === "full_access") {
+        accessDates = await calculateCouponAccessDates({ planType });
+
+        entitlement = await createAccessEntitlement({
+          userId: safeTargetUserId,
+          scope: accessDates.scope,
+          tournamentId: accessDates.scope === "tournament" ? tournamentId : null,
+          source: "coupon",
+          sourceId: updatedCoupon._id,
+          planType,
+          accessType: accessDates.accessType,
+          startsAt: accessDates.startsAt,
+          expiresAt: accessDates.expiresAt,
+          metadata: {
+            couponCode: updatedCoupon.code,
+            couponCategory: updatedCoupon.category || "discount_coupon",
+            couponType: updatedCoupon.type,
+            couponValue: updatedCoupon.value,
+            planSnapshot: accessDates.plan,
+            appliedByAdmin,
+            appliedBy: req.user?._id || null,
+          },
+          session,
+        });
+
+        await User.findByIdAndUpdate(
+          safeTargetUserId,
+          {
+            $set: {
+              subscriptionStatus: planType === "lifetime" ? "lifetime" : "active",
+              subscriptionType: planType,
+              premiumExpiresAt:
+                planType === "lifetime" || accessDates.scope === "tournament"
+                  ? null
+                  : accessDates.expiresAt,
+              lifetimeAccess: planType === "lifetime",
+              accessSource: "coupon",
+              lastPaymentDate: new Date(),
+            },
+          },
+          { session }
+        );
+      }
+
+      const transaction = await PaymentTransaction.create(
+        [
+          {
+            userId: safeTargetUserId,
+            amount: 0,
+            currency: settings.defaultCurrency || "INR",
+            paymentGateway: "coupon",
+            paymentId: `coupon_${updatedCoupon.code}_${Date.now()}`,
+            planType,
+            status: "paid",
+            couponUsed: updatedCoupon.code,
+            metadata: {
+              couponId: updatedCoupon._id,
+              entitlementId: entitlement?._id || null,
+              couponCategory: updatedCoupon.category || "discount_coupon",
+              couponType: updatedCoupon.type,
+              couponValue: updatedCoupon.value,
+              accessStartsAt: accessDates?.startsAt || null,
+              accessExpiresAt: accessDates?.expiresAt || null,
+              appliedByAdmin,
+              appliedBy: req.user?._id || null,
+            },
+          },
+        ],
+        { session }
+      );
+
+      const redemption = await CouponRedemption.create(
+        [
+          {
+            couponId: updatedCoupon._id,
+            userId: safeTargetUserId,
+            code: updatedCoupon.code,
+            planType,
+            category: updatedCoupon.category || "discount_coupon",
+            couponType: updatedCoupon.type,
+            couponValue: updatedCoupon.value,
+            entitlementId: entitlement?._id || null,
+            transactionId: transaction[0]._id,
+            invoiceId: null,
+            metadata: {
+              tournamentId,
+              accessStartsAt: accessDates?.startsAt || null,
+              accessExpiresAt: accessDates?.expiresAt || null,
+              appliedByAdmin,
+              appliedBy: req.user?._id || null,
+            },
+          },
+        ],
+        { session }
+      );
+
+      responsePayload = {
+        coupon: updatedCoupon,
+        entitlement,
+        transaction: transaction[0],
+        redemption: redemption[0],
+        targetUser,
+      };
     });
+
+    const invoice = await createInvoice({
+      userId: safeTargetUserId,
+      transactionId: responsePayload.transaction._id,
+      invoiceType: "coupon",
+      planType,
+      amount: 0,
+      currency: settings.defaultCurrency || "INR",
+      paymentGateway: "coupon",
+      couponCode: responsePayload.coupon.code,
+      couponCategory: responsePayload.coupon.category || "discount_coupon",
+      metadata: {
+        couponId: responsePayload.coupon._id,
+        entitlementId: responsePayload.entitlement?._id || null,
+        couponType: responsePayload.coupon.type,
+        couponValue: responsePayload.coupon.value,
+        appliedByAdmin,
+        appliedBy: req.user?._id || null,
+      },
+    });
+
+    await CouponRedemption.findByIdAndUpdate(responsePayload.redemption._id, {
+      $set: {
+        invoiceId: invoice?._id || null,
+      },
+    });
+
+    try {
+      if (invoice) {
+        await sendBillingInvoiceEmail({
+          user: responsePayload.targetUser,
+          invoice,
+        });
+      }
+    } catch (emailError) {
+      console.error("Coupon invoice email failed", {
+        error: emailError.message,
+        userId: safeTargetUserId,
+        couponCode: normalizedCode,
+      });
+    }
+
+    if (appliedByAdmin) {
+      await writeAdminLog(req, "coupon_applied_by_admin", safeTargetUserId, {
+        couponCode: responsePayload.coupon.code,
+        couponId: responsePayload.coupon._id,
+        planType,
+        entitlementId: responsePayload.entitlement?._id || null,
+        transactionId: responsePayload.transaction._id,
+        invoiceId: invoice?._id || null,
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Coupon applied successfully",
+      coupon: {
+        code: responsePayload.coupon.code,
+        category: responsePayload.coupon.category || "discount_coupon",
+        type: responsePayload.coupon.type,
+        value: responsePayload.coupon.value,
+      },
+      access: responsePayload.entitlement
+        ? {
+            entitlementId: responsePayload.entitlement._id,
+            source: "coupon",
+            planType: responsePayload.entitlement.planType,
+            accessType: responsePayload.entitlement.accessType,
+            scope: responsePayload.entitlement.scope,
+            tournamentId: responsePayload.entitlement.tournamentId,
+            startsAt: responsePayload.entitlement.startsAt,
+            expiresAt: responsePayload.entitlement.expiresAt,
+          }
+        : null,
+      invoiceId: invoice?._id || null,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to apply coupon",
+    });
+  } finally {
+    session.endSession();
   }
+};
 
-  const transaction = await PaymentTransaction.create({
-    userId: req.user._id,
-    amount: 0,
-    currency: settings.defaultCurrency || "INR",
-    paymentGateway: "coupon",
-    paymentId: `coupon_${updatedCoupon.code}_${Date.now()}`,
-    planType,
-    status: "paid",
-    couponUsed: updatedCoupon.code,
- metadata: {
-  couponId: updatedCoupon._id,
-  couponCategory: updatedCoupon.category || "discount_coupon",
-  couponType: updatedCoupon.type,
-  couponValue: updatedCoupon.value,
-},
-  });
-
-  const invoice = await createInvoice({
-  userId: req.user._id,
-  transactionId: transaction._id,
-  invoiceType: "coupon",
-  planType,
-  amount: 0,
-  currency: settings.defaultCurrency || "INR",
-  paymentGateway: "coupon",
-  couponCode: updatedCoupon.code,
-  couponCategory: updatedCoupon.category || "discount_coupon",
-  metadata: {
-    couponId: updatedCoupon._id,
-    couponType: updatedCoupon.type,
-    couponValue: updatedCoupon.value,
-  },
-});
-
-await sendBillingInvoiceEmail({
-  user: req.user,
-  invoice,
-});
-
-  return res.json({
-    success: true,
-    message: "Coupon applied successfully",
-    coupon: {
-  code: updatedCoupon.code,
-  category: updatedCoupon.category || "discount_coupon",
-  type: updatedCoupon.type,
-  value: updatedCoupon.value,
-},
+export const applyCoupon = async (req, res) => {
+  return applyCouponCore({
+    req,
+    res,
+    targetUserId: req.user._id,
+    appliedByAdmin: false,
   });
 };
+
+export const applyCouponForUserByAdmin = async (req, res) => {
+  return applyCouponCore({
+    req,
+    res,
+    targetUserId: req.params.userId,
+    appliedByAdmin: true,
+  });
+}; 
 
 export const listTransactions = async (req, res) => {
   const {

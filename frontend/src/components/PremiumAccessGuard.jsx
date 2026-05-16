@@ -6,6 +6,7 @@ import { getPremiumAccessStatus } from "../api";
 const PremiumAccessGuard = ({
   children,
   featureLabel = "Premium feature",
+  feature = "",
 }) => {
   const { id: tournamentId } = useParams();
   const { user } = useAuth();
@@ -29,12 +30,14 @@ const PremiumAccessGuard = ({
             setAccess({
               hasAccess: true,
               source: "admin-ui-bypass",
+              accessType: "admin",
+              reason: "admin-user",
             });
           }
           return;
         }
 
-        const data = await getPremiumAccessStatus(tournamentId);
+        const data = await getPremiumAccessStatus(tournamentId, feature);
 
         if (!cancelled) {
           setAccess(data);
@@ -44,6 +47,8 @@ const PremiumAccessGuard = ({
           setError(err.message || "Failed to check premium access");
           setAccess({
             hasAccess: false,
+            paymentRequired: true,
+            reason: "access-check-failed",
           });
         }
       } finally {
@@ -58,7 +63,7 @@ const PremiumAccessGuard = ({
     return () => {
       cancelled = true;
     };
-  }, [tournamentId, isAdminUser]);
+  }, [tournamentId, feature, isAdminUser]);
 
   if (loading) {
     return (
@@ -85,7 +90,7 @@ const PremiumAccessGuard = ({
         <h2 style={{ marginBottom: "12px" }}>Premium Access Required</h2>
 
         <p style={{ color: "#4b5563", marginBottom: "8px" }}>
-          {featureLabel} is available only for premium tournaments.
+          {featureLabel} is available only for premium users.
         </p>
 
         {error ? (

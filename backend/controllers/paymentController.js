@@ -257,6 +257,21 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
+    if (payment.status === "paid") {
+      return res.status(200).json({
+        success: true,
+        alreadyProcessed: true,
+        message: "Payment already verified",
+        access: {
+          planType: payment.planType,
+          accessType: payment.accessType,
+          tournamentId: payment.tournamentId,
+          accessStartsAt: payment.accessStartsAt,
+          accessExpiresAt: payment.accessExpiresAt,
+        },
+      });
+    }
+
     const body = `${razorpay_order_id}|${razorpay_payment_id}`;
 
     const expectedSignature = crypto
@@ -269,13 +284,21 @@ export const verifyPayment = async (req, res) => {
         {
           razorpayOrderId: razorpay_order_id,
           userId,
-          status: "created",
+          status: { $ne: "paid" },
         },
         {
           $set: {
             status: "failed",
             razorpayPaymentId: razorpay_payment_id,
             razorpaySignature: razorpay_signature,
+          },
+          $push: {
+            statusHistory: {
+              status: "failed",
+              changedAt: new Date(),
+              source: "frontend_verify",
+              note: "Invalid Razorpay signature",
+            },
           },
         }
       );
@@ -325,13 +348,21 @@ export const verifyPayment = async (req, res) => {
         {
           razorpayOrderId: razorpay_order_id,
           userId,
-          status: "created",
+          status: { $ne: "paid" },
         },
         {
           $set: {
             status: "failed",
             razorpayPaymentId: razorpay_payment_id,
             razorpaySignature: razorpay_signature,
+          },
+          $push: {
+            statusHistory: {
+              status: "failed",
+              changedAt: new Date(),
+              source: "frontend_verify",
+              note: "Payment could not be verified with Razorpay",
+            },
           },
         }
       );
@@ -357,7 +388,7 @@ export const verifyPayment = async (req, res) => {
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
       razorpaySignature: razorpay_signature,
-      verifiedBy: "frontend_verify",
+      verifiedBy: "frontend_verify_confirmed_by_razorpay",
     });
 
     return res.status(200).json({
@@ -383,47 +414,144 @@ export const verifyPayment = async (req, res) => {
   }
 };
 
-export const getMyAccessStatus = async (req, res) => {
+export const getAccessStatus = async (req, res) => {
   try {
     const userId = getUserId(req);
-    const { tournamentId } = req.query || {};
+    const { tournamentId = null, feature = null } = req.query || {};
 
     if (!userId) {
-      return res.status(401).json({ success: false, message: "Unauthorized user" });
-    }
-
-    const access = await hasActiveAccess({ userId, tournamentId });
-
-    if (access.hasAccess) {
-      return res.status(200).json({
-        success: true,
-        hasAccess: true,
-        accessType: access.accessType,
-        planType: access.planType,
-        tournamentId: access.tournamentId,
-        accessStartsAt: access.accessStartsAt,
-        accessExpiresAt: access.accessExpiresAt,
-        reason: access.reason,
-        source: access.source,
+      return res.status(401).json({
+        success: false,
+        hasAccess: false,
+        message: "Unauthorized user",
       });
     }
 
-    return res.status(200).json({
+    const access = await hasPremiumAccess({
+      userId,
+      tournamentId,
+      feature,
+    });
+
+    return res.json({
       success: true,
-      hasAccess: false,
-      paymentRequired: true,
+      hasAccess: access.hasAccess,
       reason: access.reason,
-      message: "Premium access required",
+      source: access.source,
+      accessType: access.accessType,
+      planType: access.planType,
+      paymentId: access.paymentId,
+      tournamentId: access.tournamentId || tournamentId || null,
+      feature: access.feature || feature || null,
+      featureAllowed: access.featureAllowed,
+      expiresAt: access.expiresAt,
+      accessPriority: access.accessPriority,
+      entitlementId: access.entitlementId || null,
+      paymentRequired: !access.hasAccess,
     });
   } catch (error) {
-    logger.error("Get payment access status failed", {
+    logger.error("Access status check failed", {
       error: error.message,
       stack: error.stack,
+      userId: req.user?._id,
+      tournamentId: req.query?.tournamentId,
+      feature: req.query?.feature,
     });
 
     return res.status(500).json({
       success: false,
-      message: "Failed to check access status",
+      hasAccess: false,
+      paymentRequired: true,
+      message: "Failed to check premium access",
+    });
+  }
+};
+export const getMyAccessStatus = getAccessStatus;
+
+export const getPaymentStatus = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { orderId = "", paymentId = "" } = req.query || {};
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized user",
+      });
+    }
+
+    if (!orderId && !paymentId) {
+      return res.status(400).json({
+        success: false,
+        message: "orderId or paymentId is required",
+      });
+    }
+
+    const query = {
+      userId,
+    };
+
+    if (orderId) {
+      query.razorpayOrderId = String(orderId).trim();
+    }
+
+    if (paymentId) {
+      query.razorpayPaymentId = String(paymentId).trim();
+    }
+
+    const payment = await Payment.findOne(query).lean();
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment not found",
+      });
+    }
+
+    const access = await hasPremiumAccess({
+      userId,
+      tournamentId: payment.tournamentId || req.query?.tournamentId || null,
+      feature: req.query?.feature || null,
+    });
+
+    return res.json({
+      success: true,
+      payment: {
+        id: payment._id,
+        status: payment.status,
+        planType: payment.planType,
+        accessType: payment.accessType,
+        razorpayOrderId: payment.razorpayOrderId,
+        razorpayPaymentId: payment.razorpayPaymentId,
+        tournamentId: payment.tournamentId,
+        accessStartsAt: payment.accessStartsAt,
+        accessExpiresAt: payment.accessExpiresAt,
+      },
+      access: {
+        hasAccess: access.hasAccess,
+        reason: access.reason,
+        source: access.source,
+        accessType: access.accessType,
+        planType: access.planType,
+        entitlementId: access.entitlementId || null,
+        expiresAt: access.expiresAt || null,
+      },
+      final: payment.status === "paid" && access.hasAccess === true,
+      retryRecommended:
+        ["created", "attempted", "authorized", "captured"].includes(payment.status) &&
+        !access.hasAccess,
+    });
+  } catch (error) {
+    logger.error("Get payment status failed", {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?._id,
+      query: req.query,
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to get payment status",
     });
   }
 };

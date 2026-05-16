@@ -5,6 +5,10 @@ import PlatformSettings, {
 } from "../models/platformSettings.js";
 import Coupon from "../models/coupon.js";
 import Payment from "../models/payment.js";
+import {
+  findBestActiveEntitlement,
+  buildAccessResultFromEntitlement,
+} from "../services/accessEntitlementService.js";
 
 const normalizeId = (value) => {
   if (!value) return null;
@@ -40,6 +44,7 @@ const buildResult = ({
   feature = null,
   featureAllowed = null,
   accessPriority = null,
+  entitlementId = null,
 } = {}) => ({
   hasAccess,
   reason,
@@ -52,6 +57,7 @@ const buildResult = ({
   feature,
   featureAllowed,
   accessPriority,
+  entitlementId,
 });
 
 const isFeatureAllowedByPayment = (payment, feature) => {
@@ -65,10 +71,10 @@ const isFeatureAllowedByPayment = (payment, feature) => {
 };
 
 const findCouponAccess = async ({ userId, planType, now }) => {
- const coupons = await Coupon.find({
-  active: true,
-  deletedAt: null,
-  type: "full_access",
+  const coupons = await Coupon.find({
+    active: true,
+    deletedAt: null,
+    type: "full_access",
     "usedBy.userId": userId,
     $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
   })
@@ -104,15 +110,18 @@ const hasPremiumAccess = async ({
     return buildResult({ reason: "invalid-user", feature: safeFeature });
   }
 
-  const [settings, freshUser] = await Promise.all([
+  const [settings, freshUser, entitlement] = await Promise.all([
     PlatformSettings.getSettings(),
     user
       ? Promise.resolve(user)
       : User.findById(safeUserId)
-          .select(
-            "-password -refreshTokens -resetPasswordToken -resetPasswordExpire"
-          )
+          .select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire")
           .lean(),
+    findBestActiveEntitlement({
+      userId: safeUserId,
+      tournamentId: safeTournamentId,
+      feature: safeFeature,
+    }),
   ]);
 
   if (!freshUser) {
@@ -125,6 +134,14 @@ const hasPremiumAccess = async ({
 
   if (freshUser.isSuspended || freshUser.blocked) {
     return buildResult({ reason: "user-blocked", feature: safeFeature });
+  }
+
+  if (entitlement) {
+    return buildAccessResultFromEntitlement({
+      entitlement,
+      tournamentId: safeTournamentId,
+      feature: safeFeature,
+    });
   }
 
   if (settings?.maintenanceFreeAccess) {
@@ -147,7 +164,7 @@ const hasPremiumAccess = async ({
     if (!overrideExpiry || overrideExpiry > now) {
       return buildResult({
         hasAccess: true,
-        reason: "admin-override",
+        reason: "admin-override-legacy",
         source: "admin",
         expiresAt: overrideExpiry,
         accessType: "override",
@@ -174,7 +191,7 @@ const hasPremiumAccess = async ({
   if (freshUser.lifetimeAccess) {
     return buildResult({
       hasAccess: true,
-      reason: "lifetime-access",
+      reason: "lifetime-access-legacy",
       source: "lifetime",
       expiresAt: null,
       accessType: "lifetime",
@@ -195,7 +212,7 @@ const hasPremiumAccess = async ({
   if (couponAccess) {
     return buildResult({
       hasAccess: true,
-      reason: "coupon-access",
+      reason: "coupon-access-legacy",
       source: "coupon",
       expiresAt: normalizeDate(couponAccess.expiresAt),
       accessType: "coupon",
@@ -230,7 +247,7 @@ const hasPremiumAccess = async ({
     if (!paidSubscription || isFeatureAllowedByPayment(paidSubscription, safeFeature)) {
       return buildResult({
         hasAccess: true,
-        reason: "active-subscription",
+        reason: "active-subscription-legacy",
         source: freshUser.accessSource || "payment",
         expiresAt: activePremiumExpiry,
         accessType: "subscription",
@@ -257,7 +274,7 @@ const hasPremiumAccess = async ({
   if (unlimitedAccess && isFeatureAllowedByPayment(unlimitedAccess, safeFeature)) {
     return buildResult({
       hasAccess: true,
-      reason: "active-paid-subscription",
+      reason: "active-paid-subscription-legacy",
       source: "payment",
       expiresAt: normalizeDate(unlimitedAccess.accessExpiresAt),
       accessType: "unlimited",
@@ -289,7 +306,7 @@ const hasPremiumAccess = async ({
     if (tournamentAccess && isFeatureAllowedByPayment(tournamentAccess, safeFeature)) {
       return buildResult({
         hasAccess: true,
-        reason: "active-tournament-access",
+        reason: "active-tournament-access-legacy",
         source: "payment",
         expiresAt: normalizeDate(tournamentAccess.accessExpiresAt),
         accessType: "tournament",
@@ -308,7 +325,7 @@ const hasPremiumAccess = async ({
   if (settings?.trialEnabled && trialExpiry && trialExpiry > now) {
     return buildResult({
       hasAccess: true,
-      reason: "trial-access",
+      reason: "trial-access-legacy",
       source: "trial",
       expiresAt: trialExpiry,
       accessType: "trial",

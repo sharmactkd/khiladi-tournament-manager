@@ -6,6 +6,7 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
+    "migrate:access-entitlements": "node scripts/migrateAccessEntitlements.js",
     "test": "cross-env NODE_ENV=test jest --runInBand",
 "test:security": "cross-env NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --runInBand tests/security"
   },

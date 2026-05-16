@@ -4,6 +4,7 @@ import PaymentTransaction from "../models/paymentTransaction.js";
 import User from "../models/user.js";
 import logger from "../utils/logger.js";
 import { getPaymentAccessFields } from "./subscriptionService.js";
+import { createAccessEntitlement } from "./accessEntitlementService.js";
 
 const normalizeString = (value) => String(value || "").trim();
 
@@ -20,18 +21,36 @@ const buildUserAccessUpdate = (payment) => {
   };
 };
 
-const buildAccessResponse = (payment) => ({
+const buildAccessResponse = (payment, entitlement = null) => ({
   planType: payment.planType,
   accessType: payment.accessType,
   tournamentId: payment.tournamentId,
   accessStartsAt: payment.accessStartsAt,
   accessExpiresAt: payment.accessExpiresAt,
+  entitlementId: entitlement?._id || null,
 });
 
 const getAccessLifecycle = (payment) => {
   if (payment.planType === "single") return "single_tournament_lifetime";
   if (payment.planType === "lifetime") return "lifetime";
   return "fixed_duration";
+};
+
+const getEntitlementScope = (payment) => {
+  if (payment.accessType === "tournament" || payment.planType === "single") {
+    return "tournament";
+  }
+
+  return "global";
+};
+
+const getEntitlementAccessType = (payment) => {
+  if (payment.planType === "lifetime") return "lifetime";
+  if (payment.accessType === "tournament" || payment.planType === "single") {
+    return "tournament";
+  }
+
+  return "unlimited";
 };
 
 export const processPaidPayment = async ({
@@ -96,15 +115,15 @@ export const processPaidPayment = async ({
           status: { $in: ["created", "attempted", "authorized", "captured"] },
         },
         {
-        $set: {
-  status: "paid",
-  razorpayPaymentId: safePaymentId,
-  razorpaySignature: safeSignature,
-  accessType: accessFields.accessType,
-  accessStartsAt: accessFields.accessStartsAt,
-  accessExpiresAt: accessFields.accessExpiresAt,
-  accessLifecycle: getAccessLifecycle(existingPayment),
-},
+          $set: {
+            status: "paid",
+            razorpayPaymentId: safePaymentId,
+            razorpaySignature: safeSignature,
+            accessType: accessFields.accessType,
+            accessStartsAt: accessFields.accessStartsAt,
+            accessExpiresAt: accessFields.accessExpiresAt,
+            accessLifecycle: getAccessLifecycle(existingPayment),
+          },
           $push: {
             statusHistory: {
               status: "paid",
@@ -132,6 +151,26 @@ export const processPaidPayment = async ({
         return;
       }
 
+      const entitlement = await createAccessEntitlement({
+        userId: payment.userId,
+        scope: getEntitlementScope(payment),
+        tournamentId: payment.planType === "single" ? payment.tournamentId : null,
+        source: "payment",
+        sourceId: payment._id,
+        planType: payment.planType,
+        accessType: getEntitlementAccessType(payment),
+        startsAt: payment.accessStartsAt,
+        expiresAt: payment.accessExpiresAt,
+        metadata: {
+          gateway: payment.gateway,
+          razorpayOrderId: payment.razorpayOrderId,
+          razorpayPaymentId: safePaymentId,
+          verifiedBy: safeVerifiedBy,
+          planSnapshot: payment.planSnapshot,
+        },
+        session,
+      });
+
       await User.findByIdAndUpdate(
         payment.userId,
         {
@@ -148,6 +187,7 @@ export const processPaidPayment = async ({
             paymentId: safePaymentId,
             planSnapshot: payment.planSnapshot || null,
             "metadata.legacyPaymentId": payment._id,
+            "metadata.entitlementId": entitlement._id,
             "metadata.verifiedBy": safeVerifiedBy,
             "metadata.accessStartsAt": payment.accessStartsAt,
             "metadata.accessExpiresAt": payment.accessExpiresAt,
@@ -163,16 +203,18 @@ export const processPaidPayment = async ({
       result = {
         alreadyProcessed: false,
         payment,
-        access: buildAccessResponse(payment),
+        entitlement,
+        access: buildAccessResponse(payment, entitlement),
       };
     });
 
-    logger.info("Payment processed safely", {
+    logger.info("Payment processed safely with entitlement", {
       razorpayOrderId: safeOrderId,
       razorpayPaymentId: safePaymentId,
       verifiedBy: safeVerifiedBy,
       alreadyProcessed: result?.alreadyProcessed || false,
       paymentId: result?.payment?._id,
+      entitlementId: result?.entitlement?._id,
       userId: result?.payment?.userId,
       planType: result?.payment?.planType,
       status: result?.payment?.status,

@@ -65,26 +65,32 @@ function App() {
 
   const requireAuth = (element) => {
     if (!isAuthenticated) return loginRedirect;
-    if (needsProfileCompletion) return <Navigate to="/complete-profile" replace />;
+    if (needsProfileCompletion) {
+      return <Navigate to="/complete-profile" replace />;
+    }
     return element;
   };
 
   const requireAdmin = (element) => {
     if (!isAuthenticated) return loginRedirect;
-    if (needsProfileCompletion) return <Navigate to="/complete-profile" replace />;
+    if (needsProfileCompletion) {
+      return <Navigate to="/complete-profile" replace />;
+    }
     if (!isAdminUser) return <Navigate to="/" replace />;
     return element;
   };
 
   const requireTournamentLogin = (element) => {
     if (!isAuthenticated) return loginRedirect;
-    if (needsProfileCompletion) return <Navigate to="/complete-profile" replace />;
+    if (needsProfileCompletion) {
+      return <Navigate to="/complete-profile" replace />;
+    }
     return element;
   };
 
-  const requirePremiumTournamentFeature = (element, featureLabel) =>
+  const requirePremiumTournamentFeature = (element, featureLabel, feature) =>
     requireTournamentLogin(
-      <PremiumAccessGuard featureLabel={featureLabel}>
+      <PremiumAccessGuard featureLabel={featureLabel} feature={feature}>
         {element}
       </PremiumAccessGuard>
     );
@@ -209,25 +215,38 @@ function App() {
 
             <Route
               path="tie-sheet"
-              element={requirePremiumTournamentFeature(<TieSheet />, "Tie Sheet")}
+              element={requirePremiumTournamentFeature(
+                <TieSheet />,
+                "Tie Sheet",
+                "tiesheet"
+              )}
             />
 
             <Route
               path="tie-sheet-record"
               element={requirePremiumTournamentFeature(
                 <TieSheetRecord />,
-                "Tie Sheet Record"
+                "Tie Sheet Record",
+                "tiesheet_record"
               )}
             />
 
             <Route
               path="official"
-              element={requirePremiumTournamentFeature(<Official />, "Officials")}
+              element={requirePremiumTournamentFeature(
+                <Official />,
+                "Officials",
+                "officials"
+              )}
             />
 
             <Route
               path="team"
-              element={requirePremiumTournamentFeature(<Team />, "Team Payments")}
+              element={requirePremiumTournamentFeature(
+                <Team />,
+                "Team Payments",
+                "team_payments"
+              )}
             />
 
             <Route path="winner" element={requireTournamentLogin(<Winner />)} />

@@ -25,6 +25,23 @@ const isLocalPremiumBypassEnabled = () => {
   );
 };
 
+const buildDeniedResponse = ({ feature, access }) => ({
+  success: false,
+  paymentRequired: true,
+  feature,
+  reason: access?.reason || "premium-access-required",
+  message: "Premium access required",
+  access: {
+    hasAccess: false,
+    source: access?.source || null,
+    accessType: access?.accessType || null,
+    planType: access?.planType || null,
+    expiresAt: access?.expiresAt || null,
+    tournamentId: access?.tournamentId || null,
+    entitlementId: access?.entitlementId || null,
+  },
+});
+
 const premiumAccess = (feature = PREMIUM_FEATURES.TIESHEET) => {
   return async (req, res, next) => {
     let userId;
@@ -52,6 +69,7 @@ const premiumAccess = (feature = PREMIUM_FEATURES.TIESHEET) => {
           accessExpiresAt: null,
           feature,
           reason: "LOCAL_PREMIUM_BYPASS enabled",
+          entitlementId: null,
         };
 
         return next();
@@ -63,18 +81,17 @@ const premiumAccess = (feature = PREMIUM_FEATURES.TIESHEET) => {
         feature,
       });
 
-      if (access.hasAccess) {
-        req.premiumAccess = access;
-        return next();
+      if (!access?.hasAccess) {
+        return res.status(402).json(buildDeniedResponse({ feature, access }));
       }
 
-      return res.status(402).json({
-        success: false,
-        paymentRequired: true,
+      req.premiumAccess = {
+        ...access,
         feature,
-        reason: access.reason,
-        message: "Premium access required",
-      });
+        tournamentId,
+      };
+
+      return next();
     } catch (error) {
       logger.error("Premium access verification failed", {
         error: error.message,

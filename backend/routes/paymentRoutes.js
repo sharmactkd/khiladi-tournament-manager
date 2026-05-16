@@ -4,6 +4,7 @@ import {
   createPaymentOrder,
   verifyPayment,
   getMyAccessStatus,
+  getPaymentStatus,
 } from "../controllers/paymentController.js";
 import {
   validateCoupon,
@@ -32,6 +33,7 @@ router.post(
 );
 
 router.get("/access-status", authMiddleware, getMyAccessStatus);
+router.get("/status", authMiddleware, getPaymentStatus);
 
 router.post(
   "/coupon/validate",

@@ -40,7 +40,11 @@ const normalizeFeatures = (features) => {
     return Object.values(PREMIUM_FEATURES);
   }
 
-  return [...new Set(features.map((item) => String(item || "").trim()).filter(Boolean))];
+  return [
+    ...new Set(
+      features.map((item) => String(item || "").trim()).filter(Boolean)
+    ),
+  ];
 };
 
 const getPlanFromSettings = (settings, planType) => {

@@ -363,12 +363,16 @@ export const createEntryRowsBulk = (tournamentId, payload) =>
 export const logoutAllDevices = () =>
   apiCall("post", "/auth/logout-all", {});
 
-export const getPremiumAccessStatus = (tournamentId) =>
+export const getPremiumAccessStatus = (tournamentId, feature = "") =>
   apiCall(
     "get",
     `/payment/access-status${toQueryString({
       tournamentId,
+      feature,
     })}`
   );
+
+  export const getPaymentStatus = (params = {}) =>
+  apiCall("get", `/payment/status${toQueryString(params)}`);
 
 export default api;

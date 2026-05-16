@@ -1,6 +1,10 @@
 import React, { useMemo, useState } from "react";
 import { CheckCircle, ShieldCheck, Sparkles, Zap } from "lucide-react";
-import { createPaymentOrder, verifyPayment } from "../../api/paymentApi";
+import {
+  createPaymentOrder,
+  verifyPayment,
+  getPaymentStatus,
+} from "../../api/paymentApi";
 import styles from "./PaymentPage.module.css";
 
 const plans = [
@@ -30,6 +34,33 @@ const plans = [
     features: ["Unlimited tournaments", "12 months access", "Maximum savings"],
   },
 ];
+
+const waitForPaymentFinalStatus = async ({
+  orderId,
+  paymentId,
+  tournamentId,
+  feature,
+  maxAttempts = 8,
+}) => {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const status = await getPaymentStatus({
+      orderId,
+      paymentId,
+      tournamentId,
+      feature,
+    });
+
+    if (status?.final) {
+      return status;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+  }
+
+  throw new Error(
+    "Payment received, but premium access is still syncing. Please refresh after a few seconds."
+  );
+};
 
 const PaymentPage = ({ tournamentId, onPaymentSuccess }) => {
   const [selectedPlan, setSelectedPlan] = useState("single");
@@ -64,21 +95,40 @@ const PaymentPage = ({ tournamentId, onPaymentSuccess }) => {
         name: "KHILADI Tournament Manager",
         description: activePlan.title,
         order_id: order?.id || orderRes?.orderId,
-        handler: async (response) => {
-          try {
-            const verifyRes = await verifyPayment({
-              razorpay_order_id: response.razorpay_order_id,
-              razorpay_payment_id: response.razorpay_payment_id,
-              razorpay_signature: response.razorpay_signature,
-            });
+      handler: async (response) => {
+  try {
+    const verifyRes = await verifyPayment({
+      razorpay_order_id: response.razorpay_order_id,
+      razorpay_payment_id: response.razorpay_payment_id,
+      razorpay_signature: response.razorpay_signature,
+    });
 
-            if (verifyRes?.success) onPaymentSuccess?.();
-            else setError("Payment verification failed. Please contact support.");
-          } catch (err) {
-            console.error("Payment verification failed:", err);
-            setError(err?.response?.data?.message || "Payment verification failed.");
-          }
-        },
+    if (!verifyRes?.success) {
+      setError("Payment verification failed. Please contact support.");
+      return;
+    }
+
+    await waitForPaymentFinalStatus({
+      orderId: response.razorpay_order_id,
+      paymentId: response.razorpay_payment_id,
+      tournamentId,
+      feature:
+        selectedPlan === "single"
+          ? "tiesheet"
+          : "premium_unlimited",
+    });
+
+    onPaymentSuccess?.();
+  } catch (err) {
+    console.error("Payment verification failed:", err);
+
+    setError(
+      err?.response?.data?.message ||
+        err?.message ||
+        "Payment verification failed."
+    );
+  }
+},
         modal: {
           ondismiss: () => setLoading(false),
         },

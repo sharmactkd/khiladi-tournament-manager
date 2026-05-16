@@ -39,7 +39,7 @@ import {
   disableCoupon,
   deleteCoupon,
   validateCoupon,
-  applyCoupon,
+  applyCouponForUserByAdmin,
   listTransactions,
   listAuditLogs,
   reconcileBillingPayments,
@@ -313,12 +313,13 @@ router.post(
 );
 
 router.post(
-  "/billing/coupons/apply",
+  "/billing/users/:userId/coupons/apply",
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
   superAdminMiddleware,
+  validateAccessAction,
   validateCouponValidate,
-  applyCoupon
+  applyCouponForUserByAdmin
 );
 
 router.get(
