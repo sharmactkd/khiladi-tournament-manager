@@ -129,6 +129,16 @@ const premiumAccessUnlessAdmin = (feature) => {
     const isAdminUser = ["admin", "superadmin"].includes(req.user?.role);
 
     if (isAdminUser) {
+      req.premiumAccess = {
+        hasAccess: true,
+        source: "admin-route-bypass",
+        accessType: "admin",
+        planType: "admin",
+        feature,
+        tournamentId: req.params?.id || null,
+        reason: "admin-user",
+      };
+
       return next();
     }
 
@@ -255,8 +265,6 @@ router.get(
   requireTournamentAccess,
   getTeamChampionshipAggregation
 );
-
-// ================ PREMIUM PROTECTED ROUTES ================
 
 // ================ PREMIUM PROTECTED ROUTES ================
 

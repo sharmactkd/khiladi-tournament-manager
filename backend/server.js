@@ -25,6 +25,7 @@ import {
   startPaymentCleanupScheduler,
   stopPaymentCleanupScheduler,
 } from "./services/paymentCleanupScheduler.js";
+import mongoSanitize from "express-mongo-sanitize";
 
 console.log("SERVER FILE LOADED");
 process.on("uncaughtException", (err) => {
@@ -115,6 +116,11 @@ app.use(express.json({ limit: jsonBodyLimit }));
 app.use(express.urlencoded({ extended: true, limit: urlEncodedBodyLimit }));
 app.use(cookieParser());
 app.use(passport.initialize());
+app.use(
+  mongoSanitize({
+    replaceWith: "_",
+  })
+);
 
 if (isDev) {
   logger.info("Static uploads path configured", {

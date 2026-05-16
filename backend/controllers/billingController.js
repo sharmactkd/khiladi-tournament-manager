@@ -21,6 +21,7 @@ import {
   createAccessEntitlement,
   revokeAccessEntitlements,
 } from "../services/accessEntitlementService.js";
+import AccessEntitlement from "../models/accessEntitlement.js";
 
 
 const calculateCouponAccessDates = async ({ planType }) => {
@@ -77,6 +78,39 @@ const calculateAdminAccessDates = async ({ planType, days = 30 }) => {
     accessType: "admin",
     scope: "global",
   };
+};
+
+const isCouponExplicitlyAllowedForUser = (coupon, userId) => {
+  if (!coupon || !userId) return false;
+
+  const allowedUsers = Array.isArray(coupon.allowedUsers)
+    ? coupon.allowedUsers
+    : [];
+
+  return allowedUsers.some((id) => String(id) === String(userId));
+};
+
+const enforceUserSideFullAccessCouponSafety = ({
+  coupon,
+  targetUserId,
+  appliedByAdmin,
+}) => {
+  if (appliedByAdmin) return;
+
+  if (coupon.type !== "full_access") return;
+
+  const explicitlyAllowed = isCouponExplicitlyAllowedForUser(
+    coupon,
+    targetUserId
+  );
+
+  if (!explicitlyAllowed) {
+    const error = new Error(
+      "This full-access coupon is restricted. Please contact admin."
+    );
+    error.statusCode = 403;
+    throw error;
+  }
 };
 
 const toObjectId = (id) =>
@@ -151,30 +185,68 @@ const buildPagination = ({ page, limit, total }) => ({
   hasPrevPage: page > 1,
 });
 
+const getActiveEntitlementQuery = (now = new Date()) => ({
+  status: "active",
+  startsAt: { $lte: now },
+  $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+});
+
+const getActiveEntitledUserIds = async ({
+  source = null,
+  accessType = null,
+  now = new Date(),
+} = {}) => {
+  const query = getActiveEntitlementQuery(now);
+
+  if (source) query.source = source;
+  if (accessType) query.accessType = accessType;
+
+  return AccessEntitlement.distinct("userId", query);
+};
+
+const countActiveEntitledUsers = async ({
+  source = null,
+  accessType = null,
+  now = new Date(),
+} = {}) => {
+  const userIds = await getActiveEntitledUserIds({ source, accessType, now });
+
+  if (!userIds.length) return 0;
+
+  return User.countDocuments({
+    _id: { $in: userIds },
+    isDeleted: { $ne: true },
+  });
+};
+
 export const getBillingDashboard = async (req, res) => {
   const now = new Date();
-const summarizeGatewayRevenue = (items = []) => {
-  const summary = {
-    totalRevenue: 0,
-    totalTransactions: 0,
-    byGateway: {},
+
+  const summarizeGatewayRevenue = (items = []) => {
+    const summary = {
+      totalRevenue: 0,
+      totalTransactions: 0,
+      byGateway: {},
+    };
+
+    items.forEach((item) => {
+      const gateway = item._id || "unknown";
+      const total = Number(item.total || 0);
+      const count = Number(item.count || 0);
+
+      summary.totalRevenue += total;
+      summary.totalTransactions += count;
+      summary.byGateway[gateway] = {
+        totalRevenue: total,
+        totalTransactions: count,
+      };
+    });
+
+    return summary;
   };
 
-  items.forEach((item) => {
-    const gateway = item._id || "unknown";
-    const total = Number(item.total || 0);
-    const count = Number(item.count || 0);
+  const activeEntitledUserIds = await getActiveEntitledUserIds({ now });
 
-    summary.totalRevenue += total;
-    summary.totalTransactions += count;
-    summary.byGateway[gateway] = {
-      totalRevenue: total,
-      totalTransactions: count,
-    };
-  });
-
-  return summary;
-};
   const [
     totalUsers,
     activePremiumUsers,
@@ -186,96 +258,110 @@ const summarizeGatewayRevenue = (items = []) => {
     revenueAgg,
     monthlyRevenueAgg,
     nonCashAccessAgg,
-monthlyNonCashAccessAgg,
+    monthlyNonCashAccessAgg,
     settings,
   ] = await Promise.all([
     User.countDocuments({ isDeleted: { $ne: true } }),
-    User.countDocuments({
-      isDeleted: { $ne: true },
-      subscriptionStatus: "active",
-      premiumExpiresAt: { $gt: now },
-    }),
-    User.countDocuments({
-      isDeleted: { $ne: true },
-      premiumExpiresAt: { $lte: now },
-      subscriptionStatus: { $in: ["active", "expired"] },
-    }),
-    User.countDocuments({
-      isDeleted: { $ne: true },
-      trialExpiresAt: { $gt: now },
-    }),
-    User.countDocuments({ isDeleted: { $ne: true }, lifetimeAccess: true }),
-    User.countDocuments({ isDeleted: { $ne: true }, blocked: true }),
-    Coupon.aggregate([{ $group: { _id: null, total: { $sum: "$usedCount" } } }]),
-   PaymentTransaction.aggregate([
-  {
-    $match: {
-      status: "paid",
-      paymentGateway: { $in: ["razorpay", "stripe"] },
-      amount: { $gt: 0 },
-    },
-  },
-  {
-    $group: {
-      _id: "$paymentGateway",
-      total: { $sum: "$amount" },
-      count: { $sum: 1 },
-    },
-  },
-]),
-PaymentTransaction.aggregate([
-  {
-    $match: {
-      status: "paid",
-      paymentGateway: { $in: ["razorpay", "stripe"] },
-      amount: { $gt: 0 },
-      createdAt: {
-        $gte: new Date(now.getFullYear(), now.getMonth(), 1),
-      },
-    },
-  },
-  {
-    $group: {
-      _id: "$paymentGateway",
-      total: { $sum: "$amount" },
-      count: { $sum: 1 },
-    },
-  },
-]),
 
-PaymentTransaction.aggregate([
-  {
-    $match: {
-      status: "paid",
-      paymentGateway: { $in: ["coupon", "manual", "system"] },
-    },
-  },
-  {
-    $group: {
-      _id: "$paymentGateway",
-      total: { $sum: "$amount" },
-      count: { $sum: 1 },
-    },
-  },
-]),
-PaymentTransaction.aggregate([
-  {
-    $match: {
-      status: "paid",
-      paymentGateway: { $in: ["coupon", "manual", "system"] },
-      createdAt: {
-        $gte: new Date(now.getFullYear(), now.getMonth(), 1),
+    activeEntitledUserIds.length
+      ? User.countDocuments({
+          _id: { $in: activeEntitledUserIds },
+          isDeleted: { $ne: true },
+        })
+      : 0,
+
+    AccessEntitlement.distinct("userId", {
+      status: "active",
+      expiresAt: { $ne: null, $lte: now },
+    }).then((userIds) =>
+      userIds.length
+        ? User.countDocuments({
+            _id: { $in: userIds },
+            isDeleted: { $ne: true },
+          })
+        : 0
+    ),
+
+    countActiveEntitledUsers({ source: "trial", now }),
+
+    countActiveEntitledUsers({ accessType: "lifetime", now }),
+
+    User.countDocuments({ isDeleted: { $ne: true }, blocked: true }),
+
+    Coupon.aggregate([{ $group: { _id: null, total: { $sum: "$usedCount" } } }]),
+
+    PaymentTransaction.aggregate([
+      {
+        $match: {
+          status: "paid",
+          paymentGateway: { $in: ["razorpay", "stripe"] },
+          amount: { $gt: 0 },
+        },
       },
-    },
-  },
-  {
-    $group: {
-      _id: "$paymentGateway",
-      total: { $sum: "$amount" },
-      count: { $sum: 1 },
-    },
-  },
-]),
+      {
+        $group: {
+          _id: "$paymentGateway",
+          total: { $sum: "$amount" },
+          count: { $sum: 1 },
+        },
+      },
+    ]),
+
+    PaymentTransaction.aggregate([
+      {
+        $match: {
+          status: "paid",
+          paymentGateway: { $in: ["razorpay", "stripe"] },
+          amount: { $gt: 0 },
+          createdAt: {
+            $gte: new Date(now.getFullYear(), now.getMonth(), 1),
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$paymentGateway",
+          total: { $sum: "$amount" },
+          count: { $sum: 1 },
+        },
+      },
+    ]),
+
+    PaymentTransaction.aggregate([
+      {
+        $match: {
+          status: "paid",
+          paymentGateway: { $in: ["coupon", "manual", "system"] },
+        },
+      },
+      {
+        $group: {
+          _id: "$paymentGateway",
+          total: { $sum: "$amount" },
+          count: { $sum: 1 },
+        },
+      },
+    ]),
+
+    PaymentTransaction.aggregate([
+      {
+        $match: {
+          status: "paid",
+          paymentGateway: { $in: ["coupon", "manual", "system"] },
+          createdAt: {
+            $gte: new Date(now.getFullYear(), now.getMonth(), 1),
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$paymentGateway",
+          total: { $sum: "$amount" },
+          count: { $sum: 1 },
+        },
+      },
+    ]),
+
     PlatformSettings.getSettings(),
   ]);
 
@@ -289,17 +375,17 @@ PaymentTransaction.aggregate([
       lifetimeUsers,
       blockedUsers,
       couponsUsed: couponsUsedAgg[0]?.total || 0,
-     revenueSummary: {
-  realMoney: {
-    ...summarizeGatewayRevenue(revenueAgg),
-    monthly: summarizeGatewayRevenue(monthlyRevenueAgg),
-  },
-  nonCashAccess: {
-    ...summarizeGatewayRevenue(nonCashAccessAgg),
-    monthly: summarizeGatewayRevenue(monthlyNonCashAccessAgg),
-  },
-  currency: settings.defaultCurrency || "INR",
-},
+      revenueSummary: {
+        realMoney: {
+          ...summarizeGatewayRevenue(revenueAgg),
+          monthly: summarizeGatewayRevenue(monthlyRevenueAgg),
+        },
+        nonCashAccess: {
+          ...summarizeGatewayRevenue(nonCashAccessAgg),
+          monthly: summarizeGatewayRevenue(monthlyNonCashAccessAgg),
+        },
+        currency: settings.defaultCurrency || "INR",
+      },
       activePlans: settings.plans,
       globalControls: {
         paymentsEnabled: settings.paymentsEnabled,
@@ -310,7 +396,7 @@ PaymentTransaction.aggregate([
       },
     },
   });
-};
+}; 
 
 export const getPlatformSettings = async (req, res) => {
   const settings = await PlatformSettings.getSettings();
@@ -435,12 +521,17 @@ export const getBillingUsers = async (req, res) => {
   }
 
   if (filter === "premium") {
-    query.subscriptionStatus = "active";
-    query.premiumExpiresAt = { $gt: now };
+    const userIds = await getActiveEntitledUserIds({ now });
+    query._id = { $in: userIds.length ? userIds : [] };
   }
 
   if (filter === "expired") {
-    query.premiumExpiresAt = { $lte: now };
+    const userIds = await AccessEntitlement.distinct("userId", {
+      status: "active",
+      expiresAt: { $ne: null, $lte: now },
+    });
+
+    query._id = { $in: userIds.length ? userIds : [] };
   }
 
   if (filter === "blocked") {
@@ -448,11 +539,21 @@ export const getBillingUsers = async (req, res) => {
   }
 
   if (filter === "trial") {
-    query.trialExpiresAt = { $gt: now };
+    const userIds = await getActiveEntitledUserIds({
+      source: "trial",
+      now,
+    });
+
+    query._id = { $in: userIds.length ? userIds : [] };
   }
 
   if (filter === "lifetime") {
-    query.lifetimeAccess = true;
+    const userIds = await getActiveEntitledUserIds({
+      accessType: "lifetime",
+      now,
+    });
+
+    query._id = { $in: userIds.length ? userIds : [] };
   }
 
   const safePage = Math.max(Number(page) || 1, 1);
@@ -471,7 +572,19 @@ export const getBillingUsers = async (req, res) => {
   const enrichedUsers = await Promise.all(
     users.map(async (user) => {
       const access = await hasPremiumAccess({ userId: user._id, user });
-      return { ...user, premiumAccess: access };
+      return {
+        ...user,
+        premiumAccess: access,
+        legacyBillingCache: {
+          subscriptionStatus: user.subscriptionStatus,
+          subscriptionType: user.subscriptionType,
+          premiumExpiresAt: user.premiumExpiresAt,
+          lifetimeAccess: user.lifetimeAccess,
+          trialExpiresAt: user.trialExpiresAt,
+          adminAccessOverride: user.adminAccessOverride,
+          accessSource: user.accessSource,
+        },
+      };
     })
   );
 
@@ -485,7 +598,7 @@ export const getBillingUsers = async (req, res) => {
       pages: Math.ceil(total / safeLimit),
     },
   });
-};
+}; 
 
 export const grantPremium = async (req, res) => {
   const { userId } = req.params;
@@ -1457,6 +1570,12 @@ const applyCouponCore = async ({ req, res, targetUserId, appliedByAdmin = false 
         error.statusCode = 403;
         throw error;
       }
+
+      enforceUserSideFullAccessCouponSafety({
+  coupon,
+  targetUserId: safeTargetUserId,
+  appliedByAdmin,
+});
 
       const existingRedemption = await CouponRedemption.findOne({
         couponId: coupon._id,

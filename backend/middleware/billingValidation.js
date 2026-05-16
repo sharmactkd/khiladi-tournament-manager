@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { body, param, query, validationResult } from "express-validator";
 
 const couponCategories = [
@@ -85,15 +86,133 @@ export const validateCouponValidate = [
   handleBillingValidation,
 ];
 
-export const validateAccessAction = [
-  param("userId").isMongoId(),
-  body("planType")
-    .optional()
-    .isIn(["single", "six_months", "one_year", "monthly", "yearly", "lifetime", "trial"]),
-  body("days").optional().isInt({ min: 1, max: 3650 }),
-  body("reason").optional().isString().trim().isLength({ max: 300 }),
-  handleBillingValidation,
-];
+export const validateAccessAction = (req, res, next) => {
+  const { userId } = req.params;
+  const {
+    reason = "",
+    confirmationText = "",
+    planType = "",
+    days = "",
+  } = req.body || {};
+
+  if (!userId || !mongoose.Types.ObjectId.isValid(String(userId))) {
+    return res.status(400).json({
+      success: false,
+      message: "Valid userId is required",
+    });
+  }
+
+  const path = String(req.originalUrl || req.path || "").toLowerCase();
+
+  const requiredConfirmations = [
+    {
+      match: "/grant-premium",
+      text: "GRANT_PREMIUM",
+      action: "grant premium access",
+    },
+    {
+      match: "/remove-premium",
+      text: "REMOVE_PREMIUM",
+      action: "remove premium access",
+    },
+    {
+      match: "/extend-premium",
+      text: "EXTEND_PREMIUM",
+      action: "extend premium access",
+    },
+    {
+      match: "/lifetime",
+      text: "ENABLE_LIFETIME",
+      action: "enable lifetime access",
+    },
+    {
+      match: "/start-trial",
+      text: "START_TRIAL",
+      action: "start trial",
+    },
+    {
+      match: "/remove-trial",
+      text: "REMOVE_TRIAL",
+      action: "remove trial",
+    },
+    {
+      match: "/enable-override",
+      text: "ENABLE_OVERRIDE",
+      action: "enable admin override",
+    },
+    {
+      match: "/disable-override",
+      text: "DISABLE_OVERRIDE",
+      action: "disable admin override",
+    },
+    {
+      match: "/block",
+      text: "BLOCK_USER",
+      action: "block user",
+    },
+    {
+      match: "/unblock",
+      text: "UNBLOCK_USER",
+      action: "unblock user",
+    },
+    {
+      match: "/force-logout",
+      text: "FORCE_LOGOUT",
+      action: "force logout user",
+    },
+    {
+      match: "/coupons/apply",
+      text: "APPLY_COUPON",
+      action: "apply coupon for user",
+    },
+  ];
+
+  const requirement = requiredConfirmations.find((item) =>
+    path.includes(item.match)
+  );
+
+  if (requirement) {
+    if (!String(reason || "").trim() || String(reason).trim().length < 5) {
+      return res.status(400).json({
+        success: false,
+        message: `Reason is required to ${requirement.action}`,
+      });
+    }
+
+    if (String(confirmationText || "").trim() !== requirement.text) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid confirmationText. Type ${requirement.text} to ${requirement.action}.`,
+        requiredConfirmationText: requirement.text,
+      });
+    }
+  }
+
+  if (planType && typeof planType !== "string") {
+    return res.status(400).json({
+      success: false,
+      message: "planType must be a string",
+    });
+  }
+
+  if (days !== "" && days !== undefined && days !== null) {
+    const safeDays = Number(days);
+
+    if (!Number.isFinite(safeDays) || safeDays <= 0 || safeDays > 3650) {
+      return res.status(400).json({
+        success: false,
+        message: "days must be a positive number up to 3650",
+      });
+    }
+
+    req.body.days = safeDays;
+  }
+
+  req.body.reason = String(reason || "").trim();
+  req.body.confirmationText = String(confirmationText || "").trim();
+
+  next();
+};
 
 export const validateBillingUserQuery = [
   query("search").optional().isString().trim(),

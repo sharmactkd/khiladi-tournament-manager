@@ -4,6 +4,8 @@ import adminMiddleware, {
   superAdminMiddleware,
   requireAdminPermission,
 } from "../middleware/adminMiddleware.js";
+import adminReauthMiddleware from "../middleware/adminReauthMiddleware.js";
+
 import {
   getAdminDashboard,
   getAdminUsers,
@@ -17,6 +19,7 @@ import {
   deleteAdminUser,
   deleteAdminTournament,
 } from "../controllers/adminController.js";
+
 import {
   getBillingDashboard,
   getPlatformSettings,
@@ -43,11 +46,13 @@ import {
   listTransactions,
   listAuditLogs,
   reconcileBillingPayments,
-reconcileBillingPaymentById,
-cleanupStaleBillingPayments,
-listInvoices,
+  reconcileBillingPaymentById,
+  cleanupStaleBillingPayments,
+  listInvoices,
 } from "../controllers/billingController.js";
+
 import { requireCsrfToken } from "../middleware/csrfProtection.js";
+
 import {
   validatePlatformSettingsUpdate,
   validateCouponCreate,
@@ -63,17 +68,9 @@ const router = express.Router();
 router.use(authMiddleware);
 router.use(adminMiddleware);
 
-router.get(
-  "/dashboard",
-  requireAdminPermission("dashboard:read"),
-  getAdminDashboard
-);
+router.get("/dashboard", requireAdminPermission("dashboard:read"), getAdminDashboard);
 
-router.get(
-  "/users",
-  requireAdminPermission("users:read_basic"),
-  getAdminUsers
-);
+router.get("/users", requireAdminPermission("users:read_basic"), getAdminUsers);
 
 router.get(
   "/users/:userId",
@@ -86,6 +83,7 @@ router.patch(
   requireCsrfToken,
   requireAdminPermission("users:manage"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   suspendAdminUser
 );
 
@@ -94,6 +92,7 @@ router.patch(
   requireCsrfToken,
   requireAdminPermission("users:manage"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   unsuspendAdminUser
 );
 
@@ -102,6 +101,7 @@ router.delete(
   requireCsrfToken,
   requireAdminPermission("users:manage"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   deleteAdminUser
 );
 
@@ -122,14 +122,11 @@ router.delete(
   requireCsrfToken,
   requireAdminPermission("tournaments:manage"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   deleteAdminTournament
 );
 
-router.get(
-  "/payments",
-  requireAdminPermission("payments:read"),
-  getAdminPayments
-);
+router.get("/payments", requireAdminPermission("payments:read"), getAdminPayments);
 
 router.get("/entries", requireAdminPermission("entries:read"), getAdminEntries);
 
@@ -151,8 +148,9 @@ router.get(
 router.patch(
   "/billing/settings",
   requireCsrfToken,
-  requireAdminPermission("billing:manage"),
+  requireAdminPermission("billing:settings"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validatePlatformSettingsUpdate,
   updatePlatformSettings
 );
@@ -167,8 +165,9 @@ router.get(
 router.patch(
   "/billing/users/:userId/grant-premium",
   requireCsrfToken,
-  requireAdminPermission("billing:manage"),
+  requireAdminPermission("billing:grant"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateAccessAction,
   grantPremium
 );
@@ -176,8 +175,9 @@ router.patch(
 router.patch(
   "/billing/users/:userId/remove-premium",
   requireCsrfToken,
-  requireAdminPermission("billing:manage"),
+  requireAdminPermission("billing:remove"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateAccessAction,
   removePremium
 );
@@ -185,8 +185,9 @@ router.patch(
 router.patch(
   "/billing/users/:userId/extend-premium",
   requireCsrfToken,
-  requireAdminPermission("billing:manage"),
+  requireAdminPermission("billing:extend"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateAccessAction,
   extendPremium
 );
@@ -194,8 +195,9 @@ router.patch(
 router.patch(
   "/billing/users/:userId/lifetime",
   requireCsrfToken,
-  requireAdminPermission("billing:manage"),
+  requireAdminPermission("billing:lifetime"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateAccessAction,
   setLifetimeAccess
 );
@@ -203,8 +205,9 @@ router.patch(
 router.patch(
   "/billing/users/:userId/start-trial",
   requireCsrfToken,
-  requireAdminPermission("billing:manage"),
+  requireAdminPermission("billing:trial"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateAccessAction,
   startTrial
 );
@@ -212,8 +215,9 @@ router.patch(
 router.patch(
   "/billing/users/:userId/remove-trial",
   requireCsrfToken,
-  requireAdminPermission("billing:manage"),
+  requireAdminPermission("billing:trial"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateAccessAction,
   removeTrial
 );
@@ -221,8 +225,9 @@ router.patch(
 router.patch(
   "/billing/users/:userId/enable-override",
   requireCsrfToken,
-  requireAdminPermission("billing:manage"),
+  requireAdminPermission("billing:override"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateAccessAction,
   enableOverride
 );
@@ -230,8 +235,9 @@ router.patch(
 router.patch(
   "/billing/users/:userId/disable-override",
   requireCsrfToken,
-  requireAdminPermission("billing:manage"),
+  requireAdminPermission("billing:override"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateAccessAction,
   disableOverride
 );
@@ -239,8 +245,9 @@ router.patch(
 router.patch(
   "/billing/users/:userId/block",
   requireCsrfToken,
-  requireAdminPermission("billing:manage"),
+  requireAdminPermission("users:manage"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateAccessAction,
   blockUser
 );
@@ -248,8 +255,9 @@ router.patch(
 router.patch(
   "/billing/users/:userId/unblock",
   requireCsrfToken,
-  requireAdminPermission("billing:manage"),
+  requireAdminPermission("users:manage"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateAccessAction,
   unblockUser
 );
@@ -257,8 +265,9 @@ router.patch(
 router.patch(
   "/billing/users/:userId/force-logout",
   requireCsrfToken,
-  requireAdminPermission("billing:manage"),
+  requireAdminPermission("users:manage"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateAccessAction,
   forceLogoutUser
 );
@@ -274,6 +283,7 @@ router.post(
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateCouponCreate,
   createCoupon
 );
@@ -283,6 +293,7 @@ router.patch(
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateCouponUpdate,
   updateCoupon
 );
@@ -292,6 +303,7 @@ router.patch(
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateCouponParam,
   disableCoupon
 );
@@ -301,6 +313,7 @@ router.delete(
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateCouponParam,
   deleteCoupon
 );
@@ -317,6 +330,7 @@ router.post(
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   validateAccessAction,
   validateCouponValidate,
   applyCouponForUserByAdmin
@@ -337,24 +351,27 @@ router.get(
 router.post(
   "/billing/reconcile-payments",
   requireCsrfToken,
-  requireAdminPermission("payments:manage"),
+  requireAdminPermission("payments:reconcile"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   reconcileBillingPayments
 );
 
 router.post(
   "/billing/reconcile-payments/:paymentId",
   requireCsrfToken,
-  requireAdminPermission("payments:manage"),
+  requireAdminPermission("payments:reconcile"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   reconcileBillingPaymentById
 );
 
 router.post(
   "/billing/cleanup-stale-payments",
   requireCsrfToken,
-  requireAdminPermission("payments:manage"),
+  requireAdminPermission("payments:reconcile"),
   superAdminMiddleware,
+  adminReauthMiddleware,
   cleanupStaleBillingPayments
 );
 

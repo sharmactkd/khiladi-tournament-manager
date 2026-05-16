@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 
 export const ENTITLEMENT_STATUSES = ["active", "expired", "revoked"];
+
 export const ENTITLEMENT_SOURCES = [
   "payment",
   "coupon",
@@ -64,7 +65,16 @@ const accessEntitlementSchema = new mongoose.Schema(
 
     accessType: {
       type: String,
-      enum: ["global", "unlimited", "tournament", "feature", "trial", "admin", "lifetime", "coupon"],
+      enum: [
+        "global",
+        "unlimited",
+        "tournament",
+        "feature",
+        "trial",
+        "admin",
+        "lifetime",
+        "coupon",
+      ],
       required: true,
       index: true,
     },
@@ -134,17 +144,50 @@ accessEntitlementSchema.index({
   status: 1,
 });
 
-accessEntitlementSchema.index({
-  source: 1,
-  sourceId: 1,
-  status: 1,
-});
 
 accessEntitlementSchema.index({
   userId: 1,
   feature: 1,
   status: 1,
 });
+
+/**
+ * Prevent duplicate active entitlement for same paid payment.
+ * This protects against webhook retry + frontend verify race.
+ */
+accessEntitlementSchema.index(
+  {
+    source: 1,
+    sourceId: 1,
+    status: 1,
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      source: "payment",
+      status: "active",
+    },
+  }
+);
+
+/**
+ * Prevent duplicate active coupon entitlement for same user + coupon.
+ */
+accessEntitlementSchema.index(
+  {
+    userId: 1,
+    source: 1,
+    sourceId: 1,
+    status: 1,
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      source: "coupon",
+      status: "active",
+    },
+  }
+);
 
 const AccessEntitlement = mongoose.model(
   "AccessEntitlement",

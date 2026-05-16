@@ -1,4 +1,3 @@
-//D:\Khiladi\frontend\api\paymentApi.js
 import api from "../api";
 
 export const createPaymentOrder = async ({ planType, tournamentId }) => {
@@ -15,8 +14,31 @@ export const verifyPayment = async (paymentData) => {
   return data;
 };
 
-export const getMyAccessStatus = async (tournamentId) => {
-  const query = tournamentId ? `?tournamentId=${tournamentId}` : "";
-  const { data } = await api.get(`/payment/access-status${query}`);
+export const getMyAccessStatus = async (tournamentId, feature = "") => {
+  const { data } = await api.get("/payment/access-status", {
+    params: {
+      tournamentId,
+      feature,
+    },
+  });
+
+  return data;
+};
+
+export const getPaymentStatus = async ({
+  orderId,
+  paymentId,
+  tournamentId,
+  feature,
+}) => {
+  const { data } = await api.get("/payment/status", {
+    params: {
+      orderId,
+      paymentId,
+      tournamentId,
+      feature,
+    },
+  });
+
   return data;
 };

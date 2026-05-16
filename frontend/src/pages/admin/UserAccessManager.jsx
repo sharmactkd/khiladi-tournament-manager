@@ -5,35 +5,61 @@ import styles from "./Admin.module.css";
 const filters = ["all", "premium", "expired", "blocked", "trial", "lifetime"];
 
 const dangerousActionConfig = {
+  "grant-premium": {
+    title: "Grant Premium Access",
+    message: "This will manually grant premium access to this user.",
+    confirmationText: "GRANT_PREMIUM",
+  },
+  "extend-premium": {
+    title: "Extend Premium Access",
+    message: "This will extend this user's premium access.",
+    confirmationText: "EXTEND_PREMIUM",
+  },
+  "start-trial": {
+    title: "Start Trial",
+    message: "This will start a trial for this user.",
+    confirmationText: "START_TRIAL",
+  },
   lifetime: {
     title: "Grant Lifetime Access",
     message:
-      "This will grant lifetime premium access. This action should only be used for verified paid/manual cases.",
-    confirmationText: "LIFETIME",
+      "This will grant lifetime premium access. Use only for verified paid/manual cases.",
+    confirmationText: "ENABLE_LIFETIME",
   },
   "enable-override": {
     title: "Enable Admin Override",
-    message:
-      "This will bypass normal billing checks while override is active. Use only for support or emergency cases.",
-    confirmationText: "OVERRIDE",
+    message: "This will bypass normal billing checks while override is active.",
+    confirmationText: "ENABLE_OVERRIDE",
+  },
+  "disable-override": {
+    title: "Disable Admin Override",
+    message: "This will disable admin override access.",
+    confirmationText: "DISABLE_OVERRIDE",
   },
   "remove-premium": {
     title: "Remove Premium Access",
-    message:
-      "This will remove premium/lifetime/override access fields from this user.",
-    confirmationText: "REMOVE",
+    message: "This will remove premium/lifetime/override access.",
+    confirmationText: "REMOVE_PREMIUM",
+  },
+  "remove-trial": {
+    title: "Remove Trial",
+    message: "This will remove trial access.",
+    confirmationText: "REMOVE_TRIAL",
   },
   block: {
     title: "Block User",
-    message:
-      "This will block the user and remove active refresh tokens from their account.",
-    confirmationText: "BLOCK",
+    message: "This will block the user and remove active refresh tokens.",
+    confirmationText: "BLOCK_USER",
+  },
+  unblock: {
+    title: "Unblock User",
+    message: "This will unblock the user.",
+    confirmationText: "UNBLOCK_USER",
   },
   "force-logout": {
     title: "Force Logout",
-    message:
-      "This will log the user out from all devices by clearing refresh tokens.",
-    confirmationText: "LOGOUT",
+    message: "This will log the user out from all devices.",
+    confirmationText: "FORCE_LOGOUT",
   },
 };
 
@@ -46,6 +72,8 @@ const accessPriorityLabels = {
   6: "Unlimited payment",
   7: "Tournament payment",
   8: "Trial access",
+  50: "Migrated access",
+  90: "System access",
 };
 
 const UserAccessManager = () => {
@@ -82,29 +110,108 @@ const UserAccessManager = () => {
     const config = dangerousActionConfig[action];
 
     if (!config) {
-      return window.confirm(
+      const confirmed = window.confirm(
         `Are you sure you want to ${action.replaceAll("-", " ")} for ${
           user.name || user.email || "this user"
         }?`
       );
+
+      if (!confirmed) {
+        return {
+          confirmed: false,
+          reason: "",
+          confirmationText: "",
+          adminPassword: "",
+        };
+      }
+
+      const adminPassword = window.prompt("Enter your admin password to continue:");
+
+      if (!adminPassword || !adminPassword.trim()) {
+        alert("Admin password is required.");
+        return {
+          confirmed: false,
+          reason: "",
+          confirmationText: "",
+          adminPassword: "",
+        };
+      }
+
+      return {
+        confirmed: true,
+        reason: "Admin confirmed action",
+        confirmationText: "",
+        adminPassword: adminPassword.trim(),
+      };
+    }
+
+    const reason = window.prompt(
+      `${config.title}\n\nUser: ${
+        user.name || user.email || user._id
+      }\n\n${config.message}\n\nEnter reason for audit log:`
+    );
+
+    if (!reason || reason.trim().length < 5) {
+      alert("Reason is required and must be at least 5 characters.");
+      return {
+        confirmed: false,
+        reason: "",
+        confirmationText: "",
+        adminPassword: "",
+      };
     }
 
     const typed = window.prompt(
-      `${config.title}\n\nUser: ${user.name || user.email || user._id}\n\n${
-        config.message
-      }\n\nType ${config.confirmationText} to confirm.`
+      `${config.title}\n\nType ${config.confirmationText} to confirm.`
     );
 
-    return typed === config.confirmationText;
+    if (typed !== config.confirmationText) {
+      alert(`Invalid confirmation. You must type ${config.confirmationText}.`);
+      return {
+        confirmed: false,
+        reason: "",
+        confirmationText: "",
+        adminPassword: "",
+      };
+    }
+
+    const adminPassword = window.prompt(
+      `${config.title}\n\nEnter your admin password to continue:`
+    );
+
+    if (!adminPassword || !adminPassword.trim()) {
+      alert("Admin password is required.");
+      return {
+        confirmed: false,
+        reason: "",
+        confirmationText: "",
+        adminPassword: "",
+      };
+    }
+
+    return {
+      confirmed: true,
+      reason: reason.trim(),
+      confirmationText: typed,
+      adminPassword: adminPassword.trim(),
+    };
   };
 
   const runAction = async (user, action, body = {}) => {
-    const ok = confirmDangerousAction({ user, action });
-    if (!ok) return;
+    const confirmation = confirmDangerousAction({ user, action });
+
+    if (!confirmation.confirmed) return;
 
     try {
       setActionLoadingId(`${user._id}:${action}`);
-      await api.patch(`/admin/billing/users/${user._id}/${action}`, body);
+
+      await api.patch(`/admin/billing/users/${user._id}/${action}`, {
+        ...body,
+        reason: confirmation.reason,
+        confirmationText: confirmation.confirmationText,
+        adminPassword: confirmation.adminPassword,
+      });
+
       await loadUsers();
     } catch (err) {
       alert(err.response?.data?.message || err.message || "Action failed");

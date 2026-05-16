@@ -1,16 +1,35 @@
 import mongoose from "mongoose";
 import AccessEntitlement from "../models/accessEntitlement.js";
+import PlatformSettings, {
+  PREMIUM_FEATURES,
+} from "../models/platformSettings.js";
 
 const normalizeId = (value) => {
   if (!value) return null;
   const id = String(value).trim();
-  return mongoose.Types.ObjectId.isValid(id) ? new mongoose.Types.ObjectId(id) : null;
+  return mongoose.Types.ObjectId.isValid(id)
+    ? new mongoose.Types.ObjectId(id)
+    : null;
 };
 
 const normalizeDate = (value) => {
   if (!value) return null;
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const normalizeFeature = (feature) => String(feature || "").trim();
+
+const normalizeFeatureList = (features) => {
+  if (!Array.isArray(features) || features.length === 0) {
+    return Object.values(PREMIUM_FEATURES);
+  }
+
+  return [
+    ...new Set(
+      features.map((item) => normalizeFeature(item)).filter(Boolean)
+    ),
+  ];
 };
 
 export const ENTITLEMENT_PRIORITY = {
@@ -22,6 +41,29 @@ export const ENTITLEMENT_PRIORITY = {
   trial: 8,
   migration: 50,
   system: 90,
+};
+
+const buildDuplicateLookupQuery = ({ userId, source, sourceId }) => {
+  if (!userId || !source || !sourceId) return null;
+
+  if (source === "payment") {
+    return {
+      source: "payment",
+      sourceId,
+      status: "active",
+    };
+  }
+
+  if (source === "coupon") {
+    return {
+      userId,
+      source: "coupon",
+      sourceId,
+      status: "active",
+    };
+  }
+
+  return null;
 };
 
 export const createAccessEntitlement = async ({
@@ -51,31 +93,61 @@ export const createAccessEntitlement = async ({
     throw new Error("source is required for access entitlement");
   }
 
+  const duplicateLookupQuery = buildDuplicateLookupQuery({
+    userId: safeUserId,
+    source,
+    sourceId: safeSourceId,
+  });
+
+  if (duplicateLookupQuery) {
+    const existing = await AccessEntitlement.findOne(duplicateLookupQuery).session(
+      session
+    );
+
+    if (existing) {
+      return existing;
+    }
+  }
+
   const finalPriority =
     priority ?? ENTITLEMENT_PRIORITY[source] ?? ENTITLEMENT_PRIORITY.system;
 
-  const entitlement = await AccessEntitlement.create(
-    [
-      {
-        userId: safeUserId,
-        scope,
-        tournamentId: safeTournamentId,
-        feature: String(feature || "").trim(),
-        source,
-        sourceId: safeSourceId,
-        planType: String(planType || "").trim(),
-        accessType,
-        startsAt: normalizeDate(startsAt) || new Date(),
-        expiresAt: normalizeDate(expiresAt),
-        status: "active",
-        priority: finalPriority,
-        metadata,
-      },
-    ],
-    session ? { session } : undefined
-  );
+  try {
+    const entitlement = await AccessEntitlement.create(
+      [
+        {
+          userId: safeUserId,
+          scope,
+          tournamentId: safeTournamentId,
+          feature: normalizeFeature(feature),
+          source,
+          sourceId: safeSourceId,
+          planType: String(planType || "").trim(),
+          accessType,
+          startsAt: normalizeDate(startsAt) || new Date(),
+          expiresAt: normalizeDate(expiresAt),
+          status: "active",
+          priority: finalPriority,
+          metadata,
+        },
+      ],
+      session ? { session } : undefined
+    );
 
-  return entitlement[0];
+    return entitlement[0];
+  } catch (error) {
+    if (error?.code === 11000 && duplicateLookupQuery) {
+      const existing = await AccessEntitlement.findOne(
+        duplicateLookupQuery
+      ).session(session);
+
+      if (existing) {
+        return existing;
+      }
+    }
+
+    throw error;
+  }
 };
 
 export const revokeAccessEntitlements = async ({
@@ -87,8 +159,14 @@ export const revokeAccessEntitlements = async ({
   reason = "",
   session = null,
 }) => {
+  const safeUserId = normalizeId(userId);
+
+  if (!safeUserId) {
+    throw new Error("Valid userId is required to revoke entitlements");
+  }
+
   const query = {
-    userId: normalizeId(userId),
+    userId: safeUserId,
     status: "active",
   };
 
@@ -110,6 +188,29 @@ export const revokeAccessEntitlements = async ({
   );
 };
 
+const entitlementAllowsFeature = ({ entitlement, feature }) => {
+  const safeFeature = normalizeFeature(feature);
+
+  if (!safeFeature) return true;
+
+  if (entitlement.scope === "feature") {
+    return entitlement.feature === safeFeature;
+  }
+
+  const metadataFeatures = normalizeFeatureList(entitlement?.metadata?.features);
+  const snapshotFeatures = normalizeFeatureList(
+    entitlement?.metadata?.planSnapshot?.features
+  );
+
+  const features =
+    Array.isArray(entitlement?.metadata?.features) &&
+    entitlement.metadata.features.length > 0
+      ? metadataFeatures
+      : snapshotFeatures;
+
+  return features.includes(safeFeature);
+};
+
 export const findBestActiveEntitlement = async ({
   userId,
   tournamentId = null,
@@ -117,12 +218,12 @@ export const findBestActiveEntitlement = async ({
 }) => {
   const safeUserId = normalizeId(userId);
   const safeTournamentId = normalizeId(tournamentId);
-  const safeFeature = String(feature || "").trim();
+  const safeFeature = normalizeFeature(feature);
   const now = new Date();
 
   if (!safeUserId) return null;
 
-  const query = {
+  const baseQuery = {
     userId: safeUserId,
     status: "active",
     startsAt: { $lte: now },
@@ -145,11 +246,19 @@ export const findBestActiveEntitlement = async ({
     });
   }
 
-  query.$and = [{ $or: scopeConditions }];
-
-  return AccessEntitlement.findOne(query)
+  const entitlements = await AccessEntitlement.find({
+    ...baseQuery,
+    $and: [{ $or: scopeConditions }],
+  })
     .sort({ priority: 1, expiresAt: -1, createdAt: -1 })
+    .limit(20)
     .lean();
+
+  return (
+    entitlements.find((entitlement) =>
+      entitlementAllowsFeature({ entitlement, feature: safeFeature })
+    ) || null
+  );
 };
 
 export const buildAccessResultFromEntitlement = ({
@@ -157,6 +266,8 @@ export const buildAccessResultFromEntitlement = ({
   tournamentId = null,
   feature = "",
 }) => {
+  const safeFeature = normalizeFeature(feature);
+
   if (!entitlement) {
     return {
       hasAccess: false,
@@ -167,9 +278,10 @@ export const buildAccessResultFromEntitlement = ({
       planType: null,
       paymentId: null,
       tournamentId,
-      feature,
+      feature: safeFeature,
       featureAllowed: false,
       accessPriority: null,
+      entitlementId: null,
     };
   }
 
@@ -183,7 +295,7 @@ export const buildAccessResultFromEntitlement = ({
     paymentId:
       entitlement.source === "payment" ? entitlement.sourceId || null : null,
     tournamentId: entitlement.tournamentId || tournamentId || null,
-    feature,
+    feature: safeFeature,
     featureAllowed: true,
     accessPriority: entitlement.priority,
     entitlementId: entitlement._id,
