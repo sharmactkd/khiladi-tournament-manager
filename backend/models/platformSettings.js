@@ -1,5 +1,17 @@
 import mongoose from "mongoose";
 
+let cachedSettings = null;
+let cachedSettingsAt = 0;
+
+const SETTINGS_CACHE_TTL_MS = Number(
+  process.env.SETTINGS_CACHE_TTL_MS || 60 * 1000
+);
+
+export const clearPlatformSettingsCache = () => {
+  cachedSettings = null;
+  cachedSettingsAt = 0;
+};
+
 export const PREMIUM_FEATURES = {
   TIESHEET: "tiesheet",
   OFFICIALS: "officials",
@@ -131,17 +143,29 @@ const platformSettingsSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-platformSettingsSchema.statics.getSettings = async function () {
-  return this.findOneAndUpdate(
-    { singletonKey: "platform" },
-    {
-      $setOnInsert: {
-        singletonKey: "platform",
-        plans: defaultPlans(),
-      },
-    },
-    { new: true, upsert: true, setDefaultsOnInsert: true }
-  );
+platformSettingsSchema.statics.getSettings = async function ({
+  forceRefresh = false,
+} = {}) {
+  const now = Date.now();
+
+  if (
+    !forceRefresh &&
+    cachedSettings &&
+    now - cachedSettingsAt < SETTINGS_CACHE_TTL_MS
+  ) {
+    return cachedSettings;
+  }
+
+  let settings = await this.findOne({ singletonKey: "platform" });
+
+  if (!settings) {
+    settings = await this.create({ singletonKey: "platform" });
+  }
+
+  cachedSettings = settings;
+  cachedSettingsAt = now;
+
+  return settings;
 };
 
 platformSettingsSchema.statics.getPremiumFeatures = function () {

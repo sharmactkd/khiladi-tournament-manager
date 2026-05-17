@@ -20,6 +20,13 @@ const refreshTokenSessionSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const buildUserSearchText = (user) => {
+  return [user.name, user.email, user.phone]
+    .map((v) => String(v || "").toLowerCase().trim())
+    .filter(Boolean)
+    .join(" ");
+};
+
 const userSchema = new mongoose.Schema(
   {
     name: {
@@ -116,12 +123,20 @@ const userSchema = new mongoose.Schema(
 
     isSuspended: { type: Boolean, default: false },
     suspendedAt: { type: Date, default: null },
-    suspendedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    suspendedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
     suspensionReason: { type: String, trim: true, default: "" },
 
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
-    deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    deletedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
 
     subscriptionStatus: {
       type: String,
@@ -132,7 +147,16 @@ const userSchema = new mongoose.Schema(
 
     subscriptionType: {
       type: String,
-      enum: ["none", "single", "six_months", "one_year", "monthly", "yearly", "lifetime", "trial"],
+      enum: [
+        "none",
+        "single",
+        "six_months",
+        "one_year",
+        "monthly",
+        "yearly",
+        "lifetime",
+        "trial",
+      ],
       default: "none",
       index: true,
     },
@@ -181,6 +205,12 @@ const userSchema = new mongoose.Schema(
       select: false,
     },
 
+    searchText: {
+      type: String,
+      default: "",
+      index: true,
+    },
+
     resetPasswordToken: { type: String, select: false },
     resetPasswordExpire: { type: Date, select: false },
   },
@@ -199,19 +229,51 @@ userSchema.index({ "refreshTokens.tokenHash": 1 });
 userSchema.index({ "refreshTokens.expiresAt": 1 });
 userSchema.index({ subscriptionStatus: 1, premiumExpiresAt: 1 });
 userSchema.index({ blocked: 1, subscriptionStatus: 1 });
-
+userSchema.index({ searchText: "text" });
 
 userSchema.pre("save", async function (next) {
-  if (!this.isModified("password") || !this.password) return next();
-
   try {
-    this.password = await bcrypt.hash(this.password, 10);
-    logger.info(`Password hashed for user: ${this.email || this.phone}`);
+    this.searchText = buildUserSearchText(this);
+
+    if (this.isModified("password") && this.password) {
+      this.password = await bcrypt.hash(this.password, 10);
+      logger.info(`Password hashed for user: ${this.email || this.phone}`);
+    }
+
     next();
   } catch (error) {
-    logger.error(`Hash error: ${error.message}`);
+    logger.error(`User pre-save error: ${error.message}`);
     next(error);
   }
+});
+
+userSchema.pre("findOneAndUpdate", function (next) {
+  const update = this.getUpdate() || {};
+  const $set = update.$set || update;
+
+  const hasSearchFieldChange =
+    Object.prototype.hasOwnProperty.call($set, "name") ||
+    Object.prototype.hasOwnProperty.call($set, "email") ||
+    Object.prototype.hasOwnProperty.call($set, "phone");
+
+  if (hasSearchFieldChange) {
+    const name = $set.name;
+    const email = $set.email;
+    const phone = $set.phone;
+
+    if (!update.$set) {
+      update.$set = {};
+    }
+
+    update.$set.searchText = [name, email, phone]
+      .map((v) => String(v || "").toLowerCase().trim())
+      .filter(Boolean)
+      .join(" ");
+
+    this.setUpdate(update);
+  }
+
+  next();
 });
 
 userSchema.methods.comparePassword = async function (candidatePassword) {
@@ -226,4 +288,5 @@ userSchema.methods.getNormalizedRole = function () {
 };
 
 const User = mongoose.model("User", userSchema);
+
 export default User;

@@ -4,6 +4,11 @@ import {
   findBestActiveEntitlement,
   buildAccessResultFromEntitlement,
 } from "../services/accessEntitlementService.js";
+import {
+  buildAccessCacheKey,
+  getCachedAccess,
+  setCachedAccess,
+} from "../services/accessCacheService.js";
 
 const normalizeId = (value) => {
   if (!value) return null;
@@ -42,12 +47,30 @@ const hasPremiumAccess = async ({
   const safeTournamentId = normalizeId(tournamentId);
   const safeFeature = normalizeFeature(feature);
 
+  const cacheKey = buildAccessCacheKey({
+    userId: safeUserId,
+    tournamentId: safeTournamentId || "",
+    feature: safeFeature,
+  });
+
+  const cached = getCachedAccess(cacheKey);
+
+  if (cached) {
+    return cached;
+  }
+
+  const deny = (payload = {}) =>
+    setCachedAccess(
+      cacheKey,
+      buildDeniedResult({
+        tournamentId: safeTournamentId,
+        feature: safeFeature,
+        ...payload,
+      })
+    );
+
   if (!safeUserId) {
-    return buildDeniedResult({
-      reason: "invalid-user",
-      tournamentId: safeTournamentId,
-      feature: safeFeature,
-    });
+    return deny({ reason: "invalid-user" });
   }
 
   const freshUser =
@@ -57,27 +80,15 @@ const hasPremiumAccess = async ({
       .lean());
 
   if (!freshUser) {
-    return buildDeniedResult({
-      reason: "user-not-found",
-      tournamentId: safeTournamentId,
-      feature: safeFeature,
-    });
+    return deny({ reason: "user-not-found" });
   }
 
   if (freshUser.isDeleted) {
-    return buildDeniedResult({
-      reason: "user-deleted",
-      tournamentId: safeTournamentId,
-      feature: safeFeature,
-    });
+    return deny({ reason: "user-deleted" });
   }
 
   if (freshUser.isSuspended || freshUser.blocked) {
-    return buildDeniedResult({
-      reason: "user-blocked",
-      tournamentId: safeTournamentId,
-      feature: safeFeature,
-    });
+    return deny({ reason: "user-blocked" });
   }
 
   const entitlement = await findBestActiveEntitlement({
@@ -87,18 +98,16 @@ const hasPremiumAccess = async ({
   });
 
   if (!entitlement) {
-    return buildDeniedResult({
-      reason: "no-active-entitlement",
-      tournamentId: safeTournamentId,
-      feature: safeFeature,
-    });
+    return deny({ reason: "no-active-entitlement" });
   }
 
-  return buildAccessResultFromEntitlement({
+  const result = buildAccessResultFromEntitlement({
     entitlement,
     tournamentId: safeTournamentId,
     feature: safeFeature,
   });
+
+  return setCachedAccess(cacheKey, result);
 };
 
 export default hasPremiumAccess;

@@ -29,7 +29,6 @@ const billingInvoiceSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "PaymentTransaction",
       default: null,
-      index: true,
     },
 
     invoiceType: {
@@ -117,7 +116,9 @@ const billingInvoiceSchema = new mongoose.Schema(
 );
 
 billingInvoiceSchema.index({ userId: 1, issuedAt: -1 });
-billingInvoiceSchema.index({ invoiceType: 1, status: 1, issuedAt: -1 });
+billingInvoiceSchema.index({ transactionId: 1 });
+billingInvoiceSchema.index({ invoiceType: 1, issuedAt: -1 });
+billingInvoiceSchema.index({ status: 1, issuedAt: -1 });
 
 const BillingInvoice = mongoose.model("BillingInvoice", billingInvoiceSchema);
 

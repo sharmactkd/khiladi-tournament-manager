@@ -1,10 +1,9 @@
 import mongoose from "mongoose";
 import User from "../models/user.js";
 import Coupon from "../models/coupon.js";
-import PlatformSettings from "../models/platformSettings.js";
+
 import PaymentTransaction from "../models/paymentTransaction.js";
 import AdminLog from "../models/adminLog.js";
-import Payment from "../models/payment.js";
 import hasPremiumAccess from "../utils/hasPremiumAccess.js";
 import { expireStalePayments } from "../services/paymentCleanupService.js";
 import {
@@ -22,6 +21,15 @@ import {
   revokeAccessEntitlements,
 } from "../services/accessEntitlementService.js";
 import AccessEntitlement from "../models/accessEntitlement.js";
+import { createBillingEvent } from "../services/billingEventService.js";
+import PlatformSettings, {
+  clearPlatformSettingsCache,
+} from "../models/platformSettings.js";
+import { clearUserAccessCache } from "../services/accessCacheService.js";
+import {
+  getRequestIdempotencyKey,
+  createDeterministicKey,
+} from "../services/idempotencyService.js";
 
 
 const calculateCouponAccessDates = async ({ planType }) => {
@@ -155,6 +163,12 @@ const normalizeLimit = (limit) => {
   return Math.min(Math.max(Number(limit) || 20, 1), 100);
 };
 
+const escapeRegex = (value = "") =>
+  String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const isValidCouponCode = (code = "") =>
+  /^[A-Z0-9_-]{3,50}$/.test(String(code || "").trim().toUpperCase());
+
 const normalizeDateRange = ({ from, to }) => {
   const createdAt = {};
 
@@ -221,6 +235,7 @@ const countActiveEntitledUsers = async ({
 
 export const getBillingDashboard = async (req, res) => {
   const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
   const summarizeGatewayRevenue = (items = []) => {
     const summary = {
@@ -245,50 +260,76 @@ export const getBillingDashboard = async (req, res) => {
     return summary;
   };
 
-  const activeEntitledUserIds = await getActiveEntitledUserIds({ now });
-
   const [
-    totalUsers,
-    activePremiumUsers,
-    expiredUsers,
-    trialUsers,
-    lifetimeUsers,
-    blockedUsers,
-    couponsUsedAgg,
+    userStats,
+    entitlementStats,
+    couponUsageStats,
     revenueAgg,
     monthlyRevenueAgg,
     nonCashAccessAgg,
     monthlyNonCashAccessAgg,
     settings,
   ] = await Promise.all([
-    User.countDocuments({ isDeleted: { $ne: true } }),
-
-    activeEntitledUserIds.length
-      ? User.countDocuments({
-          _id: { $in: activeEntitledUserIds },
+    User.aggregate([
+      {
+        $match: {
           isDeleted: { $ne: true },
-        })
-      : 0,
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          totalUsers: { $sum: 1 },
+          blockedUsers: {
+            $sum: {
+              $cond: [{ $eq: ["$blocked", true] }, 1, 0],
+            },
+          },
+        },
+      },
+    ]),
 
-    AccessEntitlement.distinct("userId", {
-      status: "active",
-      expiresAt: { $ne: null, $lte: now },
-    }).then((userIds) =>
-      userIds.length
-        ? User.countDocuments({
-            _id: { $in: userIds },
-            isDeleted: { $ne: true },
-          })
-        : 0
-    ),
+    AccessEntitlement.aggregate([
+      {
+        $match: {
+          status: "active",
+          startsAt: { $lte: now },
+          $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+        },
+      },
+      {
+        $group: {
+          _id: "$userId",
+          hasTrial: {
+            $max: {
+              $cond: [{ $eq: ["$source", "trial"] }, 1, 0],
+            },
+          },
+          hasLifetime: {
+            $max: {
+              $cond: [{ $eq: ["$accessType", "lifetime"] }, 1, 0],
+            },
+          },
+        },
+      },
+      {
+        $group: {
+          _id: null,
+          activePremiumUsers: { $sum: 1 },
+          trialUsers: { $sum: "$hasTrial" },
+          lifetimeUsers: { $sum: "$hasLifetime" },
+        },
+      },
+    ]),
 
-    countActiveEntitledUsers({ source: "trial", now }),
-
-    countActiveEntitledUsers({ accessType: "lifetime", now }),
-
-    User.countDocuments({ isDeleted: { $ne: true }, blocked: true }),
-
-    Coupon.aggregate([{ $group: { _id: null, total: { $sum: "$usedCount" } } }]),
+    Coupon.aggregate([
+      {
+        $group: {
+          _id: null,
+          total: { $sum: "$usedCount" },
+        },
+      },
+    ]),
 
     PaymentTransaction.aggregate([
       {
@@ -313,9 +354,7 @@ export const getBillingDashboard = async (req, res) => {
           status: "paid",
           paymentGateway: { $in: ["razorpay", "stripe"] },
           amount: { $gt: 0 },
-          createdAt: {
-            $gte: new Date(now.getFullYear(), now.getMonth(), 1),
-          },
+          createdAt: { $gte: monthStart },
         },
       },
       {
@@ -348,9 +387,7 @@ export const getBillingDashboard = async (req, res) => {
         $match: {
           status: "paid",
           paymentGateway: { $in: ["coupon", "manual", "system"] },
-          createdAt: {
-            $gte: new Date(now.getFullYear(), now.getMonth(), 1),
-          },
+          createdAt: { $gte: monthStart },
         },
       },
       {
@@ -365,16 +402,37 @@ export const getBillingDashboard = async (req, res) => {
     PlatformSettings.getSettings(),
   ]);
 
+  const userSummary = userStats[0] || {};
+  const entitlementSummary = entitlementStats[0] || {};
+
+  const expiredUsersAgg = await AccessEntitlement.aggregate([
+    {
+      $match: {
+        status: "active",
+        expiresAt: { $ne: null, $lte: now },
+      },
+    },
+    {
+      $group: {
+        _id: "$userId",
+      },
+    },
+    {
+      $count: "count",
+    },
+  ]);
+
   return res.json({
     success: true,
     dashboard: {
-      totalUsers,
-      activePremiumUsers,
-      expiredUsers,
-      trialUsers,
-      lifetimeUsers,
-      blockedUsers,
-      couponsUsed: couponsUsedAgg[0]?.total || 0,
+      totalUsers: userSummary.totalUsers || 0,
+      activePremiumUsers: entitlementSummary.activePremiumUsers || 0,
+      expiredUsers: expiredUsersAgg[0]?.count || 0,
+      trialUsers: entitlementSummary.trialUsers || 0,
+      lifetimeUsers: entitlementSummary.lifetimeUsers || 0,
+      blockedUsers: userSummary.blockedUsers || 0,
+      couponsUsed: couponUsageStats[0]?.total || 0,
+
       revenueSummary: {
         realMoney: {
           ...summarizeGatewayRevenue(revenueAgg),
@@ -386,7 +444,9 @@ export const getBillingDashboard = async (req, res) => {
         },
         currency: settings.defaultCurrency || "INR",
       },
+
       activePlans: settings.plans,
+
       globalControls: {
         paymentsEnabled: settings.paymentsEnabled,
         maintenanceFreeAccess: settings.maintenanceFreeAccess,
@@ -396,7 +456,7 @@ export const getBillingDashboard = async (req, res) => {
       },
     },
   });
-}; 
+};
 
 export const getPlatformSettings = async (req, res) => {
   const settings = await PlatformSettings.getSettings();
@@ -497,6 +557,8 @@ export const updatePlatformSettings = async (req, res) => {
     { new: true, upsert: true, setDefaultsOnInsert: true }
   );
 
+  clearPlatformSettingsCache();
+
   await writeAdminLog(req, "platform_settings_updated", null, update);
 
   return res.json({
@@ -512,13 +574,13 @@ export const getBillingUsers = async (req, res) => {
 
   const query = { isDeleted: { $ne: true } };
 
-  if (search) {
-    query.$or = [
-      { name: { $regex: search, $options: "i" } },
-      { email: { $regex: search, $options: "i" } },
-      { phone: { $regex: search, $options: "i" } },
-    ];
-  }
+if (search) {
+  const rawSearch = String(search).trim().toLowerCase();
+
+  query.$or = [
+    { searchText: { $regex: escapeRegex(rawSearch), $options: "i" } },
+  ];
+}
 
   if (filter === "premium") {
     const userIds = await getActiveEntitledUserIds({ now });
@@ -569,9 +631,10 @@ export const getBillingUsers = async (req, res) => {
     User.countDocuments(query),
   ]);
 
-  const enrichedUsers = await Promise.all(
+    const enrichedUsers = await Promise.all(
     users.map(async (user) => {
       const access = await hasPremiumAccess({ userId: user._id, user });
+
       return {
         ...user,
         premiumAccess: access,
@@ -598,45 +661,171 @@ export const getBillingUsers = async (req, res) => {
       pages: Math.ceil(total / safeLimit),
     },
   });
-}; 
+};
+
+const calculateUserEntitlementCache = async ({ userId, session = null }) => {
+  const now = new Date();
+
+  const bestEntitlement = await AccessEntitlement.findOne({
+    userId,
+    status: "active",
+    startsAt: { $lte: now },
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+  })
+    .sort({ priority: 1, expiresAt: -1, createdAt: -1 })
+    .session(session);
+
+  if (!bestEntitlement) {
+    return {
+      subscriptionStatus: "none",
+      subscriptionType: "none",
+      premiumExpiresAt: null,
+      lifetimeAccess: false,
+      adminAccessOverride: false,
+      accessSource: null,
+    };
+  }
+
+  const isLifetime =
+    bestEntitlement.accessType === "lifetime" ||
+    bestEntitlement.planType === "lifetime" ||
+    bestEntitlement.source === "lifetime";
+
+  const isAdminOverride =
+    bestEntitlement.source === "admin" &&
+    bestEntitlement.planType === "admin_override";
+
+  return {
+    subscriptionStatus: isLifetime
+      ? "lifetime"
+      : bestEntitlement.source === "trial"
+        ? "trial"
+        : "active",
+    subscriptionType:
+      bestEntitlement.planType || bestEntitlement.accessType || "premium",
+    premiumExpiresAt: isLifetime ? null : bestEntitlement.expiresAt || null,
+    lifetimeAccess: isLifetime,
+    adminAccessOverride: isAdminOverride,
+    accessSource: bestEntitlement.source,
+    lastPaymentDate: new Date(),
+  };
+};
+
+const recalculateUserBillingCache = async ({ userId, session = null }) => {
+  const cache = await calculateUserEntitlementCache({ userId, session });
+
+  return User.findByIdAndUpdate(
+    userId,
+    { $set: cache },
+    { new: true, session }
+  ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+};
 
 export const grantPremium = async (req, res) => {
   const { userId } = req.params;
   const { planType = "monthly", days = 30, reason = "" } = req.body;
 
-  const expiresAt = planType === "lifetime" ? null : addDays(new Date(), days);
+  const safeUserId = toObjectId(userId);
 
-  const update =
-    planType === "lifetime"
-      ? {
-          subscriptionStatus: "lifetime",
-          subscriptionType: "lifetime",
-          premiumExpiresAt: null,
-          lifetimeAccess: true,
-          accessSource: "lifetime",
-        }
-      : {
-          subscriptionStatus: "active",
-          subscriptionType: planType,
-          premiumExpiresAt: expiresAt,
-          accessSource: "admin",
-        };
-
-  const user = await User.findByIdAndUpdate(userId, update, {
-    new: true,
-  }).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
-
-  if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" });
+  if (!safeUserId) {
+    return res.status(400).json({ success: false, message: "Invalid userId" });
   }
 
-  await writeAdminLog(req, "premium_granted", userId, { planType, days, reason });
+  const session = await mongoose.startSession();
 
-  return res.json({
-    success: true,
-    message: "Premium access granted successfully",
-    user,
-  });
+  try {
+    let updatedUser = null;
+    let entitlement = null;
+    let accessDates = null;
+
+    await session.withTransaction(async () => {
+      const user = await User.findById(safeUserId).session(session);
+
+      if (!user) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      accessDates = await calculateAdminAccessDates({ planType, days });
+
+      entitlement = await createAccessEntitlement({
+        userId: safeUserId,
+        scope: accessDates.scope,
+        source: planType === "lifetime" ? "lifetime" : "admin",
+        sourceId: req.user._id,
+        planType,
+        accessType: accessDates.accessType,
+        startsAt: accessDates.startsAt,
+        expiresAt: accessDates.expiresAt,
+        metadata: {
+          reason,
+          grantedBy: req.user._id,
+          days: Number(days || 0),
+          planType,
+        },
+        session,
+      });
+
+      updatedUser = await recalculateUserBillingCache({
+        userId: safeUserId,
+        session,
+      });
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "premium_granted",
+            targetUserId: safeUserId,
+            details: {
+              planType,
+              days,
+              reason,
+              entitlementId: entitlement._id,
+              expiresAt: accessDates.expiresAt,
+            },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+
+      await createBillingEvent({
+        eventType: "admin.access_granted",
+        aggregateType: "access_entitlement",
+        aggregateId: entitlement._id,
+        userId: safeUserId,
+        idempotencyKey: `admin.access_granted:${entitlement._id}`,
+        payload: {
+          entitlementId: entitlement._id,
+          planType,
+          days,
+          reason,
+          grantedBy: req.user._id,
+          expiresAt: accessDates.expiresAt,
+        },
+        session,
+      });
+    });
+
+     clearUserAccessCache(safeUserId);
+
+    return res.json({
+      success: true,
+      message: "Premium access granted successfully",
+      user: updatedUser,
+      entitlement,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to grant premium access",
+    });
+  } finally {
+    session.endSession();
+  }
 };
 
 export const removePremium = async (req, res) => {
@@ -653,33 +842,28 @@ export const removePremium = async (req, res) => {
 
   try {
     let updatedUser = null;
+    let revokeResult = null;
 
     await session.withTransaction(async () => {
-      await revokeAccessEntitlements({
+      const user = await User.findById(safeUserId).session(session);
+
+      if (!user) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      revokeResult = await revokeAccessEntitlements({
         userId: safeUserId,
         revokedBy: req.user._id,
         reason,
         session,
       });
 
-      updatedUser = await User.findByIdAndUpdate(
-        safeUserId,
-        {
-          subscriptionStatus: "none",
-          subscriptionType: "none",
-          premiumExpiresAt: null,
-          lifetimeAccess: false,
-          adminAccessOverride: false,
-          accessSource: null,
-        },
-        { new: true, session }
-      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
-
-      if (!updatedUser) {
-        const error = new Error("User not found");
-        error.statusCode = 404;
-        throw error;
-      }
+      updatedUser = await recalculateUserBillingCache({
+        userId: safeUserId,
+        session,
+      });
 
       await AdminLog.create(
         [
@@ -687,14 +871,38 @@ export const removePremium = async (req, res) => {
             adminId: req.user._id,
             action: "premium_removed",
             targetUserId: safeUserId,
-            details: { reason },
+            details: {
+              reason,
+              revokeResult,
+            },
             ip: req.ip || "",
             userAgent: req.get("user-agent") || "",
           },
         ],
         { session }
       );
+
+      await createBillingEvent({
+        eventType: "admin.access_removed",
+        aggregateType: "user",
+        aggregateId: safeUserId,
+        userId: safeUserId,
+        idempotencyKey: createDeterministicKey(
+  "admin.access_removed",
+  safeUserId,
+  getRequestIdempotencyKey(req, reason)
+),
+        payload: {
+          userId: safeUserId,
+          reason,
+          removedBy: req.user._id,
+          revokeResult,
+        },
+        session,
+      });
     });
+
+    clearUserAccessCache(safeUserId);
 
     return res.json({
       success: true,
@@ -726,6 +934,7 @@ export const extendPremium = async (req, res) => {
   try {
     let updatedUser = null;
     let entitlement = null;
+    let newExpiry = null;
 
     await session.withTransaction(async () => {
       const user = await User.findById(safeUserId).session(session);
@@ -741,7 +950,7 @@ export const extendPremium = async (req, res) => {
           ? user.premiumExpiresAt
           : new Date();
 
-      const newExpiry = addDays(baseDate, days);
+      newExpiry = addDays(baseDate, days);
 
       entitlement = await createAccessEntitlement({
         userId: safeUserId,
@@ -761,16 +970,10 @@ export const extendPremium = async (req, res) => {
         session,
       });
 
-      updatedUser = await User.findByIdAndUpdate(
-        safeUserId,
-        {
-          subscriptionStatus: "active",
-          subscriptionType: user.subscriptionType || "monthly",
-          premiumExpiresAt: newExpiry,
-          accessSource: "admin",
-        },
-        { new: true, session }
-      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+      updatedUser = await recalculateUserBillingCache({
+        userId: safeUserId,
+        session,
+      });
 
       await AdminLog.create(
         [
@@ -790,7 +993,25 @@ export const extendPremium = async (req, res) => {
         ],
         { session }
       );
+
+      await createBillingEvent({
+        eventType: "admin.access_extended",
+        aggregateType: "access_entitlement",
+        aggregateId: entitlement._id,
+        userId: safeUserId,
+        idempotencyKey: `admin.access_extended:${entitlement._id}`,
+        payload: {
+          entitlementId: entitlement._id,
+          days,
+          reason,
+          extendedBy: req.user._id,
+          newExpiry,
+        },
+        session,
+      });
     });
+
+     clearUserAccessCache(safeUserId);
 
     return res.json({
       success: true,
@@ -825,6 +1046,14 @@ export const setLifetimeAccess = async (req, res) => {
     let entitlement = null;
 
     await session.withTransaction(async () => {
+      const user = await User.findById(safeUserId).session(session);
+
+      if (!user) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
       entitlement = await createAccessEntitlement({
         userId: safeUserId,
         scope: "global",
@@ -841,23 +1070,10 @@ export const setLifetimeAccess = async (req, res) => {
         session,
       });
 
-      updatedUser = await User.findByIdAndUpdate(
-        safeUserId,
-        {
-          subscriptionStatus: "lifetime",
-          subscriptionType: "lifetime",
-          premiumExpiresAt: null,
-          lifetimeAccess: true,
-          accessSource: "lifetime",
-        },
-        { new: true, session }
-      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
-
-      if (!updatedUser) {
-        const error = new Error("User not found");
-        error.statusCode = 404;
-        throw error;
-      }
+      updatedUser = await recalculateUserBillingCache({
+        userId: safeUserId,
+        session,
+      });
 
       await AdminLog.create(
         [
@@ -875,7 +1091,23 @@ export const setLifetimeAccess = async (req, res) => {
         ],
         { session }
       );
+
+      await createBillingEvent({
+        eventType: "admin.lifetime_enabled",
+        aggregateType: "access_entitlement",
+        aggregateId: entitlement._id,
+        userId: safeUserId,
+        idempotencyKey: `admin.lifetime_enabled:${entitlement._id}`,
+        payload: {
+          entitlementId: entitlement._id,
+          reason,
+          grantedBy: req.user._id,
+        },
+        session,
+      });
     });
+
+    clearUserAccessCache(safeUserId);
 
     return res.json({
       success: true,
@@ -910,9 +1142,18 @@ export const startTrial = async (req, res) => {
   try {
     let updatedUser = null;
     let entitlement = null;
+    let trialExpiresAt = null;
 
     await session.withTransaction(async () => {
-      const trialExpiresAt = addDays(new Date(), days);
+      const user = await User.findById(safeUserId).session(session);
+
+      if (!user) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      trialExpiresAt = addDays(new Date(), days);
 
       entitlement = await createAccessEntitlement({
         userId: safeUserId,
@@ -931,23 +1172,21 @@ export const startTrial = async (req, res) => {
         session,
       });
 
-      updatedUser = await User.findByIdAndUpdate(
+      await User.findByIdAndUpdate(
         safeUserId,
         {
-          subscriptionStatus: "trial",
-          subscriptionType: "trial",
-          trialUsed: true,
-          trialExpiresAt,
-          accessSource: "trial",
+          $set: {
+            trialUsed: true,
+            trialExpiresAt,
+          },
         },
-        { new: true, session }
-      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+        { session }
+      );
 
-      if (!updatedUser) {
-        const error = new Error("User not found");
-        error.statusCode = 404;
-        throw error;
-      }
+      updatedUser = await recalculateUserBillingCache({
+        userId: safeUserId,
+        session,
+      });
 
       await AdminLog.create(
         [
@@ -967,7 +1206,25 @@ export const startTrial = async (req, res) => {
         ],
         { session }
       );
+
+      await createBillingEvent({
+        eventType: "admin.trial_started",
+        aggregateType: "access_entitlement",
+        aggregateId: entitlement._id,
+        userId: safeUserId,
+        idempotencyKey: `admin.trial_started:${entitlement._id}`,
+        payload: {
+          entitlementId: entitlement._id,
+          days,
+          reason,
+          startedBy: req.user._id,
+          trialExpiresAt,
+        },
+        session,
+      });
     });
+
+    clearUserAccessCache(safeUserId);
 
     return res.json({
       success: true,
@@ -984,6 +1241,7 @@ export const startTrial = async (req, res) => {
     session.endSession();
   }
 };
+
 export const removeTrial = async (req, res) => {
   const { userId } = req.params;
   const { reason = "Trial removed by admin" } = req.body || {};
@@ -998,9 +1256,18 @@ export const removeTrial = async (req, res) => {
 
   try {
     let updatedUser = null;
+    let revokeResult = null;
 
     await session.withTransaction(async () => {
-      await revokeAccessEntitlements({
+      const user = await User.findById(safeUserId).session(session);
+
+      if (!user) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      revokeResult = await revokeAccessEntitlements({
         userId: safeUserId,
         source: "trial",
         revokedBy: req.user._id,
@@ -1008,22 +1275,20 @@ export const removeTrial = async (req, res) => {
         session,
       });
 
-      updatedUser = await User.findByIdAndUpdate(
+      await User.findByIdAndUpdate(
         safeUserId,
         {
-          trialExpiresAt: null,
-          subscriptionStatus: "none",
-          subscriptionType: "none",
-          accessSource: null,
+          $set: {
+            trialExpiresAt: null,
+          },
         },
-        { new: true, session }
-      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+        { session }
+      );
 
-      if (!updatedUser) {
-        const error = new Error("User not found");
-        error.statusCode = 404;
-        throw error;
-      }
+      updatedUser = await recalculateUserBillingCache({
+        userId: safeUserId,
+        session,
+      });
 
       await AdminLog.create(
         [
@@ -1031,14 +1296,39 @@ export const removeTrial = async (req, res) => {
             adminId: req.user._id,
             action: "trial_removed",
             targetUserId: safeUserId,
-            details: { reason },
+            details: {
+              reason,
+              revokeResult,
+            },
             ip: req.ip || "",
             userAgent: req.get("user-agent") || "",
           },
         ],
         { session }
       );
+
+      await createBillingEvent({
+        eventType: "admin.trial_removed",
+        aggregateType: "user",
+        aggregateId: safeUserId,
+        userId: safeUserId,
+        idempotencyKey: createDeterministicKey(
+  "admin.trial_removed",
+  safeUserId,
+  getRequestIdempotencyKey(req, reason)
+),
+        payload: {
+          userId: safeUserId,
+          reason,
+          removedBy: req.user._id,
+          revokeResult,
+        },
+        session,
+      });
     });
+
+        clearUserAccessCache(safeUserId);
+
 
     return res.json({
       success: true,
@@ -1072,37 +1362,46 @@ export const enableOverride = async (req, res) => {
     let entitlement = null;
 
     await session.withTransaction(async () => {
-      entitlement = await createAccessEntitlement({
-        userId: safeUserId,
-        scope: "global",
-        source: "admin",
-        sourceId: req.user._id,
-        planType: "admin_override",
-        accessType: "admin",
-        startsAt: new Date(),
-        expiresAt: null,
-        metadata: {
-          reason,
-          override: true,
-          enabledBy: req.user._id,
-        },
-        session,
-      });
+      const user = await User.findById(safeUserId).session(session);
 
-      updatedUser = await User.findByIdAndUpdate(
-        safeUserId,
-        {
-          adminAccessOverride: true,
-          accessSource: "admin",
-        },
-        { new: true, session }
-      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
-
-      if (!updatedUser) {
+      if (!user) {
         const error = new Error("User not found");
         error.statusCode = 404;
         throw error;
       }
+
+      const existingOverride = await AccessEntitlement.findOne({
+        userId: safeUserId,
+        source: "admin",
+        planType: "admin_override",
+        status: "active",
+      }).session(session);
+
+      if (existingOverride) {
+        entitlement = existingOverride;
+      } else {
+        entitlement = await createAccessEntitlement({
+          userId: safeUserId,
+          scope: "global",
+          source: "admin",
+          sourceId: req.user._id,
+          planType: "admin_override",
+          accessType: "admin",
+          startsAt: new Date(),
+          expiresAt: null,
+          metadata: {
+            reason,
+            override: true,
+            enabledBy: req.user._id,
+          },
+          session,
+        });
+      }
+
+      updatedUser = await recalculateUserBillingCache({
+        userId: safeUserId,
+        session,
+      });
 
       await AdminLog.create(
         [
@@ -1113,6 +1412,7 @@ export const enableOverride = async (req, res) => {
             details: {
               reason,
               entitlementId: entitlement._id,
+              alreadyExisted: Boolean(existingOverride),
             },
             ip: req.ip || "",
             userAgent: req.get("user-agent") || "",
@@ -1120,7 +1420,24 @@ export const enableOverride = async (req, res) => {
         ],
         { session }
       );
+
+      await createBillingEvent({
+        eventType: "admin.override_enabled",
+        aggregateType: "access_entitlement",
+        aggregateId: entitlement._id,
+        userId: safeUserId,
+        idempotencyKey: `admin.override_enabled:${entitlement._id}`,
+        payload: {
+          entitlementId: entitlement._id,
+          reason,
+          enabledBy: req.user._id,
+          alreadyExisted: Boolean(existingOverride),
+        },
+        session,
+      });
     });
+
+    clearUserAccessCache(safeUserId);
 
     return res.json({
       success: true,
@@ -1152,27 +1469,41 @@ export const disableOverride = async (req, res) => {
 
   try {
     let updatedUser = null;
+    let revokeResult = null;
 
     await session.withTransaction(async () => {
-      await revokeAccessEntitlements({
-        userId: safeUserId,
-        source: "admin",
-        revokedBy: req.user._id,
-        reason,
-        session,
-      });
+      const user = await User.findById(safeUserId).session(session);
 
-      updatedUser = await User.findByIdAndUpdate(
-        safeUserId,
-        { adminAccessOverride: false },
-        { new: true, session }
-      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
-
-      if (!updatedUser) {
+      if (!user) {
         const error = new Error("User not found");
         error.statusCode = 404;
         throw error;
       }
+
+      revokeResult = await AccessEntitlement.updateMany(
+        {
+          userId: safeUserId,
+          source: "admin",
+          planType: "admin_override",
+          status: "active",
+        },
+        {
+          $set: {
+            status: "revoked",
+            revokedAt: new Date(),
+            revokedBy: req.user._id,
+            revokeReason: reason,
+            "metadata.overrideDisabledBy": req.user._id,
+            "metadata.overrideDisabledAt": new Date(),
+          },
+        },
+        { session }
+      );
+
+      updatedUser = await recalculateUserBillingCache({
+        userId: safeUserId,
+        session,
+      });
 
       await AdminLog.create(
         [
@@ -1180,14 +1511,38 @@ export const disableOverride = async (req, res) => {
             adminId: req.user._id,
             action: "admin_override_disabled",
             targetUserId: safeUserId,
-            details: { reason },
+            details: {
+              reason,
+              revokeResult,
+            },
             ip: req.ip || "",
             userAgent: req.get("user-agent") || "",
           },
         ],
         { session }
       );
+
+      await createBillingEvent({
+        eventType: "admin.override_disabled",
+        aggregateType: "user",
+        aggregateId: safeUserId,
+        userId: safeUserId,
+        idempotencyKey: createDeterministicKey(
+  "admin.override_disabled",
+  safeUserId,
+  getRequestIdempotencyKey(req, reason)
+),
+        payload: {
+          userId: safeUserId,
+          reason,
+          disabledBy: req.user._id,
+          revokeResult,
+        },
+        session,
+      });
     });
+
+     clearUserAccessCache(safeUserId);
 
     return res.json({
       success: true,
@@ -1206,74 +1561,248 @@ export const disableOverride = async (req, res) => {
 
 export const blockUser = async (req, res) => {
   const { userId } = req.params;
+  const { reason = "User blocked by admin" } = req.body || {};
+  const safeUserId = toObjectId(userId);
 
-  const user = await User.findByIdAndUpdate(
-    userId,
-    {
-      blocked: true,
-      refreshTokens: [],
-    },
-    { new: true }
-  ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
-
-  if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" });
+  if (!safeUserId) {
+    return res.status(400).json({ success: false, message: "Invalid userId" });
   }
 
-  await writeAdminLog(req, "user_blocked", userId);
+  const session = await mongoose.startSession();
 
-  return res.json({
-    success: true,
-    message: "User blocked successfully",
-    user,
-  });
+  try {
+    let updatedUser = null;
+
+    await session.withTransaction(async () => {
+      updatedUser = await User.findByIdAndUpdate(
+        safeUserId,
+        {
+          blocked: true,
+          refreshTokens: [],
+        },
+        { new: true, session }
+      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+
+      if (!updatedUser) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "user_blocked",
+            targetUserId: safeUserId,
+            details: { reason },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+
+      await createBillingEvent({
+        eventType: "admin.user_blocked",
+        aggregateType: "user",
+        aggregateId: safeUserId,
+        userId: safeUserId,
+        idempotencyKey: createDeterministicKey(
+  "admin.user_blocked",
+  safeUserId,
+  getRequestIdempotencyKey(req, reason)
+),
+        payload: {
+          userId: safeUserId,
+          reason,
+          blockedBy: req.user._id,
+        },
+        session,
+      });
+    });
+
+    clearUserAccessCache(safeUserId);
+
+    return res.json({
+      success: true,
+      message: "User blocked successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to block user",
+    });
+  } finally {
+    session.endSession();
+  }
 };
 
 export const unblockUser = async (req, res) => {
   const { userId } = req.params;
+  const { reason = "User unblocked by admin" } = req.body || {};
+  const safeUserId = toObjectId(userId);
 
-  const user = await User.findByIdAndUpdate(
-    userId,
-    { blocked: false },
-    { new: true }
-  ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
-
-  if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" });
+  if (!safeUserId) {
+    return res.status(400).json({ success: false, message: "Invalid userId" });
   }
 
-  await writeAdminLog(req, "user_unblocked", userId);
+  const session = await mongoose.startSession();
 
-  return res.json({
-    success: true,
-    message: "User unblocked successfully",
-    user,
-  });
+  try {
+    let updatedUser = null;
+
+    await session.withTransaction(async () => {
+      updatedUser = await User.findByIdAndUpdate(
+        safeUserId,
+        { blocked: false },
+        { new: true, session }
+      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+
+      if (!updatedUser) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "user_unblocked",
+            targetUserId: safeUserId,
+            details: { reason },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+
+      await createBillingEvent({
+        eventType: "admin.user_unblocked",
+        aggregateType: "user",
+        aggregateId: safeUserId,
+        userId: safeUserId,
+        idempotencyKey: createDeterministicKey(
+  "admin.user_unblocked",
+  safeUserId,
+  getRequestIdempotencyKey(req, reason)
+),
+        payload: {
+          userId: safeUserId,
+          reason,
+          unblockedBy: req.user._id,
+        },
+        session,
+      });
+    });
+
+    clearUserAccessCache(safeUserId);
+
+    return res.json({
+      success: true,
+      message: "User unblocked successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to unblock user",
+    });
+  } finally {
+    session.endSession();
+  }
 };
 
 export const forceLogoutUser = async (req, res) => {
   const { userId } = req.params;
+  const { reason = "User force logged out by admin" } = req.body || {};
+  const safeUserId = toObjectId(userId);
 
-  const user = await User.findByIdAndUpdate(
-    userId,
-    { refreshTokens: [] },
-    { new: true }
-  ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
-
-  if (!user) {
-    return res.status(404).json({ success: false, message: "User not found" });
+  if (!safeUserId) {
+    return res.status(400).json({ success: false, message: "Invalid userId" });
   }
 
-  await writeAdminLog(req, "user_force_logout", userId);
+  const session = await mongoose.startSession();
 
-  return res.json({
-    success: true,
-    message: "User logged out from all devices successfully",
-  });
+  try {
+    let updatedUser = null;
+
+    await session.withTransaction(async () => {
+      updatedUser = await User.findByIdAndUpdate(
+        safeUserId,
+        { refreshTokens: [] },
+        { new: true, session }
+      ).select("-password -refreshTokens -resetPasswordToken -resetPasswordExpire");
+
+      if (!updatedUser) {
+        const error = new Error("User not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "user_force_logout",
+            targetUserId: safeUserId,
+            details: { reason },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+
+      await createBillingEvent({
+        eventType: "admin.user_force_logout",
+        aggregateType: "user",
+        aggregateId: safeUserId,
+        userId: safeUserId,
+        idempotencyKey: createDeterministicKey(
+  "admin.user_force_logout",
+  safeUserId,
+  getRequestIdempotencyKey(req, reason)
+),
+        payload: {
+          userId: safeUserId,
+          reason,
+          forcedBy: req.user._id,
+        },
+        session,
+      });
+    });
+
+    clearUserAccessCache(safeUserId);
+
+    return res.json({
+      success: true,
+      message: "User logged out from all devices successfully",
+      user: updatedUser,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to force logout user",
+    });
+  } finally {
+    session.endSession();
+  }
 };
 
 export const listCoupons = async (req, res) => {
-  const { includeDeleted = "false" } = req.query;
+  const {
+    includeDeleted = "false",
+    page = 1,
+    limit = 20,
+    search = "",
+  } = req.query;
+
+  const safePage = normalizePage(page);
+  const safeLimit = normalizeLimit(limit);
 
   const query =
     includeDeleted === "true"
@@ -1282,28 +1811,62 @@ export const listCoupons = async (req, res) => {
           deletedAt: null,
         };
 
-  const coupons = await Coupon.find(query)
-    .populate("createdBy", "name email role")
-    .populate("updatedBy", "name email role")
-    .populate("deletedBy", "name email role")
-    .sort({ createdAt: -1 })
-    .lean();
+  if (search) {
+    const rawSearch = String(search).trim();
+    const safeSearch = escapeRegex(rawSearch);
 
-  return res.json({ success: true, coupons });
+    query.$or = [
+      { code: { $regex: safeSearch, $options: "i" } },
+      { category: { $regex: safeSearch, $options: "i" } },
+      { type: { $regex: safeSearch, $options: "i" } },
+    ];
+  }
+
+  const skip = (safePage - 1) * safeLimit;
+
+  const [coupons, total] = await Promise.all([
+    Coupon.find(query)
+      .populate("createdBy", "name email role")
+      .populate("updatedBy", "name email role")
+      .populate("deletedBy", "name email role")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(safeLimit)
+      .lean(),
+    Coupon.countDocuments(query),
+  ]);
+
+  return res.json({
+    success: true,
+    coupons,
+    pagination: buildPagination({
+      page: safePage,
+      limit: safeLimit,
+      total,
+    }),
+  });
 };
 
 export const createCoupon = async (req, res) => {
-const payload = {
-  ...req.body,
-  code: String(req.body.code || "").trim().toUpperCase(),
-  category: String(req.body.category || "discount_coupon").trim(),
-  createdBy: req.user._id,
-};
+  const payload = {
+    ...req.body,
+    code: String(req.body.code || "").trim().toUpperCase(),
+    category: String(req.body.category || "discount_coupon").trim(),
+    createdBy: req.user._id,
+  };
+
+  if (!isValidCouponCode(payload.code)) {
+  return res.status(400).json({
+    success: false,
+    message:
+      "Coupon code must be 3-50 characters and contain only A-Z, 0-9, _ or -",
+  });
+}
 
   const existing = await Coupon.findOne({
-  code: payload.code,
-  deletedAt: null,
-});
+    code: payload.code,
+    deletedAt: null,
+  });
 
   if (existing) {
     return res.status(409).json({
@@ -1312,114 +1875,352 @@ const payload = {
     });
   }
 
-  const coupon = await Coupon.create(payload);
-  await writeAdminLog(req, "coupon_created", null, { couponId: coupon._id, code: coupon.code });
+  const session = await mongoose.startSession();
 
-  return res.status(201).json({
-    success: true,
-    message: "Coupon created successfully",
-    coupon,
-  });
+  try {
+    let coupon = null;
+
+    await session.withTransaction(async () => {
+      const created = await Coupon.create([payload], { session });
+      coupon = created[0];
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "coupon_created",
+            targetUserId: null,
+            details: {
+              couponId: coupon._id,
+              code: coupon.code,
+              type: coupon.type,
+              category: coupon.category,
+            },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+
+      await createBillingEvent({
+        eventType: "coupon.created",
+        aggregateType: "coupon",
+        aggregateId: coupon._id,
+        userId: null,
+        idempotencyKey: `coupon.created:${coupon._id}`,
+        payload: {
+          couponId: coupon._id,
+          code: coupon.code,
+          type: coupon.type,
+          category: coupon.category,
+          createdBy: req.user._id,
+        },
+        session,
+      });
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: "Coupon created successfully",
+      coupon,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to create coupon",
+    });
+  } finally {
+    session.endSession();
+  }
 };
 
 export const updateCoupon = async (req, res) => {
   const { couponId } = req.params;
+  const safeCouponId = toObjectId(couponId);
+
+  if (!safeCouponId) {
+    return res.status(400).json({ success: false, message: "Invalid couponId" });
+  }
 
   const update = {
     ...req.body,
     updatedBy: req.user._id,
   };
 
-  if (update.code) update.code = String(update.code).trim().toUpperCase();
+ if (update.code) update.code = String(update.code).trim().toUpperCase();
+
+if (update.code && !isValidCouponCode(update.code)) {
+  return res.status(400).json({
+    success: false,
+    message:
+      "Coupon code must be 3-50 characters and contain only A-Z, 0-9, _ or -",
+  });
+}
+
+if (update.code) {
+  const existingCoupon = await Coupon.findOne({
+    _id: { $ne: safeCouponId },
+    code: update.code,
+    deletedAt: null,
+  });
+
+  if (existingCoupon) {
+    return res.status(409).json({
+      success: false,
+      message: "Coupon code already exists",
+    });
+  }
+}
+
 if (update.category) update.category = String(update.category).trim();
 
-  const coupon = await Coupon.findOneAndUpdate(
-    {
-      _id: couponId,
-      deletedAt: null,
-    },
-    update,
-    {
-      new: true,
-      runValidators: true,
-    }
-  );
+  const session = await mongoose.startSession();
 
-  if (!coupon) {
-    return res.status(404).json({ success: false, message: "Coupon not found" });
+  try {
+    let coupon = null;
+
+    await session.withTransaction(async () => {
+      coupon = await Coupon.findOneAndUpdate(
+        {
+          _id: safeCouponId,
+          deletedAt: null,
+        },
+        update,
+        {
+          new: true,
+          runValidators: true,
+          session,
+        }
+      );
+
+      if (!coupon) {
+        const error = new Error("Coupon not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "coupon_updated",
+            targetUserId: null,
+            details: {
+              couponId: safeCouponId,
+              update,
+            },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+
+      await createBillingEvent({
+        eventType: "coupon.updated",
+        aggregateType: "coupon",
+        aggregateId: safeCouponId,
+        userId: null,
+        idempotencyKey: createDeterministicKey(
+  "coupon.updated",
+  safeCouponId,
+  getRequestIdempotencyKey(req, coupon.updatedAt?.getTime())
+),
+        payload: {
+          couponId: safeCouponId,
+          update,
+          updatedBy: req.user._id,
+        },
+        session,
+      });
+    });
+
+    return res.json({
+      success: true,
+      message: "Coupon updated successfully",
+      coupon,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to update coupon",
+    });
+  } finally {
+    session.endSession();
   }
-
-  await writeAdminLog(req, "coupon_updated", null, { couponId, update });
-
-  return res.json({
-    success: true,
-    message: "Coupon updated successfully",
-    coupon,
-  });
-}; 
+};
 
 export const disableCoupon = async (req, res) => {
   const { couponId } = req.params;
+  const safeCouponId = toObjectId(couponId);
 
-  const coupon = await Coupon.findOneAndUpdate(
-    {
-      _id: couponId,
-      deletedAt: null,
-    },
-    {
-      active: false,
-      updatedBy: req.user._id,
-    },
-    { new: true }
-  );
-
-  if (!coupon) {
-    return res.status(404).json({ success: false, message: "Coupon not found" });
+  if (!safeCouponId) {
+    return res.status(400).json({ success: false, message: "Invalid couponId" });
   }
 
-  await writeAdminLog(req, "coupon_disabled", null, { couponId });
+  const session = await mongoose.startSession();
 
-  return res.json({
-    success: true,
-    message: "Coupon disabled successfully",
-    coupon,
-  });
+  try {
+    let coupon = null;
+
+    await session.withTransaction(async () => {
+      coupon = await Coupon.findOneAndUpdate(
+        {
+          _id: safeCouponId,
+          deletedAt: null,
+        },
+        {
+          active: false,
+          updatedBy: req.user._id,
+        },
+        { new: true, session }
+      );
+
+      if (!coupon) {
+        const error = new Error("Coupon not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "coupon_disabled",
+            targetUserId: null,
+            details: {
+              couponId: safeCouponId,
+              code: coupon.code,
+            },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+
+      await createBillingEvent({
+        eventType: "coupon.disabled",
+        aggregateType: "coupon",
+        aggregateId: safeCouponId,
+        userId: null,
+        idempotencyKey: createDeterministicKey(
+  "coupon.disabled",
+  safeCouponId,
+  getRequestIdempotencyKey(req, coupon.updatedAt?.getTime())
+),
+        payload: {
+          couponId: safeCouponId,
+          code: coupon.code,
+          disabledBy: req.user._id,
+        },
+        session,
+      });
+    });
+
+    return res.json({
+      success: true,
+      message: "Coupon disabled successfully",
+      coupon,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to disable coupon",
+    });
+  } finally {
+    session.endSession();
+  }
 };
 
 export const deleteCoupon = async (req, res) => {
   const { couponId } = req.params;
   const { reason = "" } = req.body || {};
+  const safeCouponId = toObjectId(couponId);
 
-  const coupon = await Coupon.findOneAndUpdate(
-    {
-      _id: couponId,
-      deletedAt: null,
-    },
-    {
-      active: false,
-      deletedAt: new Date(),
-      deletedBy: req.user._id,
-      deleteReason: String(reason || "").trim(),
-      updatedBy: req.user._id,
-    },
-    { new: true }
-  );
-
-  if (!coupon) {
-    return res.status(404).json({ success: false, message: "Coupon not found" });
+  if (!safeCouponId) {
+    return res.status(400).json({ success: false, message: "Invalid couponId" });
   }
 
-  await writeAdminLog(req, "coupon_soft_deleted", null, {
-    couponId,
-    code: coupon.code,
-    reason,
-  });
+  const session = await mongoose.startSession();
 
-  return res.json({
-    success: true,
-    message: "Coupon deleted successfully",
-    coupon,
-  });
+  try {
+    let coupon = null;
+
+    await session.withTransaction(async () => {
+      coupon = await Coupon.findOneAndUpdate(
+        {
+          _id: safeCouponId,
+          deletedAt: null,
+        },
+        {
+          active: false,
+          deletedAt: new Date(),
+          deletedBy: req.user._id,
+          deleteReason: String(reason || "").trim(),
+          updatedBy: req.user._id,
+        },
+        { new: true, session }
+      );
+
+      if (!coupon) {
+        const error = new Error("Coupon not found");
+        error.statusCode = 404;
+        throw error;
+      }
+
+      await AdminLog.create(
+        [
+          {
+            adminId: req.user._id,
+            action: "coupon_soft_deleted",
+            targetUserId: null,
+            details: {
+              couponId: safeCouponId,
+              code: coupon.code,
+              reason,
+            },
+            ip: req.ip || "",
+            userAgent: req.get("user-agent") || "",
+          },
+        ],
+        { session }
+      );
+
+      await createBillingEvent({
+        eventType: "coupon.deleted",
+        aggregateType: "coupon",
+        aggregateId: safeCouponId,
+        userId: null,
+        idempotencyKey: createDeterministicKey(
+  "coupon.deleted",
+  safeCouponId,
+  getRequestIdempotencyKey(req, coupon.deletedAt?.getTime())
+),
+        payload: {
+          couponId: safeCouponId,
+          code: coupon.code,
+          reason,
+          deletedBy: req.user._id,
+        },
+        session,
+      });
+    });
+
+    return res.json({
+      success: true,
+      message: "Coupon deleted successfully",
+      coupon,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode ? error.message : "Failed to delete coupon",
+    });
+  } finally {
+    session.endSession();
+  }
 };
 
 export const validateCoupon = async (req, res) => {
@@ -1434,11 +2235,11 @@ export const validateCoupon = async (req, res) => {
     });
   }
 
- const coupon = await Coupon.findOne({
-  code: String(code).trim().toUpperCase(),
-  active: true,
-  deletedAt: null,
-});
+  const coupon = await Coupon.findOne({
+    code: String(code || "").trim().toUpperCase(),
+    active: true,
+    deletedAt: null,
+  });
 
   if (!coupon) {
     return res.status(404).json({
@@ -1480,21 +2281,26 @@ export const validateCoupon = async (req, res) => {
     });
   }
 
- return res.json({
-  success: true,
-  valid: true,
-  coupon: {
-    code: coupon.code,
-    category: coupon.category || "discount_coupon",
-    type: coupon.type,
-    value: coupon.value,
-    expiresAt: coupon.expiresAt,
-    applicablePlans: coupon.applicablePlans,
-  },
-});
+  return res.json({
+    success: true,
+    valid: true,
+    coupon: {
+      code: coupon.code,
+      category: coupon.category || "discount_coupon",
+      type: coupon.type,
+      value: coupon.value,
+      expiresAt: coupon.expiresAt,
+      applicablePlans: coupon.applicablePlans,
+    },
+  });
 };
 
-const applyCouponCore = async ({ req, res, targetUserId, appliedByAdmin = false }) => {
+const applyCouponCore = async ({
+  req,
+  res,
+  targetUserId,
+  appliedByAdmin = false,
+}) => {
   const { code, planType = "monthly", tournamentId = null } = req.body;
   const settings = await PlatformSettings.getSettings();
 
@@ -1565,17 +2371,20 @@ const applyCouponCore = async ({ req, res, targetUserId, appliedByAdmin = false 
         throw error;
       }
 
-      if (!coupon.isUserAllowed(safeTargetUserId) || !coupon.isPlanAllowed(planType)) {
+      if (
+        !coupon.isUserAllowed(safeTargetUserId) ||
+        !coupon.isPlanAllowed(planType)
+      ) {
         const error = new Error("Coupon is not applicable");
         error.statusCode = 403;
         throw error;
       }
 
       enforceUserSideFullAccessCouponSafety({
-  coupon,
-  targetUserId: safeTargetUserId,
-  appliedByAdmin,
-});
+        coupon,
+        targetUserId: safeTargetUserId,
+        appliedByAdmin,
+      });
 
       const existingRedemption = await CouponRedemption.findOne({
         couponId: coupon._id,
@@ -1600,18 +2409,9 @@ const applyCouponCore = async ({ req, res, targetUserId, appliedByAdmin = false 
               { $lt: ["$usedCount", "$maxUses"] },
             ],
           },
-          "usedBy.userId": { $ne: safeTargetUserId },
         },
         {
           $inc: { usedCount: 1 },
-          $push: {
-            usedBy: {
-              userId: safeTargetUserId,
-              usedAt: now,
-              planType,
-              category: coupon.category || "discount_coupon",
-            },
-          },
         },
         {
           new: true,
@@ -1637,7 +2437,8 @@ const applyCouponCore = async ({ req, res, targetUserId, appliedByAdmin = false 
         entitlement = await createAccessEntitlement({
           userId: safeTargetUserId,
           scope: accessDates.scope,
-          tournamentId: accessDates.scope === "tournament" ? tournamentId : null,
+          tournamentId:
+            accessDates.scope === "tournament" ? tournamentId : null,
           source: "coupon",
           sourceId: updatedCoupon._id,
           planType,
@@ -1656,23 +2457,10 @@ const applyCouponCore = async ({ req, res, targetUserId, appliedByAdmin = false 
           session,
         });
 
-        await User.findByIdAndUpdate(
-          safeTargetUserId,
-          {
-            $set: {
-              subscriptionStatus: planType === "lifetime" ? "lifetime" : "active",
-              subscriptionType: planType,
-              premiumExpiresAt:
-                planType === "lifetime" || accessDates.scope === "tournament"
-                  ? null
-                  : accessDates.expiresAt,
-              lifetimeAccess: planType === "lifetime",
-              accessSource: "coupon",
-              lastPaymentDate: new Date(),
-            },
-          },
-          { session }
-        );
+        await recalculateUserBillingCache({
+          userId: safeTargetUserId,
+          session,
+        });
       }
 
       const transaction = await PaymentTransaction.create(
@@ -1701,8 +2489,9 @@ const applyCouponCore = async ({ req, res, targetUserId, appliedByAdmin = false 
         ],
         { session }
       );
+           
 
-      const redemption = await CouponRedemption.create(
+        const redemption = await CouponRedemption.create(
         [
           {
             couponId: updatedCoupon._id,
@@ -1726,6 +2515,27 @@ const applyCouponCore = async ({ req, res, targetUserId, appliedByAdmin = false 
         ],
         { session }
       );
+
+      await createBillingEvent({
+        eventType: "coupon.redeemed",
+        aggregateType: "coupon",
+        aggregateId: updatedCoupon._id,
+        userId: safeTargetUserId,
+        idempotencyKey: `coupon.redeemed:${updatedCoupon._id}:${safeTargetUserId}`,
+        payload: {
+          couponId: updatedCoupon._id,
+          code: updatedCoupon.code,
+          planType,
+          couponType: updatedCoupon.type,
+          couponValue: updatedCoupon.value,
+          entitlementId: entitlement?._id || null,
+          transactionId: transaction[0]._id,
+          redemptionId: redemption[0]._id,
+          appliedByAdmin,
+          appliedBy: req.user?._id || null,
+        },
+        session,
+      });
 
       responsePayload = {
         coupon: updatedCoupon,
@@ -1788,6 +2598,8 @@ const applyCouponCore = async ({ req, res, targetUserId, appliedByAdmin = false 
       });
     }
 
+    clearUserAccessCache(safeTargetUserId);
+
     return res.json({
       success: true,
       message: "Coupon applied successfully",
@@ -1837,7 +2649,7 @@ export const applyCouponForUserByAdmin = async (req, res) => {
     targetUserId: req.params.userId,
     appliedByAdmin: true,
   });
-}; 
+};
 
 export const listTransactions = async (req, res) => {
   const {
@@ -1875,7 +2687,8 @@ export const listTransactions = async (req, res) => {
   }
 
   if (search) {
-    const safeSearch = String(search).trim();
+    const rawSearch = String(search).trim();
+    const safeSearch = escapeRegex(rawSearch);
 
     query.$or = [
       { paymentId: { $regex: safeSearch, $options: "i" } },
@@ -1885,8 +2698,8 @@ export const listTransactions = async (req, res) => {
       { paymentGateway: { $regex: safeSearch, $options: "i" } },
     ];
 
-    if (mongoose.Types.ObjectId.isValid(safeSearch)) {
-      query.$or.push({ userId: new mongoose.Types.ObjectId(safeSearch) });
+    if (mongoose.Types.ObjectId.isValid(rawSearch)) {
+      query.$or.push({ userId: new mongoose.Types.ObjectId(rawSearch) });
     }
   }
 
@@ -1939,7 +2752,10 @@ export const listAuditLogs = async (req, res) => {
   const query = {};
 
   if (action) {
-    query.action = { $regex: String(action).trim(), $options: "i" };
+    query.action = {
+      $regex: escapeRegex(String(action).trim()),
+      $options: "i",
+    };
   }
 
   if (adminId && mongoose.Types.ObjectId.isValid(adminId)) {
@@ -1957,7 +2773,8 @@ export const listAuditLogs = async (req, res) => {
   }
 
   if (search) {
-    const safeSearch = String(search).trim();
+    const rawSearch = String(search).trim();
+    const safeSearch = escapeRegex(rawSearch);
 
     query.$or = [
       { action: { $regex: safeSearch, $options: "i" } },
@@ -1967,10 +2784,10 @@ export const listAuditLogs = async (req, res) => {
       { "details.code": { $regex: safeSearch, $options: "i" } },
     ];
 
-    if (mongoose.Types.ObjectId.isValid(safeSearch)) {
+    if (mongoose.Types.ObjectId.isValid(rawSearch)) {
       query.$or.push(
-        { adminId: new mongoose.Types.ObjectId(safeSearch) },
-        { targetUserId: new mongoose.Types.ObjectId(safeSearch) }
+        { adminId: new mongoose.Types.ObjectId(rawSearch) },
+        { targetUserId: new mongoose.Types.ObjectId(rawSearch) }
       );
     }
   }
@@ -2009,7 +2826,10 @@ export const listAuditLogs = async (req, res) => {
 
 export const reconcileBillingPayments = async (req, res) => {
   const dryRun = String(req.query.dryRun || "true") !== "false";
-  const limit = Number(req.query.limit || 50);
+  const limit = Math.min(
+  Math.max(Number(req.query.limit || 50), 1),
+  500
+);
 
   const result = await reconcilePayments({
     dryRun,

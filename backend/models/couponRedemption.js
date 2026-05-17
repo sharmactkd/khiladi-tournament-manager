@@ -55,14 +55,12 @@ const couponRedemptionSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "AccessEntitlement",
       default: null,
-      index: true,
     },
 
     transactionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "PaymentTransaction",
       default: null,
-      index: true,
     },
 
     invoiceId: {
@@ -86,7 +84,10 @@ couponRedemptionSchema.index(
 );
 
 couponRedemptionSchema.index({ userId: 1, createdAt: -1 });
+couponRedemptionSchema.index({ couponId: 1, createdAt: -1 });
 couponRedemptionSchema.index({ code: 1, createdAt: -1 });
+couponRedemptionSchema.index({ entitlementId: 1 });
+
 
 const CouponRedemption = mongoose.model(
   "CouponRedemption",

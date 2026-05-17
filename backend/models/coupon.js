@@ -76,6 +76,10 @@ const couponSchema = new mongoose.Schema(
       },
     ],
 
+    // LEGACY ONLY:
+// Do not write new coupon usage here.
+// New usage tracking must use CouponRedemption collection.
+
     usedBy: [
       {
         userId: {

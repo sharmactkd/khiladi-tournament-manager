@@ -26,6 +26,10 @@ import {
   stopPaymentCleanupScheduler,
 } from "./services/paymentCleanupScheduler.js";
 import mongoSanitize from "express-mongo-sanitize";
+import {
+  startWebhookQueueWorker,
+  stopWebhookQueueWorker,
+} from "./services/webhookQueueWorker.js";
 
 console.log("SERVER FILE LOADED");
 process.on("uncaughtException", (err) => {
@@ -114,13 +118,15 @@ const urlEncodedBodyLimit = process.env.URLENCODED_BODY_LIMIT || "1mb";
 
 app.use(express.json({ limit: jsonBodyLimit }));
 app.use(express.urlencoded({ extended: true, limit: urlEncodedBodyLimit }));
-app.use(cookieParser());
-app.use(passport.initialize());
+
 app.use(
   mongoSanitize({
     replaceWith: "_",
   })
 );
+app.use(cookieParser());
+app.use(passport.initialize());
+
 
 if (isDev) {
   logger.info("Static uploads path configured", {
@@ -167,6 +173,7 @@ mongoose
       logger.info("Development server MongoDB connection ready");
     }
     startPaymentCleanupScheduler();
+    startWebhookQueueWorker();
   })
   .catch((err) => {
     logger.error("MongoDB connection failed", {

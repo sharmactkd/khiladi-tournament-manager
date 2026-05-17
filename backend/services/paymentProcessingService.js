@@ -5,6 +5,7 @@ import User from "../models/user.js";
 import logger from "../utils/logger.js";
 import { getPaymentAccessFields } from "./subscriptionService.js";
 import { createAccessEntitlement } from "./accessEntitlementService.js";
+import { createBillingEvent } from "./billingEventService.js";
 
 const normalizeString = (value) => String(value || "").trim();
 
@@ -104,6 +105,8 @@ export const processPaidPayment = async ({
         throw error;
       }
 
+   
+
       const accessFields = await getPaymentAccessFields(
         existingPayment.planType,
         new Date()
@@ -171,6 +174,24 @@ export const processPaidPayment = async ({
         session,
       });
 
+         await createBillingEvent({
+  eventType: "payment.paid",
+  aggregateType: "payment",
+  aggregateId: payment._id,
+  userId: payment.userId,
+  idempotencyKey: `payment.paid:${payment._id}`,
+  payload: {
+    paymentId: payment._id,
+    razorpayOrderId: payment.razorpayOrderId,
+    razorpayPaymentId: safePaymentId,
+    planType: payment.planType,
+    amount: payment.amount,
+    currency: payment.currency,
+    entitlementId: entitlement?._id || null,
+    verifiedBy: safeVerifiedBy,
+  },
+  session,
+});
       await User.findByIdAndUpdate(
         payment.userId,
         {

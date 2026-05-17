@@ -4,6 +4,7 @@ import PaymentTransaction from "../models/paymentTransaction.js";
 import User from "../models/user.js";
 import AccessEntitlement from "../models/accessEntitlement.js";
 import logger from "../utils/logger.js";
+import { createBillingEvent } from "./billingEventService.js";
 
 const normalizeString = (value) => String(value || "").trim();
 
@@ -303,6 +304,8 @@ export const processPaymentStatusUpdate = async ({
         session,
       });
 
+   
+
       const entitlementRevocation = await revokePaymentEntitlementsIfNeeded({
         payment: updatedPayment,
         status,
@@ -311,6 +314,25 @@ export const processPaymentStatusUpdate = async ({
         metadata,
         session,
       });
+
+         await createBillingEvent({
+  eventType: `payment.${status}`,
+  aggregateType: "payment",
+  aggregateId: updatedPayment._id,
+  userId: updatedPayment.userId,
+  idempotencyKey: `payment.${status}:${updatedPayment._id}:${safePaymentId || safeOrderId}`,
+  payload: {
+    paymentId: updatedPayment._id,
+    razorpayOrderId: updatedPayment.razorpayOrderId,
+    razorpayPaymentId: safePaymentId || updatedPayment.razorpayPaymentId || "",
+    status,
+    source,
+    note,
+    metadata,
+    entitlementRevocation,
+  },
+  session,
+});
 
       await PaymentTransaction.findOneAndUpdate(
         { orderId: updatedPayment.razorpayOrderId },

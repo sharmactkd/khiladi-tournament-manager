@@ -170,6 +170,26 @@ accessEntitlementSchema.index(
   }
 );
 
+accessEntitlementSchema.index({
+  userId: 1,
+  status: 1,
+  startsAt: 1,
+  expiresAt: 1,
+  priority: 1,
+});
+
+
+accessEntitlementSchema.index({
+  scope: 1,
+  tournamentId: 1,
+  status: 1,
+});
+
+accessEntitlementSchema.index({
+  planType: 1,
+  status: 1,
+});
+
 /**
  * Prevent duplicate active coupon entitlement for same user + coupon.
  */

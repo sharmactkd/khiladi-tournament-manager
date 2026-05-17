@@ -43,10 +43,16 @@ const adminLogSchema = new mongoose.Schema(
     timestamp: {
       type: Date,
       default: Date.now,
-      index: true,
     },
   },
   { timestamps: true }
+);
+
+adminLogSchema.index(
+  { timestamp: 1 },
+  {
+    expireAfterSeconds: 60 * 60 * 24 * 730,
+  }
 );
 
 adminLogSchema.index({ adminId: 1, timestamp: -1 });

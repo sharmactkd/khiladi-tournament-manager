@@ -121,6 +121,11 @@ paymentTransactionSchema.index({ paymentGateway: 1, status: 1 });
 paymentTransactionSchema.index({ createdAt: -1 });
 paymentTransactionSchema.index({ planType: 1, status: 1 });
 
+paymentTransactionSchema.index({ couponUsed: 1 });
+paymentTransactionSchema.index({ status: 1, createdAt: -1 });
+paymentTransactionSchema.index({ paymentGateway: 1, createdAt: -1 });
+paymentTransactionSchema.index({ userId: 1, createdAt: -1 });
+
 const PaymentTransaction = mongoose.model(
   "PaymentTransaction",
   paymentTransactionSchema

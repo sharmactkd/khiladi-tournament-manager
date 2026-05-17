@@ -1,5 +1,9 @@
 import logger from "../utils/logger.js";
 import { expireStalePayments } from "./paymentCleanupService.js";
+import {
+  acquireSchedulerLock,
+  releaseSchedulerLock,
+} from "./schedulerLockService.js";
 
 let cleanupTimer = null;
 let cleanupRunning = false;
@@ -9,16 +13,11 @@ const toBool = (value, fallback = true) => {
     return fallback;
   }
 
-  return ["true", "1", "yes", "on"].includes(
-    String(value).toLowerCase()
-  );
+  return ["true", "1", "yes", "on"].includes(String(value).toLowerCase());
 };
 
 export const startPaymentCleanupScheduler = () => {
-  const enabled = toBool(
-    process.env.PAYMENT_CLEANUP_ENABLED,
-    true
-  );
+  const enabled = toBool(process.env.PAYMENT_CLEANUP_ENABLED, true);
 
   if (!enabled) {
     logger.info("Payment cleanup scheduler disabled");
@@ -55,7 +54,25 @@ export const startPaymentCleanupScheduler = () => {
 
     cleanupRunning = true;
 
+    const lockKey = "payment-cleanup";
+    let locked = false;
+
     try {
+      locked = await acquireSchedulerLock({
+        key: lockKey,
+        ttlMs: 5 * 60 * 1000,
+        metadata: {
+          job: "payment-cleanup",
+          olderThanMinutes,
+          limit,
+        },
+      });
+
+      if (!locked) {
+        logger.info("Payment cleanup skipped because another instance owns lock");
+        return;
+      }
+
       await expireStalePayments({
         olderThanMinutes,
         limit,
@@ -67,15 +84,15 @@ export const startPaymentCleanupScheduler = () => {
         stack: error.stack,
       });
     } finally {
+      if (locked) {
+        await releaseSchedulerLock({ key: lockKey });
+      }
+
       cleanupRunning = false;
     }
   };
 
-  cleanupTimer = setInterval(
-    runCleanup,
-    intervalMinutes * 60 * 1000
-  );
-
+  cleanupTimer = setInterval(runCleanup, intervalMinutes * 60 * 1000);
   cleanupTimer.unref?.();
 
   logger.info("Payment cleanup scheduler started", {
@@ -88,12 +105,9 @@ export const startPaymentCleanupScheduler = () => {
 };
 
 export const stopPaymentCleanupScheduler = () => {
-  if (!cleanupTimer) {
-    return;
-  }
+  if (!cleanupTimer) return;
 
   clearInterval(cleanupTimer);
-
   cleanupTimer = null;
 
   logger.info("Payment cleanup scheduler stopped");

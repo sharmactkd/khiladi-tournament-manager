@@ -24,8 +24,39 @@ const webhookEventSchema = new mongoose.Schema(
 
     status: {
       type: String,
-      enum: ["received", "processing", "processed", "failed", "ignored"],
+      enum: [
+        "received",
+        "queued",
+        "processing",
+        "processed",
+        "failed",
+        "ignored",
+      ],
       default: "received",
+      index: true,
+    },
+
+    attempts: {
+      type: Number,
+      default: 0,
+      index: true,
+    },
+
+    lockedAt: {
+      type: Date,
+      default: null,
+      index: true,
+    },
+
+    lockedBy: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    nextAttemptAt: {
+      type: Date,
+      default: Date.now,
       index: true,
     },
 
@@ -68,11 +99,30 @@ const webhookEventSchema = new mongoose.Schema(
 );
 
 webhookEventSchema.index(
-  { provider: 1, eventId: 1 },
-  { unique: true }
+  { createdAt: 1 },
+  {
+    expireAfterSeconds: 60 * 60 * 24 * 180,
+    partialFilterExpression: {
+      status: { $in: ["processed", "ignored"] },
+    },
+  }
 );
 
-webhookEventSchema.index({ provider: 1, status: 1, createdAt: -1 });
+webhookEventSchema.index({ provider: 1, eventId: 1 }, { unique: true });
+
+webhookEventSchema.index({
+  provider: 1,
+  status: 1,
+  nextAttemptAt: 1,
+  createdAt: 1,
+});
+
+webhookEventSchema.index({
+  provider: 1,
+  status: 1,
+  lockedAt: 1,
+});
+
 webhookEventSchema.index({ provider: 1, eventType: 1, createdAt: -1 });
 
 const WebhookEvent = mongoose.model("WebhookEvent", webhookEventSchema);
