@@ -79,7 +79,12 @@ const couponRedemptionSchema = new mongoose.Schema(
 );
 
 couponRedemptionSchema.index(
-  { couponId: 1, userId: 1 },
+  {
+    couponId: 1,
+    userId: 1,
+    planType: 1,
+    tournamentId: 1,
+  },
   { unique: true }
 );
 

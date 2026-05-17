@@ -7,12 +7,14 @@ import {
   getPaymentAccessFields,
   hasActiveAccess,
 } from "../services/subscriptionService.js";
+import hasPremiumAccess from "../utils/hasPremiumAccess.js";
 import Payment from "../models/payment.js";
 import Tournament from "../models/tournament.js";
 import User from "../models/user.js";
 import PlatformSettings from "../models/platformSettings.js";
 import processPaidPayment from "../services/paymentProcessingService.js";
 import PaymentTransaction from "../models/paymentTransaction.js";
+
 
 const getUserId = (req) => req.user?._id || req.user?.id || req.user?.userId;
 

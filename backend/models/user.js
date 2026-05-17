@@ -76,23 +76,38 @@ const userSchema = new mongoose.Schema(
     adminPermissions: {
       type: [String],
       default: [],
-      enum: [
-        "dashboard:read",
-        "users:read_basic",
-        "users:read_sensitive",
-        "users:read",
-        "users:manage",
-        "tournaments:read",
-        "tournaments:manage",
-        "payments:read",
-        "payments:manage",
-        "billing:read",
-        "billing:manage",
-        "coupons:read",
-        "coupons:manage",
-        "audit:read",
-        "entries:read",
-      ],
+   enum: [
+  "dashboard:read",
+
+  "users:read_basic",
+  "users:read_sensitive",
+  "users:read",
+  "users:manage",
+
+  "tournaments:read",
+  "tournaments:manage",
+
+  "entries:read",
+
+  "payments:read",
+  "payments:manage",
+  "payments:reconcile",
+
+  "billing:read",
+  "billing:manage",
+  "billing:settings",
+  "billing:grant",
+  "billing:remove",
+  "billing:extend",
+  "billing:lifetime",
+  "billing:trial",
+  "billing:override",
+
+  "coupons:read",
+  "coupons:manage",
+
+  "audit:read",
+],
     },
 
     loginProvider: {
