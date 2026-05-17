@@ -2,13 +2,15 @@
 
 import express from "express";
 import passport from "passport";
+import jwt from "jsonwebtoken";
+
 import { generateToken, generateRefreshToken } from "../utils/generateToken.js";
 import {
   registerUser,
   loginUser,
   getMe,
- logoutUser,
-logoutAllUser,
+  logoutUser,
+  logoutAllUser,
   socialAuthSuccess,
   forgotPassword,
   resetPassword,
@@ -18,7 +20,9 @@ logoutAllUser,
   hashRefreshToken,
   normalizeRefreshTokenSessions,
   addRefreshTokenSession,
+  clearAuthCookiesEverywhere,
 } from "../controllers/authController.js";
+
 import {
   validateRegister,
   validateLogin,
@@ -36,7 +40,6 @@ import {
   requireRefreshCsrfToken,
   setCsrfCookie,
 } from "../middleware/csrfProtection.js";
-import jwt from "jsonwebtoken";
 import logger from "../utils/logger.js";
 
 const router = express.Router();
@@ -56,6 +59,20 @@ const cookieOptions = {
   ...(getCookieDomain() ? { domain: getCookieDomain() } : {}),
 };
 
+const setRefreshAuthCookies = (res, { userId, refreshToken }) => {
+  clearAuthCookiesEverywhere(res);
+
+  res.cookie("refreshToken", refreshToken, {
+    ...cookieOptions,
+    maxAge: REFRESH_COOKIE_MAX_AGE,
+  });
+
+  setCsrfCookie(res, {
+    userId,
+    rawRefreshToken: refreshToken,
+  });
+};
+
 router.post("/register", validateRegister, registerUser);
 
 router.post("/login", validateLogin, loginUser);
@@ -68,72 +85,62 @@ router.get("/me", authMiddleware, getMe);
 
 router.patch("/complete-profile", authMiddleware, completeProfile);
 
+router.post("/logout", authMiddleware, requireCsrfToken, logoutUser);
 
-router.post(
-  "/logout",
-  authMiddleware,
-  requireCsrfToken,
-  logoutUser
-);
-
-router.post(
-  "/logout-all",
-  authMiddleware,
-  requireCsrfToken,
-  logoutAllUser
-);
+router.post("/logout-all", authMiddleware, requireCsrfToken, logoutAllUser);
 
 router.post("/refresh", requireRefreshCsrfToken, async (req, res) => {
   try {
     const refreshToken = req.cookies.refreshToken;
 
     if (!refreshToken) {
+      clearAuthCookiesEverywhere(res);
       return res.status(401).json({ message: "Refresh token missing" });
     }
 
     const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET, {
-  issuer: "khiladi-khoj.com",
-  audience: "khiladi-khoj-users",
-});
+      issuer: "khiladi-khoj.com",
+      audience: "khiladi-khoj-users",
+    });
+
     const tokenHash = hashRefreshToken(refreshToken);
 
     const user = await User.findById(decoded.id).select("+refreshTokens");
 
     if (!user) {
-      res.clearCookie("refreshToken", cookieOptions);
+      clearAuthCookiesEverywhere(res);
       return res.status(401).json({ message: "Invalid or revoked refresh token" });
     }
 
     const sessions = normalizeRefreshTokenSessions(user.refreshTokens);
-    const matchedSession = sessions.find((session) => session.tokenHash === tokenHash);
+    const matchedSession = sessions.find(
+      (session) => session.tokenHash === tokenHash
+    );
 
-   if (!matchedSession) {
-  // SECURITY: Refresh token reuse detected.
-  // Token JWT valid hai, lekin DB session me nahi mila.
-  // Iska matlab old/stolen/revoked refresh token reuse ho sakta hai.
-  // Isliye user ke sabhi refresh sessions revoke kar do.
-  user.refreshTokens = [];
-  await user.save({ validateBeforeSave: false });
+    if (!matchedSession) {
+      user.refreshTokens = [];
+      await user.save({ validateBeforeSave: false });
 
-  res.clearCookie("refreshToken", cookieOptions);
+      clearAuthCookiesEverywhere(res);
 
-  logger.warn("REFRESH_REUSE_DETECTED", {
-    userId: user._id,
-    ip: req.ip,
-    userAgent: req.headers?.["user-agent"] || "",
-  });
+      logger.warn("REFRESH_REUSE_DETECTED", {
+        userId: user._id,
+        ip: req.ip,
+        userAgent: req.headers?.["user-agent"] || "",
+      });
 
-  return res.status(401).json({
-    message: "Session security issue detected. Please login again.",
-    code: "REFRESH_REUSE_DETECTED",
-  });
-}
+      return res.status(401).json({
+        message: "Session security issue detected. Please login again.",
+        code: "REFRESH_REUSE_DETECTED",
+      });
+    }
 
     if (user.isDeleted) {
       user.refreshTokens = [];
       await user.save({ validateBeforeSave: false });
 
-      res.clearCookie("refreshToken", cookieOptions);
+      clearAuthCookiesEverywhere(res);
+
       return res.status(403).json({ message: "This account has been deleted" });
     }
 
@@ -141,37 +148,41 @@ router.post("/refresh", requireRefreshCsrfToken, async (req, res) => {
       user.refreshTokens = [];
       await user.save({ validateBeforeSave: false });
 
-      res.clearCookie("refreshToken", cookieOptions);
+      clearAuthCookiesEverywhere(res);
+
       return res.status(403).json({ message: "This account has been suspended" });
     }
 
     const newAccessToken = generateToken(user);
     const newRefreshToken = generateRefreshToken(user);
 
-    user.refreshTokens = sessions.filter((session) => session.tokenHash !== tokenHash);
-    addRefreshTokenSession({ user, rawRefreshToken: newRefreshToken, req });
+    user.refreshTokens = sessions.filter(
+      (session) => session.tokenHash !== tokenHash
+    );
+
+    addRefreshTokenSession({
+      user,
+      rawRefreshToken: newRefreshToken,
+      req,
+    });
 
     await user.save({ validateBeforeSave: false });
 
-    res.cookie("refreshToken", newRefreshToken, {
-      ...cookieOptions,
-      maxAge: REFRESH_COOKIE_MAX_AGE,
+    setRefreshAuthCookies(res, {
+      userId: user._id,
+      refreshToken: newRefreshToken,
     });
 
-    setCsrfCookie(res, {
-  userId: user._id,
-  rawRefreshToken: newRefreshToken,
-});
-
-    res.json({
+    return res.json({
       accessToken: newAccessToken,
       user: buildSafeUserResponse(user),
     });
   } catch (error) {
     logger.error("Refresh token error:", error.message);
 
-    res.clearCookie("refreshToken", cookieOptions);
-    res.status(401).json({ message: "Invalid refresh token" });
+    clearAuthCookiesEverywhere(res);
+
+    return res.status(401).json({ message: "Invalid refresh token" });
   }
 });
 

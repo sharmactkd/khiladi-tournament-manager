@@ -5,7 +5,7 @@ import User from "../models/user.js";
 import bcrypt from "bcryptjs";
 import { generateToken, generateRefreshToken } from "../utils/generateToken.js";
 import logger from "../utils/logger.js";
-import { setCsrfCookie, clearCsrfCookie } from "../middleware/csrfProtection.js";
+import { setCsrfCookie } from "../middleware/csrfProtection.js";
 import sendEmail from "../utils/emailSender.js";
 import {
   getPasswordResetEmailHtml,
@@ -16,8 +16,6 @@ const normalizeRole = (role) => {
   const allowedRoles = ["organizer", "coach", "player", "admin", "superadmin"];
   return allowedRoles.includes(role) ? role : "player";
 };
-
-
 
 const isStrongPassword = (password) => {
   return /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&]).{8,}$/.test(
@@ -43,7 +41,9 @@ const redactIdentifier = (value = "") => {
 
   if (looksLikeEmail(str)) {
     const [name, domain] = str.toLowerCase().split("@");
-    return name && domain ? `${name.slice(0, 2)}***@${domain}` : "[REDACTED_EMAIL]";
+    return name && domain
+      ? `${name.slice(0, 2)}***@${domain}`
+      : "[REDACTED_EMAIL]";
   }
 
   const phone = normalizePhone(str);
@@ -55,7 +55,9 @@ const redactIdentifier = (value = "") => {
 };
 
 const isProd = process.env.NODE_ENV === "production";
+
 export const REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
+
 const PASSWORD_RESET_EXPIRE_MINUTES = 15;
 const MAX_ACTIVE_REFRESH_SESSIONS = 5;
 
@@ -78,6 +80,63 @@ const getFrontendUrl = () => {
     /\/+$/,
     ""
   );
+};
+
+/**
+ * IMPORTANT:
+ * Clears both old host-only cookies and new shared-domain cookies.
+ * This prevents duplicate csrfToken / refreshToken cookies from breaking CSRF validation.
+ */
+export const clearAuthCookiesEverywhere = (res) => {
+  const refreshBaseOptions = {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: "lax",
+    path: "/",
+  };
+
+  const readableBaseOptions = {
+    httpOnly: false,
+    secure: isProd,
+    sameSite: "lax",
+    path: "/",
+  };
+
+  // Clear old host-only cookies on api.khiladi-khoj.com
+  res.clearCookie("refreshToken", refreshBaseOptions);
+  res.clearCookie("csrfToken", readableBaseOptions);
+  res.clearCookie("accessToken", refreshBaseOptions);
+
+  // Clear new shared-domain cookies on .khiladi-khoj.com
+  const cookieDomain = getCookieDomain();
+
+  if (cookieDomain) {
+    res.clearCookie("refreshToken", {
+      ...refreshBaseOptions,
+      domain: cookieDomain,
+    });
+
+    res.clearCookie("csrfToken", {
+      ...readableBaseOptions,
+      domain: cookieDomain,
+    });
+
+    res.clearCookie("accessToken", {
+      ...refreshBaseOptions,
+      domain: cookieDomain,
+    });
+  }
+};
+
+const setAuthCookies = (res, { userId, refreshToken }) => {
+  clearAuthCookiesEverywhere(res);
+
+  res.cookie("refreshToken", refreshToken, refreshCookieOptions);
+
+  setCsrfCookie(res, {
+    userId,
+    rawRefreshToken: refreshToken,
+  });
 };
 
 const hashResetToken = (token) => {
@@ -103,10 +162,18 @@ export const normalizeRefreshTokenSessions = (sessions = []) => {
 
   return (Array.isArray(sessions) ? sessions : [])
     .filter((session) => {
-      if (!session || typeof session !== "object" || Array.isArray(session)) return false;
-      if (!session.tokenHash || typeof session.tokenHash !== "string") return false;
+      if (!session || typeof session !== "object" || Array.isArray(session)) {
+        return false;
+      }
 
-      const expiresAt = session.expiresAt ? new Date(session.expiresAt).getTime() : 0;
+      if (!session.tokenHash || typeof session.tokenHash !== "string") {
+        return false;
+      }
+
+      const expiresAt = session.expiresAt
+        ? new Date(session.expiresAt).getTime()
+        : 0;
+
       return expiresAt > now;
     })
     .map((session) => ({
@@ -204,9 +271,9 @@ export const getMe = async (req, res) => {
     if (rejectInactiveUser(user, res)) return;
 
     logger.info("getMe successful", {
-  userId: user._id,
-  email: redactIdentifier(user.email),
-});
+      userId: user._id,
+      email: redactIdentifier(user.email),
+    });
 
     res.json(buildSafeUserResponse(user));
   } catch (error) {
@@ -228,9 +295,10 @@ export const registerUser = async (req, res) => {
 
     if (!isStrongPassword(password)) {
       logger.warn("Register attempt with weak password", {
-  email: redactIdentifier(email),
-  ip: req.ip,
-});
+        email: redactIdentifier(email),
+        ip: req.ip,
+      });
+
       return res.status(400).json({
         message:
           "Password must be at least 8 characters long and include uppercase, lowercase, number, and special character",
@@ -253,6 +321,7 @@ export const registerUser = async (req, res) => {
         email: redactIdentifier(normalizedEmail),
         ip: req.ip,
       });
+
       return res.status(400).json({
         message: "User already exists with this email",
       });
@@ -277,15 +346,14 @@ export const registerUser = async (req, res) => {
     addRefreshTokenSession({ user, rawRefreshToken: refreshToken, req });
     await user.save({ validateBeforeSave: false });
 
-   res.cookie("refreshToken", refreshToken, refreshCookieOptions);
-setCsrfCookie(res, {
-  userId: user._id,
-  rawRefreshToken: refreshToken,
-});
+    setAuthCookies(res, {
+      userId: user._id,
+      refreshToken,
+    });
 
     logger.info("User registered successfully", {
       userId: user._id,
-     email: redactIdentifier(normalizedEmail),
+      email: redactIdentifier(normalizedEmail),
       role,
     });
 
@@ -298,7 +366,6 @@ setCsrfCookie(res, {
     res.status(500).json({ message: "Server error during registration" });
   }
 };
-
 
 export const loginUser = async (req, res) => {
   try {
@@ -319,10 +386,11 @@ export const loginUser = async (req, res) => {
     } else if (looksLikePhone(identifier)) {
       query = { phone: identifier };
     } else {
-     logger.warn("Login attempt with invalid identifier format", {
-  identifier: redactIdentifier(identifierRaw),
-  ip: req.ip,
-});
+      logger.warn("Login attempt with invalid identifier format", {
+        identifier: redactIdentifier(identifierRaw),
+        ip: req.ip,
+      });
+
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
@@ -330,18 +398,20 @@ export const loginUser = async (req, res) => {
 
     if (!user || !user.password) {
       logger.warn("Login attempt with invalid identifier", {
-  identifier: redactIdentifier(identifierRaw),
-  ip: req.ip,
-});
+        identifier: redactIdentifier(identifierRaw),
+        ip: req.ip,
+      });
+
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
     if (user.isDeleted) {
-     logger.warn("Deleted user login attempt", {
-  userId: user._id,
-  identifier: redactIdentifier(identifierRaw),
-  ip: req.ip,
-});
+      logger.warn("Deleted user login attempt", {
+        userId: user._id,
+        identifier: redactIdentifier(identifierRaw),
+        ip: req.ip,
+      });
+
       return res.status(403).json({ message: "This account has been deleted" });
     }
 
@@ -351,15 +421,18 @@ export const loginUser = async (req, res) => {
         identifier: redactIdentifier(identifierRaw),
         ip: req.ip,
       });
+
       return res.status(403).json({ message: "This account has been suspended" });
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
+
     if (!isMatch) {
       logger.warn("Login attempt with wrong password", {
-  identifier: redactIdentifier(identifierRaw),
-  ip: req.ip,
-});
+        identifier: redactIdentifier(identifierRaw),
+        ip: req.ip,
+      });
+
       return res.status(401).json({ message: "Invalid credentials" });
     }
 
@@ -375,15 +448,16 @@ export const loginUser = async (req, res) => {
     addRefreshTokenSession({ user, rawRefreshToken: refreshToken, req });
     await user.save({ validateBeforeSave: false });
 
-  res.cookie("refreshToken", refreshToken, refreshCookieOptions);
-setCsrfCookie(res, {
-  userId: user._id,
-  rawRefreshToken: refreshToken,
-});
+    setAuthCookies(res, {
+      userId: user._id,
+      refreshToken,
+    });
 
     logger.info("User logged in successfully", {
       userId: user._id,
-      identifier: redactIdentifier(looksLikeEmail(identifierRaw) ? user.email : user.phone),
+      identifier: redactIdentifier(
+        looksLikeEmail(identifierRaw) ? user.email : user.phone
+      ),
       method: looksLikeEmail(identifierRaw) ? "email" : "phone",
       role: normalizeRole(user.role),
     });
@@ -501,10 +575,14 @@ export const forgotPassword = async (req, res) => {
     }).select("+resetPasswordToken +resetPasswordExpire");
 
     if (!user || user.loginProvider !== "email" || !user.email || user.isSuspended) {
-      logger.info("Forgot password requested for non-existing, suspended or non-email account", {
-       email: redactIdentifier(email),
-        ip: req.ip,
-      });
+      logger.info(
+        "Forgot password requested for non-existing, suspended or non-email account",
+        {
+          email: redactIdentifier(email),
+          ip: req.ip,
+        }
+      );
+
       return res.status(200).json({ message: genericMessage });
     }
 
@@ -538,7 +616,7 @@ export const forgotPassword = async (req, res) => {
 
       logger.info("Password reset email sent", {
         userId: user._id,
-       email: redactIdentifier(user.email),
+        email: redactIdentifier(user.email),
       });
     } catch (emailError) {
       user.resetPasswordToken = undefined;
@@ -547,7 +625,7 @@ export const forgotPassword = async (req, res) => {
 
       logger.error("Password reset email failed", {
         userId: user._id,
-         email: redactIdentifier(user.email),
+        email: redactIdentifier(user.email),
         error: emailError.message,
       });
     }
@@ -609,7 +687,7 @@ export const resetPassword = async (req, res) => {
 
     logger.info("Password reset successful", {
       userId: user._id,
-     email: redactIdentifier(user.email),
+      email: redactIdentifier(user.email),
     });
 
     return res.status(200).json({
@@ -632,9 +710,12 @@ export const logoutUser = async (req, res) => {
 
     if (refreshToken) {
       const tokenHash = hashRefreshToken(refreshToken);
+
       const user = req.user
         ? await User.findById(req.user._id).select("+refreshTokens")
-        : await User.findOne({ "refreshTokens.tokenHash": tokenHash }).select("+refreshTokens");
+        : await User.findOne({ "refreshTokens.tokenHash": tokenHash }).select(
+            "+refreshTokens"
+          );
 
       if (user) {
         removeRefreshTokenSession({ user, rawRefreshToken: refreshToken });
@@ -642,21 +723,7 @@ export const logoutUser = async (req, res) => {
       }
     }
 
-   res.clearCookie("refreshToken", {
-  httpOnly: true,
-  secure: isProd,
-  sameSite: "lax",
-  path: "/",
-  ...(getCookieDomain() ? { domain: getCookieDomain() } : {}),
-});
-
-    res.clearCookie("accessToken", {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: "lax",
-      path: "/",
-    });
-clearCsrfCookie(res);
+    clearAuthCookiesEverywhere(res);
 
     logger.info("User logged out successfully", { userId: req.user?._id });
 
@@ -682,22 +749,7 @@ export const logoutAllUser = async (req, res) => {
     user.refreshTokens = [];
     await user.save({ validateBeforeSave: false });
 
-   res.clearCookie("refreshToken", {
-  httpOnly: true,
-  secure: isProd,
-  sameSite: "lax",
-  path: "/",
-  ...(getCookieDomain() ? { domain: getCookieDomain() } : {}),
-});
-
-    res.clearCookie("accessToken", {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: "lax",
-      path: "/",
-    });
-
-    clearCsrfCookie(res);
+    clearAuthCookiesEverywhere(res);
 
     logger.warn("LOGOUT_ALL_SESSIONS", {
       userId: user._id,
@@ -731,7 +783,7 @@ export const socialAuthSuccess = (req, res) => {
     if (req.user.isDeleted || req.user.isSuspended) {
       logger.warn("Inactive social auth user blocked", {
         userId: req.user._id,
-         email: redactIdentifier(req.user.email),
+        email: redactIdentifier(req.user.email),
         isDeleted: Boolean(req.user.isDeleted),
         isSuspended: Boolean(req.user.isSuspended),
       });
@@ -747,11 +799,10 @@ export const socialAuthSuccess = (req, res) => {
       logger.error("Refresh token session save failed", { error: err.message })
     );
 
- res.cookie("refreshToken", refreshToken, refreshCookieOptions);
-setCsrfCookie(res, {
-  userId: req.user._id,
-  rawRefreshToken: refreshToken,
-});
+    setAuthCookies(res, {
+      userId: req.user._id,
+      refreshToken,
+    });
 
     logger.info("Social auth successful", {
       userId: req.user._id,
