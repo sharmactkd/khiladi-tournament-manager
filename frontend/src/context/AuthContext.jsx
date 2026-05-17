@@ -16,13 +16,15 @@ const AuthContext = createContext();
 const getCookieValue = (name) => {
   if (typeof document === "undefined") return "";
 
-  return (
-    document.cookie
-      .split("; ")
-      .find((row) => row.startsWith(`${name}=`))
-      ?.split("=")[1] || ""
-  );
+  const cookie = document.cookie
+    .split("; ")
+    .find((row) => row.startsWith(`${name}=`));
+
+  if (!cookie) return "";
+
+  return decodeURIComponent(cookie.substring(name.length + 1));
 };
+
 const normalizeUserData = (data) => {
   if (!data) return null;
 
