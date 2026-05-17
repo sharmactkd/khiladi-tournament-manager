@@ -5,18 +5,23 @@ import axios from "axios";
 const getCookieValue = (name) => {
   if (typeof document === "undefined") return "";
 
-  return document.cookie
+  const cookie = document.cookie
     .split("; ")
-    .find((row) => row.startsWith(`${name}=`))
-    ?.split("=")[1] || "";
+    .find((row) => row.startsWith(`${name}=`));
+
+  if (!cookie) return "";
+
+  try {
+    return decodeURIComponent(cookie.substring(name.length + 1));
+  } catch {
+    return cookie.substring(name.length + 1);
+  }
 };
 
 const getCsrfHeaders = () => {
   const csrfToken = getCookieValue("csrfToken");
 
-  return csrfToken
-    ? { "x-csrf-token": decodeURIComponent(csrfToken) }
-    : {};
+  return csrfToken ? { "x-csrf-token": csrfToken } : {};
 };
 
 const normalizeBase = (v) => String(v || "").trim().replace(/\/+$/, "");

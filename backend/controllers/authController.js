@@ -642,12 +642,13 @@ export const logoutUser = async (req, res) => {
       }
     }
 
-    res.clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: "lax",
-      path: "/",
-    });
+   res.clearCookie("refreshToken", {
+  httpOnly: true,
+  secure: isProd,
+  sameSite: "lax",
+  path: "/",
+  ...(getCookieDomain() ? { domain: getCookieDomain() } : {}),
+});
 
     res.clearCookie("accessToken", {
       httpOnly: true,
@@ -681,12 +682,13 @@ export const logoutAllUser = async (req, res) => {
     user.refreshTokens = [];
     await user.save({ validateBeforeSave: false });
 
-    res.clearCookie("refreshToken", {
-      httpOnly: true,
-      secure: isProd,
-      sameSite: "lax",
-      path: "/",
-    });
+   res.clearCookie("refreshToken", {
+  httpOnly: true,
+  secure: isProd,
+  sameSite: "lax",
+  path: "/",
+  ...(getCookieDomain() ? { domain: getCookieDomain() } : {}),
+});
 
     res.clearCookie("accessToken", {
       httpOnly: true,
