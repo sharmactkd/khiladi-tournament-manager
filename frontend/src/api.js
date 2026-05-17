@@ -110,11 +110,21 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config || {};
 
-    if (
-      error.response?.status === 401 &&
-      !originalRequest._retry &&
-      !String(originalRequest.url || "").includes("/auth/refresh")
-    ) {
+  const requestUrl = String(originalRequest.url || "");
+
+const isPublicAuthRequest =
+  requestUrl.includes("/auth/login") ||
+  requestUrl.includes("/auth/register") ||
+  requestUrl.includes("/auth/forgot-password") ||
+  requestUrl.includes("/auth/reset-password") ||
+  requestUrl.includes("/auth/google");
+
+if (
+  error.response?.status === 401 &&
+  !originalRequest._retry &&
+  !requestUrl.includes("/auth/refresh") &&
+  !isPublicAuthRequest
+) {
       originalRequest._retry = true;
 
       try {
