@@ -43,11 +43,17 @@ const router = express.Router();
 
 const isProd = process.env.NODE_ENV === "production";
 
+const getCookieDomain = () => {
+  const domain = String(process.env.COOKIE_DOMAIN || "").trim();
+  return isProd && domain ? domain : undefined;
+};
+
 const cookieOptions = {
   httpOnly: true,
   secure: isProd,
   sameSite: "lax",
   path: "/",
+  ...(getCookieDomain() ? { domain: getCookieDomain() } : {}),
 };
 
 router.post("/register", validateRegister, registerUser);

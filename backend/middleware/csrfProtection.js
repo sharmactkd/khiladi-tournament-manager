@@ -8,12 +8,18 @@ const isProd = process.env.NODE_ENV === "production";
 export const CSRF_COOKIE_NAME = "csrfToken";
 export const CSRF_HEADER_NAME = "x-csrf-token";
 
+const getCookieDomain = () => {
+  const domain = String(process.env.COOKIE_DOMAIN || "").trim();
+  return isProd && domain ? domain : undefined;
+};
+
 export const csrfCookieOptions = {
   httpOnly: false,
   secure: isProd,
   sameSite: "lax",
   path: "/",
   maxAge: 30 * 24 * 60 * 60 * 1000,
+  ...(getCookieDomain() ? { domain: getCookieDomain() } : {}),
 };
 
 const getCsrfSecret = () => {
@@ -60,12 +66,13 @@ export const setCsrfCookie = (res, { userId, rawRefreshToken }) => {
 };
 
 export const clearCsrfCookie = (res) => {
-  res.clearCookie(CSRF_COOKIE_NAME, {
-    httpOnly: false,
-    secure: isProd,
-    sameSite: "lax",
-    path: "/",
-  });
+res.clearCookie(CSRF_COOKIE_NAME, {
+  httpOnly: false,
+  secure: isProd,
+  sameSite: "lax",
+  path: "/",
+  ...(getCookieDomain() ? { domain: getCookieDomain() } : {}),
+});
 };
 
 export const requireCsrfToken = (req, res, next) => {

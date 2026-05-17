@@ -59,12 +59,18 @@ export const REFRESH_COOKIE_MAX_AGE = 30 * 24 * 60 * 60 * 1000;
 const PASSWORD_RESET_EXPIRE_MINUTES = 15;
 const MAX_ACTIVE_REFRESH_SESSIONS = 5;
 
+const getCookieDomain = () => {
+  const domain = String(process.env.COOKIE_DOMAIN || "").trim();
+  return isProd && domain ? domain : undefined;
+};
+
 const refreshCookieOptions = {
   httpOnly: true,
   secure: isProd,
   sameSite: "lax",
   path: "/",
   maxAge: REFRESH_COOKIE_MAX_AGE,
+  ...(getCookieDomain() ? { domain: getCookieDomain() } : {}),
 };
 
 const getFrontendUrl = () => {
