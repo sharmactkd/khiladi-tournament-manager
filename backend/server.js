@@ -48,6 +48,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
+app.set("trust proxy", 1);
 const isDev = process.env.NODE_ENV !== "production";
 
 process.on("uncaughtException", (err) => {
@@ -80,6 +81,7 @@ const allowedOrigins = [
   "http://localhost:5174",
   "https://khiladi-khoj.vercel.app",
   "https://khiladi-khoj.com",
+  "https://www.khiladi-khoj.com",
   ...parseAllowedOrigins(process.env.CORS_ALLOWED_ORIGINS),
 ];
 
