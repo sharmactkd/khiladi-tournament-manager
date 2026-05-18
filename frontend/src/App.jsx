@@ -1,3 +1,5 @@
+// FILE: frontend/src/App.jsx
+
 import React from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "./context/AuthContext";
@@ -65,26 +67,33 @@ function App() {
 
   const requireAuth = (element) => {
     if (!isAuthenticated) return loginRedirect;
+
     if (needsProfileCompletion) {
       return <Navigate to="/complete-profile" replace />;
     }
+
     return element;
   };
 
   const requireAdmin = (element) => {
     if (!isAuthenticated) return loginRedirect;
+
     if (needsProfileCompletion) {
       return <Navigate to="/complete-profile" replace />;
     }
+
     if (!isAdminUser) return <Navigate to="/" replace />;
+
     return element;
   };
 
   const requireTournamentLogin = (element) => {
     if (!isAuthenticated) return loginRedirect;
+
     if (needsProfileCompletion) {
       return <Navigate to="/complete-profile" replace />;
     }
+
     return element;
   };
 
@@ -211,6 +220,8 @@ function App() {
             }
           >
             <Route index element={<TournamentDetails />} />
+
+            {/* Entry page intentionally NOT premium locked */}
             <Route path="entry" element={requireTournamentLogin(<Entry />)} />
 
             <Route
@@ -232,6 +243,24 @@ function App() {
             />
 
             <Route
+              path="winner"
+              element={requirePremiumTournamentFeature(
+                <Winner />,
+                "Winner",
+                "winner"
+              )}
+            />
+
+            <Route
+              path="team-championship"
+              element={requirePremiumTournamentFeature(
+                <TeamChampionship />,
+                "Team Championship",
+                "team_championship"
+              )}
+            />
+
+            <Route
               path="official"
               element={requirePremiumTournamentFeature(
                 <Official />,
@@ -249,11 +278,7 @@ function App() {
               )}
             />
 
-            <Route path="winner" element={requireTournamentLogin(<Winner />)} />
-            <Route
-              path="team-championship"
-              element={requireTournamentLogin(<TeamChampionship />)}
-            />
+            {/* Team Submissions page intentionally NOT premium locked */}
             <Route
               path="team-submissions"
               element={requireTournamentLogin(<TeamSubmissions />)}

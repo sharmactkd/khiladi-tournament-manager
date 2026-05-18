@@ -1,120 +1,142 @@
-import React, { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+// FILE: frontend/src/components/PremiumAccessGuard.jsx
+
+import React, { useCallback, useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { getPremiumAccessStatus } from "../api";
+import { getMyAccessStatus } from "../api/paymentApi";
+import PaymentPage from "./payment/PaymentPage";
 
 const PremiumAccessGuard = ({
   children,
   featureLabel = "Premium feature",
   feature = "",
 }) => {
-  const { id: tournamentId } = useParams();
+  const { id } = useParams();
+  const tournamentId = id?.trim();
   const { user } = useAuth();
-
-  const [loading, setLoading] = useState(true);
-  const [access, setAccess] = useState(null);
-  const [error, setError] = useState("");
 
   const isAdminUser = user?.role === "admin" || user?.role === "superadmin";
 
-  useEffect(() => {
-    let cancelled = false;
+  const [loading, setLoading] = useState(true);
+  const [hasAccess, setHasAccess] = useState(false);
+  const [accessData, setAccessData] = useState(null);
+  const [error, setError] = useState("");
 
-    const checkAccess = async () => {
-      try {
-        setLoading(true);
-        setError("");
+  const checkAccess = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError("");
 
-        if (isAdminUser) {
-          if (!cancelled) {
-            setAccess({
-              hasAccess: true,
-              source: "admin-ui-bypass",
-              accessType: "admin",
-              reason: "admin-user",
-            });
-          }
-          return;
-        }
-
-        const data = await getPremiumAccessStatus(tournamentId, feature);
-
-        if (!cancelled) {
-          setAccess(data);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setError(err.message || "Failed to check premium access");
-          setAccess({
-            hasAccess: false,
-            paymentRequired: true,
-            reason: "access-check-failed",
-          });
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+      if (isAdminUser) {
+        setHasAccess(true);
+        setAccessData({
+          hasAccess: true,
+          source: "admin-ui-bypass",
+          accessType: "admin",
+          reason: "admin-user",
+        });
+        return;
       }
-    };
 
-    checkAccess();
+      if (!tournamentId) {
+        setHasAccess(false);
+        setAccessData({
+          hasAccess: false,
+          paymentRequired: true,
+          reason: "missing-tournament-id",
+        });
+        return;
+      }
 
-    return () => {
-      cancelled = true;
-    };
+      const res = await getMyAccessStatus(tournamentId, feature);
+
+      setAccessData(res);
+      setHasAccess(res?.hasAccess === true);
+    } catch (err) {
+      console.error("Premium access check failed:", err);
+
+      setError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Failed to check premium access"
+      );
+
+      setAccessData({
+        hasAccess: false,
+        paymentRequired: true,
+        reason: "access-check-failed",
+      });
+
+      setHasAccess(false);
+    } finally {
+      setLoading(false);
+    }
   }, [tournamentId, feature, isAdminUser]);
+
+  useEffect(() => {
+    checkAccess();
+  }, [checkAccess]);
+
+  if (isAdminUser) {
+    return children;
+  }
 
   if (loading) {
     return (
-      <div style={{ padding: "24px", textAlign: "center" }}>
+      <div
+        style={{
+          padding: "40px",
+          textAlign: "center",
+          fontWeight: 700,
+          fontSize: "18px",
+        }}
+      >
         Checking premium access...
       </div>
     );
   }
 
-  if (!access?.hasAccess) {
+  if (!hasAccess) {
     return (
-      <div
-        style={{
-          maxWidth: "720px",
-          margin: "40px auto",
-          padding: "28px",
-          border: "1px solid #e5e7eb",
-          borderRadius: "16px",
-          background: "#fff",
-          textAlign: "center",
-          boxShadow: "0 10px 30px rgba(0,0,0,0.08)",
-        }}
-      >
-        <h2 style={{ marginBottom: "12px" }}>Premium Access Required</h2>
-
-        <p style={{ color: "#4b5563", marginBottom: "8px" }}>
-          {featureLabel} is available only for premium users.
-        </p>
-
-        {error ? (
-          <p style={{ color: "#dc2626", marginBottom: "16px" }}>{error}</p>
-        ) : (
-          <p style={{ color: "#6b7280", marginBottom: "16px" }}>
-            Reason: {access?.reason || "premium-access-required"}
-          </p>
+      <div>
+        {error && (
+          <div
+            style={{
+              maxWidth: "900px",
+              margin: "20px auto 0",
+              padding: "12px 16px",
+              borderRadius: "12px",
+              background: "#fef2f2",
+              color: "#b91c1c",
+              border: "1px solid #fecaca",
+              fontWeight: 600,
+              textAlign: "center",
+            }}
+          >
+            {featureLabel}: {error}
+          </div>
         )}
 
-        <Link
-          to={`/tournaments/${tournamentId}`}
-          style={{
-            display: "inline-block",
-            padding: "10px 18px",
-            borderRadius: "10px",
-            background: "#111827",
-            color: "#fff",
-            textDecoration: "none",
-            fontWeight: 600,
-          }}
-        >
-          Back to Tournament
-        </Link>
+        {accessData?.reason && !error && (
+          <div
+            style={{
+              maxWidth: "900px",
+              margin: "20px auto 0",
+              padding: "10px 14px",
+              borderRadius: "999px",
+              background: "#fff7ed",
+              color: "#9a3412",
+              border: "1px solid #fed7aa",
+              fontWeight: 700,
+              textAlign: "center",
+              width: "fit-content",
+            }}
+          >
+            {featureLabel} requires premium access
+          </div>
+        )}
+
+        <PaymentPage tournamentId={tournamentId} onPaymentSuccess={checkAccess} />
       </div>
     );
   }
