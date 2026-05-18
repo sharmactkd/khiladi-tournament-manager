@@ -283,7 +283,7 @@ router.post(
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
   superAdminMiddleware,
-  adminReauthMiddleware,
+
   validateCouponCreate,
   createCoupon
 );
@@ -293,7 +293,6 @@ router.patch(
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
   superAdminMiddleware,
-  adminReauthMiddleware,
   validateCouponUpdate,
   updateCoupon
 );
@@ -303,7 +302,6 @@ router.patch(
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
   superAdminMiddleware,
-  adminReauthMiddleware,
   validateCouponParam,
   disableCoupon
 );
@@ -313,7 +311,6 @@ router.delete(
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
   superAdminMiddleware,
-  adminReauthMiddleware,
   validateCouponParam,
   deleteCoupon
 );

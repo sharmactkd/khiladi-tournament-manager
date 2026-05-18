@@ -121,6 +121,7 @@ const CouponManager = () => {
     const payload = {
       code: form.code.trim().toUpperCase(),
       category: form.category,
+      type: form.type,
       value: Number(form.value || 0),
       active: Boolean(form.active),
       applicablePlans: form.applicablePlans || [],
@@ -149,35 +150,24 @@ const CouponManager = () => {
       return;
     }
 
-    try {
-      setSaving(true);
-const adminPassword = window.prompt(
-  "Enter your admin password to confirm this coupon action:"
-);
+   try {
+  setSaving(true);
 
-if (!adminPassword || !adminPassword.trim()) {
-  alert("Admin password is required.");
-  return;
+  const payload = buildPayload();
+
+  if (editingId) {
+    await api.patch(`/admin/billing/coupons/${editingId}`, payload);
+  } else {
+    await api.post("/admin/billing/coupons", payload);
+  }
+
+  resetForm();
+  await loadCoupons();
+} catch (err) {
+  alert(err.response?.data?.message || err.message || "Failed to save coupon");
+} finally {
+  setSaving(false);
 }
-
-const payload = {
-  ...buildPayload(),
-  adminPassword: adminPassword.trim(),
-};
-
-if (editingId) {
-  await api.patch(`/admin/billing/coupons/${editingId}`, payload);
-} else {
-  await api.post("/admin/billing/coupons", payload);
-}
-
-      resetForm();
-      await loadCoupons();
-    } catch (err) {
-      alert(err.response?.data?.message || err.message || "Failed to save coupon");
-    } finally {
-      setSaving(false);
-    }
   };
 
   const editCoupon = (coupon) => {
@@ -192,6 +182,7 @@ if (editingId) {
       code: coupon.code || "",
       category: coupon.category || "discount_coupon",
       value: coupon.value || 0,
+      type: coupon.type || "percentage",
       active: coupon.active !== false,
       maxUses: coupon.maxUses || "",
       expiresAt: coupon.expiresAt
@@ -201,73 +192,54 @@ if (editingId) {
     });
   };
 
-  const disableCoupon = async (coupon) => {
-    const typed = window.prompt(
-      `Disable coupon ${coupon.code}?\n\nThis will prevent future usage but keep audit history.\n\nType DISABLE to confirm.`
-    );
+const disableCoupon = async (coupon) => {
+  const typed = window.prompt(
+    `Disable coupon ${coupon.code}?\n\nThis will prevent future usage but keep audit history.\n\nType DISABLE to confirm.`
+  );
 
-    if (typed !== "DISABLE") return;
+  if (typed !== "DISABLE") return;
 
-    try {
-      setActionLoadingId(`${coupon._id}:disable`);
-      const adminPassword = window.prompt(
-  "Enter your admin password to disable this coupon:"
-);
+  try {
+    setActionLoadingId(`${coupon._id}:disable`);
 
-if (!adminPassword || !adminPassword.trim()) {
-  alert("Admin password is required.");
-  return;
-}
+    await api.patch(`/admin/billing/coupons/${coupon._id}/disable`);
 
-await api.patch(`/admin/billing/coupons/${coupon._id}/disable`, {
-  adminPassword: adminPassword.trim(),
-});
-      await loadCoupons();
-    } catch (err) {
-      alert(err.response?.data?.message || err.message || "Failed to disable coupon");
-    } finally {
-      setActionLoadingId("");
-    }
-  };
+    await loadCoupons();
+  } catch (err) {
+    alert(err.response?.data?.message || err.message || "Failed to disable coupon");
+  } finally {
+    setActionLoadingId("");
+  }
+};
 
-  const deleteCoupon = async (coupon) => {
-    const typed = window.prompt(
-      `Soft delete coupon ${coupon.code}?\n\nThis will disable the coupon and preserve audit history. It will not be permanently removed.\n\nType DELETE to confirm.`
-    );
+const deleteCoupon = async (coupon) => {
+  const typed = window.prompt(
+    `Soft delete coupon ${coupon.code}?\n\nThis will disable the coupon and preserve audit history. It will not be permanently removed.\n\nType DELETE to confirm.`
+  );
 
-    if (typed !== "DELETE") return;
+  if (typed !== "DELETE") return;
 
-    const reason = window.prompt("Enter delete reason for audit log:") || "";
+  const reason = window.prompt("Enter delete reason for audit log:") || "";
 
-    if (!reason.trim()) {
-      alert("Delete reason is required.");
-      return;
-    }
+  if (!reason.trim()) {
+    alert("Delete reason is required.");
+    return;
+  }
 
-    try {
-      setActionLoadingId(`${coupon._id}:delete`);
-     const adminPassword = window.prompt(
-  "Enter your admin password to delete this coupon:"
-);
+  try {
+    setActionLoadingId(`${coupon._id}:delete`);
 
-if (!adminPassword || !adminPassword.trim()) {
-  alert("Admin password is required.");
-  return;
-}
+    await api.delete(`/admin/billing/coupons/${coupon._id}`, {
+      data: { reason },
+    });
 
-await api.delete(`/admin/billing/coupons/${coupon._id}`, {
-  data: {
-    reason,
-    adminPassword: adminPassword.trim(),
-  },
-});
-      await loadCoupons();
-    } catch (err) {
-      alert(err.response?.data?.message || err.message || "Failed to delete coupon");
-    } finally {
-      setActionLoadingId("");
-    }
-  };
+    await loadCoupons();
+  } catch (err) {
+    alert(err.response?.data?.message || err.message || "Failed to delete coupon");
+  } finally {
+    setActionLoadingId("");
+  }
+};
 
   const isActionDisabled = Boolean(actionLoadingId);
 
