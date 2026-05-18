@@ -4,8 +4,15 @@ import {
   createPaymentOrder,
   verifyPayment,
   getPaymentStatus,
+  validateCoupon,
+  applyCoupon,
 } from "../../api/paymentApi";
 import styles from "./PaymentPage.module.css";
+
+
+const [couponCode, setCouponCode] = useState("");
+const [couponMessage, setCouponMessage] = useState("");
+const [couponLoading, setCouponLoading] = useState(false);
 
 const plans = [
   {
@@ -71,6 +78,53 @@ const PaymentPage = ({ tournamentId, onPaymentSuccess }) => {
     () => plans.find((p) => p.planType === selectedPlan) || plans[0],
     [selectedPlan]
   );
+
+  const handleApplyCoupon = async () => {
+  try {
+    const code = couponCode.trim().toUpperCase();
+
+    if (!code) {
+      setCouponMessage("Please enter a coupon code.");
+      return;
+    }
+
+    setCouponLoading(true);
+    setCouponMessage("");
+    setError("");
+
+    const validateRes = await validateCoupon({
+      code,
+      planType: selectedPlan,
+    });
+
+    if (!validateRes?.valid) {
+      setCouponMessage(validateRes?.message || "Invalid coupon.");
+      return;
+    }
+
+    const applyRes = await applyCoupon({
+      code,
+      planType: selectedPlan,
+      tournamentId,
+    });
+
+    if (!applyRes?.success) {
+      setCouponMessage(applyRes?.message || "Coupon could not be applied.");
+      return;
+    }
+
+    setCouponMessage("Coupon applied successfully. Premium access activated.");
+    onPaymentSuccess?.();
+  } catch (err) {
+    setCouponMessage(
+      err?.response?.data?.message ||
+        err?.message ||
+        "Failed to apply coupon."
+    );
+  } finally {
+    setCouponLoading(false);
+  }
+};
 
   const startPayment = async () => {
     try {
@@ -208,6 +262,33 @@ const PaymentPage = ({ tournamentId, onPaymentSuccess }) => {
             );
           })}
         </div>
+
+        <div className={styles.couponBox}>
+  <div>
+    <label>Have a coupon?</label>
+    <p>Apply a valid coupon code to unlock access without payment.</p>
+  </div>
+
+  <div className={styles.couponInputRow}>
+    <input
+      type="text"
+      value={couponCode}
+      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+      placeholder="ENTER COUPON CODE"
+      disabled={couponLoading}
+    />
+
+    <button
+      type="button"
+      onClick={handleApplyCoupon}
+      disabled={couponLoading}
+    >
+      {couponLoading ? "Applying..." : "Apply Coupon"}
+    </button>
+  </div>
+
+  {couponMessage && <div className={styles.couponMessage}>{couponMessage}</div>}
+</div>
 
         {error && <div className={styles.error}>{error}</div>}
 

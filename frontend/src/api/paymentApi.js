@@ -42,3 +42,22 @@ export const getPaymentStatus = async ({
 
   return data;
 };
+
+export const validateCoupon = async ({ code, planType }) => {
+  const { data } = await api.post("/payment/coupon/validate", {
+    code,
+    planType,
+  });
+
+  return data;
+};
+
+export const applyCoupon = async ({ code, planType, tournamentId }) => {
+  const { data } = await api.post("/payment/coupon/apply", {
+    code,
+    planType,
+    tournamentId,
+  });
+
+  return data;
+};
