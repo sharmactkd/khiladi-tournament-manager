@@ -151,13 +151,25 @@ const CouponManager = () => {
 
     try {
       setSaving(true);
-      const payload = buildPayload();
+const adminPassword = window.prompt(
+  "Enter your admin password to confirm this coupon action:"
+);
 
-      if (editingId) {
-        await api.patch(`/admin/billing/coupons/${editingId}`, payload);
-      } else {
-        await api.post("/admin/billing/coupons", payload);
-      }
+if (!adminPassword || !adminPassword.trim()) {
+  alert("Admin password is required.");
+  return;
+}
+
+const payload = {
+  ...buildPayload(),
+  adminPassword: adminPassword.trim(),
+};
+
+if (editingId) {
+  await api.patch(`/admin/billing/coupons/${editingId}`, payload);
+} else {
+  await api.post("/admin/billing/coupons", payload);
+}
 
       resetForm();
       await loadCoupons();
@@ -198,7 +210,18 @@ const CouponManager = () => {
 
     try {
       setActionLoadingId(`${coupon._id}:disable`);
-      await api.patch(`/admin/billing/coupons/${coupon._id}/disable`);
+      const adminPassword = window.prompt(
+  "Enter your admin password to disable this coupon:"
+);
+
+if (!adminPassword || !adminPassword.trim()) {
+  alert("Admin password is required.");
+  return;
+}
+
+await api.patch(`/admin/billing/coupons/${coupon._id}/disable`, {
+  adminPassword: adminPassword.trim(),
+});
       await loadCoupons();
     } catch (err) {
       alert(err.response?.data?.message || err.message || "Failed to disable coupon");
@@ -223,9 +246,21 @@ const CouponManager = () => {
 
     try {
       setActionLoadingId(`${coupon._id}:delete`);
-      await api.delete(`/admin/billing/coupons/${coupon._id}`, {
-        data: { reason },
-      });
+     const adminPassword = window.prompt(
+  "Enter your admin password to delete this coupon:"
+);
+
+if (!adminPassword || !adminPassword.trim()) {
+  alert("Admin password is required.");
+  return;
+}
+
+await api.delete(`/admin/billing/coupons/${coupon._id}`, {
+  data: {
+    reason,
+    adminPassword: adminPassword.trim(),
+  },
+});
       await loadCoupons();
     } catch (err) {
       alert(err.response?.data?.message || err.message || "Failed to delete coupon");
