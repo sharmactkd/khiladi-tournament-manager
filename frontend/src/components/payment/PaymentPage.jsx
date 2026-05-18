@@ -10,9 +10,7 @@ import {
 import styles from "./PaymentPage.module.css";
 
 
-const [couponCode, setCouponCode] = useState("");
-const [couponMessage, setCouponMessage] = useState("");
-const [couponLoading, setCouponLoading] = useState(false);
+
 
 const plans = [
   {
@@ -70,6 +68,9 @@ const waitForPaymentFinalStatus = async ({
 };
 
 const PaymentPage = ({ tournamentId, onPaymentSuccess }) => {
+  const [couponCode, setCouponCode] = useState("");
+const [couponMessage, setCouponMessage] = useState("");
+const [couponLoading, setCouponLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState("single");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
