@@ -2295,6 +2295,78 @@ export const validateCoupon = async (req, res) => {
   });
 };
 
+export const listAvailableCouponsForUser = async (req, res) => {
+  try {
+    const { planType = "" } = req.query;
+    const settings = await PlatformSettings.getSettings();
+
+    if (!settings.couponSystemEnabled) {
+      return res.status(200).json({
+        success: true,
+        coupons: [],
+        message: "Coupon system is currently disabled",
+      });
+    }
+
+    const now = new Date();
+
+    const coupons = await Coupon.find({
+      active: true,
+      deletedAt: null,
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+      $expr: {
+        $or: [
+          { $eq: ["$maxUses", null] },
+          { $lt: ["$usedCount", "$maxUses"] },
+        ],
+      },
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const filteredCoupons = coupons.filter((coupon) => {
+      const allowedUsers = Array.isArray(coupon.allowedUsers)
+        ? coupon.allowedUsers
+        : [];
+
+      const userAllowed =
+        allowedUsers.length === 0 ||
+        allowedUsers.some((id) => String(id) === String(req.user._id));
+
+      const applicablePlans = Array.isArray(coupon.applicablePlans)
+        ? coupon.applicablePlans
+        : [];
+
+      const planAllowed =
+        !planType ||
+        applicablePlans.length === 0 ||
+        applicablePlans.includes(planType);
+
+      return userAllowed && planAllowed;
+    });
+
+    return res.json({
+      success: true,
+      coupons: filteredCoupons.map((coupon) => ({
+        _id: coupon._id,
+        code: coupon.code,
+        category: coupon.category || "discount_coupon",
+        type: coupon.type,
+        value: coupon.value || 0,
+        expiresAt: coupon.expiresAt || null,
+        applicablePlans: coupon.applicablePlans || [],
+        maxUses: coupon.maxUses || null,
+        usedCount: coupon.usedCount || 0,
+      })),
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load available coupons",
+    });
+  }
+};
+
 const applyCouponCore = async ({
   req,
   res,

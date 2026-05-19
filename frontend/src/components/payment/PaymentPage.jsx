@@ -1,16 +1,14 @@
-import React, { useMemo, useState } from "react";
-import { CheckCircle, ShieldCheck, Sparkles, Zap } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { CheckCircle, ShieldCheck, Sparkles } from "lucide-react";
 import {
   createPaymentOrder,
   verifyPayment,
   getPaymentStatus,
+  getAvailableCoupons,
   validateCoupon,
   applyCoupon,
 } from "../../api/paymentApi";
 import styles from "./PaymentPage.module.css";
-
-
-
 
 const plans = [
   {
@@ -19,7 +17,11 @@ const plans = [
     price: 1000,
     description: "Unlock all premium tools for this selected tournament.",
     accessText: "1 Tournament Access",
-    features: ["Entry + Tie Sheet", "Winner & Team Championship", "Official & Approval Tools"],
+    features: [
+      "Entry + Tie Sheet",
+      "Winner & Team Championship",
+      "Official & Approval Tools",
+    ],
   },
   {
     planType: "six_months",
@@ -55,9 +57,7 @@ const waitForPaymentFinalStatus = async ({
       feature,
     });
 
-    if (status?.final) {
-      return status;
-    }
+    if (status?.final) return status;
 
     await new Promise((resolve) => setTimeout(resolve, 1500));
   }
@@ -67,72 +67,152 @@ const waitForPaymentFinalStatus = async ({
   );
 };
 
+const calculateDiscountedPrice = (plan, coupon) => {
+  const originalPrice = Number(plan?.price || 0);
+
+  if (!plan || !coupon) {
+    return {
+      originalPrice,
+      discountAmount: 0,
+      finalPrice: originalPrice,
+    };
+  }
+
+  let discountAmount = 0;
+
+  if (coupon.type === "percentage") {
+    discountAmount = Math.round((originalPrice * Number(coupon.value || 0)) / 100);
+  } else if (coupon.type === "fixed") {
+    discountAmount = Number(coupon.value || 0);
+  } else if (coupon.type === "full_access") {
+    discountAmount = originalPrice;
+  }
+
+  discountAmount = Math.min(discountAmount, originalPrice);
+
+  return {
+    originalPrice,
+    discountAmount,
+    finalPrice: Math.max(originalPrice - discountAmount, 0),
+  };
+};
+
+const getCouponLabel = (coupon) => {
+  if (!coupon) return "";
+
+  if (coupon.type === "percentage") return `${coupon.value}% OFF`;
+  if (coupon.type === "fixed") return `₹${coupon.value} OFF`;
+  if (coupon.type === "full_access") return "FREE ACCESS";
+
+  return "COUPON";
+};
+
 const PaymentPage = ({ tournamentId, onPaymentSuccess }) => {
-  const [couponCode, setCouponCode] = useState("");
-const [couponMessage, setCouponMessage] = useState("");
-const [couponLoading, setCouponLoading] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState("single");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const [couponCode, setCouponCode] = useState("");
+  const [couponMessage, setCouponMessage] = useState("");
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
 
   const activePlan = useMemo(
     () => plans.find((p) => p.planType === selectedPlan) || plans[0],
     [selectedPlan]
   );
 
-  const handleApplyCoupon = async () => {
-  try {
-    const code = couponCode.trim().toUpperCase();
+  const priceBreakup = useMemo(
+    () => calculateDiscountedPrice(activePlan, appliedCoupon),
+    [activePlan, appliedCoupon]
+  );
 
-    if (!code) {
-      setCouponMessage("Please enter a coupon code.");
-      return;
-    }
+  useEffect(() => {
+    let cancelled = false;
 
-    setCouponLoading(true);
+    const loadCoupons = async () => {
+      try {
+        const res = await getAvailableCoupons({ planType: selectedPlan });
+
+        if (!cancelled) {
+          setAvailableCoupons(Array.isArray(res?.coupons) ? res.coupons : []);
+        }
+      } catch {
+        if (!cancelled) {
+          setAvailableCoupons([]);
+        }
+      }
+    };
+
+    loadCoupons();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedPlan]);
+
+  useEffect(() => {
+    setAppliedCoupon(null);
+    setCouponCode("");
     setCouponMessage("");
     setError("");
+  }, [selectedPlan]);
 
-    const validateRes = await validateCoupon({
-      code,
-      planType: selectedPlan,
-    });
+  const handleApplyCoupon = async (codeFromButton = "") => {
+    try {
+      const code = String(codeFromButton || couponCode || "").trim().toUpperCase();
 
-    if (!validateRes?.valid) {
-      setCouponMessage(validateRes?.message || "Invalid coupon.");
-      return;
+      if (!code) {
+        setCouponMessage("Please enter a coupon code.");
+        return;
+      }
+
+      setCouponLoading(true);
+      setCouponMessage("");
+      setError("");
+
+      const validateRes = await validateCoupon({
+        code,
+        planType: selectedPlan,
+      });
+
+      if (!validateRes?.valid) {
+        setAppliedCoupon(null);
+        setCouponMessage(validateRes?.message || "Invalid coupon.");
+        return;
+      }
+
+      setAppliedCoupon(validateRes.coupon);
+      setCouponCode(code);
+      setCouponMessage("Coupon applied. Discounted price updated.");
+    } catch (err) {
+      setAppliedCoupon(null);
+      setCouponMessage(
+        err?.response?.data?.message || err?.message || "Failed to apply coupon."
+      );
+    } finally {
+      setCouponLoading(false);
     }
+  };
 
-    const applyRes = await applyCoupon({
-      code,
-      planType: selectedPlan,
-      tournamentId,
-    });
-
-    if (!applyRes?.success) {
-      setCouponMessage(applyRes?.message || "Coupon could not be applied.");
-      return;
-    }
-
-    setCouponMessage("Coupon applied successfully. Premium access activated.");
-    onPaymentSuccess?.();
-  } catch (err) {
-    setCouponMessage(
-      err?.response?.data?.message ||
-        err?.message ||
-        "Failed to apply coupon."
-    );
-  } finally {
-    setCouponLoading(false);
-  }
-};
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponCode("");
+    setCouponMessage("");
+  };
 
   const startPayment = async () => {
     try {
       setLoading(true);
       setError("");
 
-      const orderRes = await createPaymentOrder({ planType: selectedPlan, tournamentId });
+      const orderRes = await createPaymentOrder({
+        planType: selectedPlan,
+        tournamentId,
+        couponCode: appliedCoupon?.code || "",
+      });
+
       const order = orderRes?.order || orderRes;
 
       if (!order?.id && !orderRes?.orderId) {
@@ -150,40 +230,37 @@ const [couponLoading, setCouponLoading] = useState(false);
         name: "KHILADI Tournament Manager",
         description: activePlan.title,
         order_id: order?.id || orderRes?.orderId,
-      handler: async (response) => {
-  try {
-    const verifyRes = await verifyPayment({
-      razorpay_order_id: response.razorpay_order_id,
-      razorpay_payment_id: response.razorpay_payment_id,
-      razorpay_signature: response.razorpay_signature,
-    });
+        handler: async (response) => {
+          try {
+            const verifyRes = await verifyPayment({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+            });
 
-    if (!verifyRes?.success) {
-      setError("Payment verification failed. Please contact support.");
-      return;
-    }
+            if (!verifyRes?.success) {
+              setError("Payment verification failed. Please contact support.");
+              return;
+            }
 
-    await waitForPaymentFinalStatus({
-      orderId: response.razorpay_order_id,
-      paymentId: response.razorpay_payment_id,
-      tournamentId,
-      feature:
-        selectedPlan === "single"
-          ? "tiesheet"
-          : "premium_unlimited",
-    });
+            await waitForPaymentFinalStatus({
+              orderId: response.razorpay_order_id,
+              paymentId: response.razorpay_payment_id,
+              tournamentId,
+              feature: selectedPlan === "single" ? "tiesheet" : "premium_unlimited",
+            });
 
-    onPaymentSuccess?.();
-  } catch (err) {
-    console.error("Payment verification failed:", err);
+            onPaymentSuccess?.();
+          } catch (err) {
+            console.error("Payment verification failed:", err);
 
-    setError(
-      err?.response?.data?.message ||
-        err?.message ||
-        "Payment verification failed."
-    );
-  }
-},
+            setError(
+              err?.response?.data?.message ||
+                err?.message ||
+                "Payment verification failed."
+            );
+          }
+        },
         modal: {
           ondismiss: () => setLoading(false),
         },
@@ -193,26 +270,64 @@ const [couponLoading, setCouponLoading] = useState(false);
       razorpay.open();
     } catch (err) {
       console.error("Payment start failed:", err);
-      setError(err?.response?.data?.message || err?.message || "Payment failed to start.");
+      setError(
+        err?.response?.data?.message || err?.message || "Payment failed to start."
+      );
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCheckout = async () => {
+    if (appliedCoupon && priceBreakup.finalPrice === 0) {
+      try {
+        setLoading(true);
+        setError("");
+
+        const applyRes = await applyCoupon({
+          code: appliedCoupon.code,
+          planType: selectedPlan,
+          tournamentId,
+        });
+
+        if (!applyRes?.success) {
+          setError(applyRes?.message || "Coupon could not be applied.");
+          return;
+        }
+
+        onPaymentSuccess?.();
+      } catch (err) {
+        setError(
+          err?.response?.data?.message ||
+            err?.message ||
+            "Failed to activate coupon access."
+        );
+      } finally {
+        setLoading(false);
+      }
+
+      return;
+    }
+
+    await startPayment();
   };
 
   return (
     <div className={styles.paymentOverlay}>
       <div className={styles.paymentCard}>
         <div className={styles.hero}>
-        <div className={styles.logoMark}>
-  <img src="/KHILADI.png" alt="Khiladi Logo" />
-</div>
+          <div className={styles.logoMark}>
+            <img src="/KHILADI.png" alt="Khiladi Logo" />
+          </div>
 
           <span className={styles.badge}>
             <Sparkles size={14} />
             Premium Access Required
           </span>
 
-          <h1>Unlock Full access to <br /> khiladi Tournament Management</h1>
+          <h1>
+            Unlock Full access to <br /> khiladi Tournament Management
+          </h1>
 
           <p>
             Manage entries, tie sheets, winners, officials, approvals and team
@@ -220,8 +335,12 @@ const [couponLoading, setCouponLoading] = useState(false);
           </p>
 
           <div className={styles.trustRow}>
-            <span><ShieldCheck size={16} /> Secure Razorpay Payment</span>
-            <span><CheckCircle size={16} /> Instant Access Activation</span>
+            <span>
+              <ShieldCheck size={16} /> Secure Razorpay Payment
+            </span>
+            <span>
+              <CheckCircle size={16} /> Instant Access Activation
+            </span>
           </div>
         </div>
 
@@ -244,7 +363,8 @@ const [couponLoading, setCouponLoading] = useState(false);
                 </div>
 
                 <div className={styles.price}>
-                  <span>₹</span>{plan.price}
+                  <span>₹</span>
+                  {plan.price}
                 </div>
 
                 <p>{plan.description}</p>
@@ -265,47 +385,112 @@ const [couponLoading, setCouponLoading] = useState(false);
         </div>
 
         <div className={styles.couponBox}>
-  <div>
-    <label>Have a coupon?</label>
-    <p>Apply a valid coupon code to unlock access without payment.</p>
-  </div>
+          <div className={styles.couponHeader}>
+            <div>
+              <label>Available Coupons</label>
+              <p>Select a coupon or enter coupon code manually.</p>
+            </div>
 
-  <div className={styles.couponInputRow}>
-    <input
-      type="text"
-      value={couponCode}
-      onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
-      placeholder="ENTER COUPON CODE"
-      disabled={couponLoading}
-    />
+            {appliedCoupon && (
+              <button
+                type="button"
+                className={styles.removeCouponBtn}
+                onClick={removeCoupon}
+              >
+                Remove
+              </button>
+            )}
+          </div>
 
-    <button
-      type="button"
-      onClick={handleApplyCoupon}
-      disabled={couponLoading}
-    >
-      {couponLoading ? "Applying..." : "Apply Coupon"}
-    </button>
-  </div>
+          {availableCoupons.length > 0 && (
+            <div className={styles.availableCoupons}>
+              {availableCoupons.map((coupon) => (
+                <button
+                  key={coupon._id || coupon.code}
+                  type="button"
+                  className={`${styles.couponChip} ${
+                    appliedCoupon?.code === coupon.code ? styles.activeCouponChip : ""
+                  }`}
+                  onClick={() => handleApplyCoupon(coupon.code)}
+                  disabled={couponLoading}
+                >
+                  <strong>{coupon.code}</strong>
+                  <span>{getCouponLabel(coupon)}</span>
+                </button>
+              ))}
+            </div>
+          )}
 
-  {couponMessage && <div className={styles.couponMessage}>{couponMessage}</div>}
-</div>
+          {availableCoupons.length === 0 && (
+            <div className={styles.couponMessage}>
+              No coupons available for this plan.
+            </div>
+          )}
+
+          <div className={styles.couponInputRow}>
+            <input
+              type="text"
+              value={couponCode}
+              onChange={(e) => setCouponCode(e.target.value.toUpperCase())}
+              placeholder="ENTER COUPON CODE"
+              disabled={couponLoading}
+            />
+
+            <button
+              type="button"
+              onClick={() => handleApplyCoupon()}
+              disabled={couponLoading}
+            >
+              {couponLoading ? "Applying..." : "Apply"}
+            </button>
+          </div>
+
+          {appliedCoupon && (
+            <div className={styles.discountBox}>
+              <span>Coupon Applied: {appliedCoupon.code}</span>
+              <strong>
+                ₹{priceBreakup.originalPrice} - ₹{priceBreakup.discountAmount} = ₹
+                {priceBreakup.finalPrice}
+              </strong>
+            </div>
+          )}
+
+          {couponMessage && (
+            <div className={styles.couponMessage}>{couponMessage}</div>
+          )}
+        </div>
 
         {error && <div className={styles.error}>{error}</div>}
 
         <div className={styles.checkoutBar}>
           <div>
             <span>Selected Plan</span>
-            <strong>{activePlan.title} — ₹{activePlan.price}</strong>
+            <strong>
+              {activePlan.title} —{" "}
+              {appliedCoupon ? (
+                <>
+                  <span style={{ textDecoration: "line-through", opacity: 0.65 }}>
+                    ₹{priceBreakup.originalPrice}
+                  </span>{" "}
+                  ₹{priceBreakup.finalPrice}
+                </>
+              ) : (
+                <>₹{activePlan.price}</>
+              )}
+            </strong>
           </div>
 
           <button
             type="button"
             className={styles.payButton}
-            onClick={startPayment}
+            onClick={handleCheckout}
             disabled={loading}
           >
-            {loading ? "Processing..." : "Continue to Payment"}
+            {loading
+              ? "Processing..."
+              : appliedCoupon && priceBreakup.finalPrice === 0
+                ? "Activate Free Access"
+                : "Continue to Payment"}
           </button>
         </div>
 

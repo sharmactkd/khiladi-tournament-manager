@@ -14,6 +14,8 @@ import User from "../models/user.js";
 import PlatformSettings from "../models/platformSettings.js";
 import processPaidPayment from "../services/paymentProcessingService.js";
 import PaymentTransaction from "../models/paymentTransaction.js";
+import Coupon from "../models/coupon.js";
+import CouponRedemption from "../models/couponRedemption.js";
 
 
 const getUserId = (req) => req.user?._id || req.user?.id || req.user?.userId;
@@ -60,6 +62,7 @@ export const createPaymentOrder = async (req, res) => {
   try {
     userId = getUserId(req);
     ({ planType, tournamentId } = req.body || {});
+const couponCode = String(req.body?.couponCode || "").trim().toUpperCase();
 
     if (!userId) {
       return res.status(401).json({ success: false, message: "Unauthorized user" });
@@ -122,9 +125,104 @@ export const createPaymentOrder = async (req, res) => {
       }
     }
 
-    const amountInRupees = Number(selectedPlan.amount || 0);
-    const amountInPaise = amountInRupees * 100;
-    const currency = selectedPlan.currency || settings.defaultCurrency || "INR";
+  const originalAmountInRupees = Number(selectedPlan.amount || 0);
+let discountAmountInRupees = 0;
+let appliedCouponSnapshot = null;
+
+if (couponCode) {
+  const coupon = await Coupon.findOne({
+    code: couponCode,
+    active: true,
+    deletedAt: null,
+  });
+
+  if (!coupon) {
+    return res.status(404).json({
+      success: false,
+      message: "Invalid coupon",
+    });
+  }
+
+  if (coupon.isExpired()) {
+    return res.status(400).json({
+      success: false,
+      message: "Coupon has expired",
+    });
+  }
+
+  if (!coupon.hasRemainingUses()) {
+    return res.status(400).json({
+      success: false,
+      message: "Coupon usage limit reached",
+    });
+  }
+
+  const existingRedemption = await CouponRedemption.findOne({
+  couponId: coupon._id,
+  userId,
+}).lean();
+
+if (existingRedemption) {
+  return res.status(409).json({
+    success: false,
+    message: "You have already used this coupon",
+  });
+}
+
+  if (!coupon.isUserAllowed(userId)) {
+    return res.status(403).json({
+      success: false,
+      message: "This coupon is not available for your account",
+    });
+  }
+
+  if (!coupon.isPlanAllowed(planType)) {
+    return res.status(400).json({
+      success: false,
+      message: "This coupon is not applicable for selected plan",
+    });
+  }
+
+  if (coupon.type === "percentage") {
+    discountAmountInRupees = Math.round(
+      (originalAmountInRupees * Number(coupon.value || 0)) / 100
+    );
+  } else if (coupon.type === "fixed") {
+    discountAmountInRupees = Number(coupon.value || 0);
+  } else if (coupon.type === "full_access") {
+    discountAmountInRupees = originalAmountInRupees;
+  }
+
+  discountAmountInRupees = Math.min(
+    Math.max(discountAmountInRupees, 0),
+    originalAmountInRupees
+  );
+
+  appliedCouponSnapshot = {
+    couponId: coupon._id,
+    code: coupon.code,
+    category: coupon.category || "discount_coupon",
+    type: coupon.type,
+    value: coupon.value || 0,
+    discountAmount: discountAmountInRupees,
+  };
+}
+
+const amountInRupees = Math.max(
+  originalAmountInRupees - discountAmountInRupees,
+  0
+);
+
+if (amountInRupees <= 0) {
+  return res.status(400).json({
+    success: false,
+    message:
+      "This coupon makes the plan free. Please use coupon activation instead of Razorpay payment.",
+  });
+}
+
+const amountInPaise = amountInRupees * 100;
+const currency = selectedPlan.currency || settings.defaultCurrency || "INR";
 
     const planSnapshot = buildPlanSnapshot({
       planType,
@@ -134,17 +232,26 @@ export const createPaymentOrder = async (req, res) => {
       currency,
     });
 
+    planSnapshot.originalAmount = originalAmountInRupees;
+planSnapshot.discountAmount = discountAmountInRupees;
+planSnapshot.finalAmount = amountInRupees;
+planSnapshot.coupon = appliedCouponSnapshot;
+
     const razorpay = getRazorpayInstance();
 
     const order = await razorpay.orders.create({
       amount: amountInPaise,
       currency,
       receipt: `khiladi_${Date.now()}`,
-      notes: {
-        userId: String(userId),
-        planType,
-        tournamentId: planType === "single" ? String(tournamentId) : "",
-      },
+     notes: {
+  userId: String(userId),
+  planType,
+  tournamentId: planType === "single" ? String(tournamentId) : "",
+  couponCode: appliedCouponSnapshot?.code || "",
+  originalAmount: String(originalAmountInRupees),
+  discountAmount: String(discountAmountInRupees),
+  finalAmount: String(amountInRupees),
+},
     });
 
    const payment = await Payment.create({
@@ -153,6 +260,7 @@ export const createPaymentOrder = async (req, res) => {
   planType,
   planSnapshot,
   amount: amountInRupees,
+couponUsed: appliedCouponSnapshot?.code || "",
   currency,
   razorpayOrderId: order.id,
   status: "created",
@@ -178,10 +286,14 @@ export const createPaymentOrder = async (req, res) => {
       planType,
       planSnapshot,
       status: "created",
-      metadata: {
-        legacyPaymentId: payment._id,
-        tournamentId: planType === "single" ? tournamentId : null,
-      },
+    metadata: {
+  legacyPaymentId: payment._id,
+  tournamentId: planType === "single" ? tournamentId : null,
+  coupon: appliedCouponSnapshot,
+  originalAmount: originalAmountInRupees,
+  discountAmount: discountAmountInRupees,
+  finalAmount: amountInRupees,
+},
     });
 
     logger.info("Payment order created", {
@@ -202,14 +314,18 @@ export const createPaymentOrder = async (req, res) => {
         currency: order.currency,
       },
       paymentId: payment._id,
-      plan: {
-        planType,
-        amount: amountInRupees,
-        accessType: selectedPlan.accessType,
-        durationDays: selectedPlan.durationDays,
-        features: selectedPlan.features || [],
-        version: planSnapshot.version,
-      },
+     plan: {
+  planType,
+  originalAmount: originalAmountInRupees,
+  discountAmount: discountAmountInRupees,
+  amount: amountInRupees,
+  finalAmount: amountInRupees,
+  coupon: appliedCouponSnapshot,
+  accessType: selectedPlan.accessType,
+  durationDays: selectedPlan.durationDays,
+  features: selectedPlan.features || [],
+  version: planSnapshot.version,
+},
     });
   } catch (error) {
     logger.error("Create payment order failed", {
@@ -554,6 +670,94 @@ export const getPaymentStatus = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: "Failed to get payment status",
+    });
+  }
+};
+
+export const listAvailableCouponsForUser = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+    const { planType = "" } = req.query;
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized user",
+      });
+    }
+
+    const settings = await PlatformSettings.getSettings();
+
+    if (!settings.couponSystemEnabled) {
+      return res.status(200).json({
+        success: true,
+        coupons: [],
+      });
+    }
+
+    const now = new Date();
+
+    const coupons = await Coupon.find({
+      active: true,
+      deletedAt: null,
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const availableCoupons = [];
+
+    for (const coupon of coupons) {
+      if (coupon.maxUses && coupon.usedCount >= coupon.maxUses) {
+        continue;
+      }
+
+      const applicablePlans = Array.isArray(coupon.applicablePlans)
+        ? coupon.applicablePlans
+        : [];
+
+      const planAllowed =
+        !planType ||
+        applicablePlans.length === 0 ||
+        applicablePlans.includes(planType);
+
+      if (!planAllowed) {
+        continue;
+      }
+
+      const alreadyUsed = await CouponRedemption.findOne({
+        couponId: coupon._id,
+        userId,
+      }).lean();
+
+      if (alreadyUsed) {
+        continue;
+      }
+
+      availableCoupons.push({
+        _id: coupon._id,
+        code: coupon.code,
+        category: coupon.category || "discount_coupon",
+        type: coupon.type,
+        value: coupon.value || 0,
+        applicablePlans: coupon.applicablePlans || [],
+        expiresAt: coupon.expiresAt || null,
+      });
+    }
+
+    return res.json({
+      success: true,
+      coupons: availableCoupons,
+    });
+  } catch (error) {
+    logger.error("List available coupons failed", {
+      error: error.message,
+      stack: error.stack,
+    });
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to load coupons",
     });
   }
 };

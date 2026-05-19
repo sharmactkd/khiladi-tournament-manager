@@ -5,6 +5,7 @@ import {
   verifyPayment,
   getMyAccessStatus,
   getPaymentStatus,
+   listAvailableCouponsForUser,
 } from "../controllers/paymentController.js";
 import {
   validateCoupon,
@@ -50,6 +51,12 @@ router.post(
   sensitiveRateLimiter,
   validateCouponValidate,
   applyCoupon
+);
+
+router.get(
+  "/coupons/available",
+  authMiddleware,
+  listAvailableCouponsForUser
 );
 
 export default router;
