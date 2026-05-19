@@ -1,3 +1,4 @@
+// backend/middleware/billingValidation.js
 import mongoose from "mongoose";
 import { body, param, query, validationResult } from "express-validator";
 
@@ -7,6 +8,17 @@ const couponCategories = [
   "free_tournament_coupon",
   "academy_coupon",
   "full_access_coupon",
+];
+
+const couponTypes = ["percentage", "fixed", "full_access"];
+
+const couponPlanTypes = [
+  "single",
+  "six_months",
+  "one_year",
+  "monthly",
+  "yearly",
+  "lifetime",
 ];
 
 export const handleBillingValidation = (req, res, next) => {
@@ -26,52 +38,153 @@ export const handleBillingValidation = (req, res, next) => {
   next();
 };
 
+const optionalNullableInt = (field) =>
+  body(field)
+    .optional({ nullable: true, checkFalsy: true })
+    .isInt({ min: 1 })
+    .withMessage(`${field} must be a number greater than 0`);
+
+const optionalNullableIsoDate = (field) =>
+  body(field)
+    .optional({ nullable: true, checkFalsy: true })
+    .isISO8601()
+    .withMessage(`${field} must be a valid date`);
+
+const validateApplicablePlans = body("applicablePlans")
+  .optional()
+  .isArray()
+  .withMessage("applicablePlans must be an array")
+  .custom((plans = []) => {
+    const invalidPlan = plans.find(
+      (plan) => !couponPlanTypes.includes(String(plan || "").trim())
+    );
+
+    if (invalidPlan) {
+      throw new Error(`Invalid applicable plan: ${invalidPlan}`);
+    }
+
+    return true;
+  });
+
+const validateAllowedUsers = body("allowedUsers")
+  .optional()
+  .isArray()
+  .withMessage("allowedUsers must be an array")
+  .custom((users = []) => {
+    const invalidUser = users.find(
+      (userId) => !mongoose.Types.ObjectId.isValid(String(userId))
+    );
+
+    if (invalidUser) {
+      throw new Error(`Invalid allowed user id: ${invalidUser}`);
+    }
+
+    return true;
+  });
+
 export const validatePlatformSettingsUpdate = [
   body("paymentsEnabled").optional().isBoolean(),
   body("maintenanceFreeAccess").optional().isBoolean(),
   body("registrationEnabled").optional().isBoolean(),
   body("couponSystemEnabled").optional().isBoolean(),
   body("trialEnabled").optional().isBoolean(),
-  body("defaultCurrency").optional().isString().trim().isLength({ min: 3, max: 5 }),
+  body("defaultCurrency")
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 3, max: 5 }),
   body("defaultTrialDays").optional().isInt({ min: 1, max: 365 }),
   body("defaultMonthlyPrice").optional().isFloat({ min: 0 }),
   body("defaultYearlyPrice").optional().isFloat({ min: 0 }),
   body("defaultLifetimePrice").optional().isFloat({ min: 0 }),
+
+  body("plans.single.enabled").optional().isBoolean(),
+  body("plans.single.price").optional().isFloat({ min: 0 }),
+  body("plans.single.durationDays").optional({ nullable: true }).isInt({ min: 1, max: 3660 }),
+  body("plans.single.currency").optional().isString().trim().isLength({ min: 3, max: 5 }),
+  body("plans.single.accessType").optional().isIn(["tournament", "unlimited"]),
+
+  body("plans.six_months.enabled").optional().isBoolean(),
+  body("plans.six_months.price").optional().isFloat({ min: 0 }),
+  body("plans.six_months.durationDays").optional({ nullable: true }).isInt({ min: 1, max: 3660 }),
+  body("plans.six_months.currency").optional().isString().trim().isLength({ min: 3, max: 5 }),
+  body("plans.six_months.accessType").optional().isIn(["tournament", "unlimited"]),
+
+  body("plans.one_year.enabled").optional().isBoolean(),
+  body("plans.one_year.price").optional().isFloat({ min: 0 }),
+  body("plans.one_year.durationDays").optional({ nullable: true }).isInt({ min: 1, max: 3660 }),
+  body("plans.one_year.currency").optional().isString().trim().isLength({ min: 3, max: 5 }),
+  body("plans.one_year.accessType").optional().isIn(["tournament", "unlimited"]),
+
   body("plans.monthly.enabled").optional().isBoolean(),
   body("plans.monthly.price").optional().isFloat({ min: 0 }),
   body("plans.monthly.durationDays").optional().isInt({ min: 1, max: 3660 }),
+
   body("plans.yearly.enabled").optional().isBoolean(),
   body("plans.yearly.price").optional().isFloat({ min: 0 }),
   body("plans.yearly.durationDays").optional().isInt({ min: 1, max: 3660 }),
+
   body("plans.lifetime.enabled").optional().isBoolean(),
   body("plans.lifetime.price").optional().isFloat({ min: 0 }),
+
   handleBillingValidation,
 ];
 
 export const validateCouponCreate = [
-  body("code").isString().trim().isLength({ min: 3, max: 40 }),
-  body("type").isIn(["percentage", "fixed", "full_access"]),
-  body("category").optional().isIn(couponCategories),
-  body("value").optional().isFloat({ min: 0 }),
+  body("code")
+    .isString()
+    .trim()
+    .isLength({ min: 3, max: 50 })
+    .withMessage("Coupon code must be 3-50 characters"),
+  body("type").isIn(couponTypes).withMessage("Invalid coupon type"),
+  body("category").optional().isIn(couponCategories).withMessage("Invalid coupon category"),
+  body("value").optional().isFloat({ min: 0 }).withMessage("Coupon value cannot be negative"),
   body("active").optional().isBoolean(),
-  body("maxUses").optional({ nullable: true }).isInt({ min: 1 }),
-  body("expiresAt").optional({ nullable: true }).isISO8601(),
-  body("applicablePlans").optional().isArray(),
-  body("allowedUsers").optional().isArray(),
+  optionalNullableInt("maxUses"),
+  optionalNullableIsoDate("expiresAt"),
+  validateApplicablePlans,
+  validateAllowedUsers,
+  body("singleUsePerUser").optional().isBoolean(),
+  body().custom((payload) => {
+    const type = String(payload.type || "").trim();
+    const value = Number(payload.value || 0);
+
+    if (type === "percentage" && value > 100) {
+      throw new Error("Percentage coupon value cannot be more than 100");
+    }
+
+    return true;
+  }),
   handleBillingValidation,
 ];
 
 export const validateCouponUpdate = [
   param("couponId").isMongoId(),
-  body("code").optional().isString().trim().isLength({ min: 3, max: 40 }),
-  body("type").optional().isIn(["percentage", "fixed", "full_access"]),
-  body("category").optional().isIn(couponCategories),
-  body("value").optional().isFloat({ min: 0 }),
+  body("code")
+    .optional()
+    .isString()
+    .trim()
+    .isLength({ min: 3, max: 50 })
+    .withMessage("Coupon code must be 3-50 characters"),
+  body("type").optional().isIn(couponTypes).withMessage("Invalid coupon type"),
+  body("category").optional().isIn(couponCategories).withMessage("Invalid coupon category"),
+  body("value").optional().isFloat({ min: 0 }).withMessage("Coupon value cannot be negative"),
   body("active").optional().isBoolean(),
-  body("maxUses").optional({ nullable: true }).isInt({ min: 1 }),
-  body("expiresAt").optional({ nullable: true }).isISO8601(),
-  body("applicablePlans").optional().isArray(),
-  body("allowedUsers").optional().isArray(),
+  optionalNullableInt("maxUses"),
+  optionalNullableIsoDate("expiresAt"),
+  validateApplicablePlans,
+  validateAllowedUsers,
+  body("singleUsePerUser").optional().isBoolean(),
+  body().custom((payload) => {
+    const type = String(payload.type || "").trim();
+    const value = Number(payload.value || 0);
+
+    if (type === "percentage" && value > 100) {
+      throw new Error("Percentage coupon value cannot be more than 100");
+    }
+
+    return true;
+  }),
   handleBillingValidation,
 ];
 
@@ -81,8 +194,28 @@ export const validateCouponParam = [
 ];
 
 export const validateCouponValidate = [
-  body("code").isString().trim().isLength({ min: 3, max: 40 }),
-  body("planType").optional().isString().trim(),
+  body("code")
+    .isString()
+    .trim()
+    .isLength({ min: 3, max: 50 })
+    .withMessage("Coupon code must be 3-50 characters"),
+  body("planType")
+    .optional()
+    .isString()
+    .trim()
+    .custom((planType) => {
+      if (!planType) return true;
+
+      if (!couponPlanTypes.includes(String(planType).trim())) {
+        throw new Error("Invalid planType");
+      }
+
+      return true;
+    }),
+  body("tournamentId")
+    .optional({ nullable: true, checkFalsy: true })
+    .isMongoId()
+    .withMessage("Invalid tournamentId"),
   handleBillingValidation,
 ];
 
@@ -192,6 +325,25 @@ export const validateAccessAction = (req, res, next) => {
     return res.status(400).json({
       success: false,
       message: "planType must be a string",
+    });
+  }
+
+  if (
+    planType &&
+    ![
+      "single",
+      "six_months",
+      "one_year",
+      "monthly",
+      "yearly",
+      "lifetime",
+      "admin_override",
+      "trial",
+    ].includes(String(planType).trim())
+  ) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid planType",
     });
   }
 

@@ -1,3 +1,4 @@
+// backend/models/couponRedemption.js
 import mongoose from "mongoose";
 
 const couponRedemptionSchema = new mongoose.Schema(
@@ -31,6 +32,13 @@ const couponRedemptionSchema = new mongoose.Schema(
       index: true,
     },
 
+    tournamentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Tournament",
+      default: null,
+      index: true,
+    },
+
     category: {
       type: String,
       default: "",
@@ -51,16 +59,49 @@ const couponRedemptionSchema = new mongoose.Schema(
       min: 0,
     },
 
+    originalAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    discountAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    finalAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    source: {
+      type: String,
+      enum: ["payment", "free_coupon", "admin_coupon"],
+      default: "payment",
+      index: true,
+    },
+
+    paymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment",
+      default: null,
+    },
+
     entitlementId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "AccessEntitlement",
       default: null,
+      index: true,
     },
 
     transactionId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "PaymentTransaction",
       default: null,
+      index: true,
     },
 
     invoiceId: {
@@ -82,17 +123,27 @@ couponRedemptionSchema.index(
   {
     couponId: 1,
     userId: 1,
-    planType: 1,
-    tournamentId: 1,
   },
-  { unique: true }
+  {
+    unique: true,
+    partialFilterExpression: {
+      source: { $in: ["payment", "free_coupon", "admin_coupon"] },
+    },
+  }
+);
+
+couponRedemptionSchema.index(
+  { paymentId: 1 },
+  {
+    unique: true,
+    sparse: true,
+  }
 );
 
 couponRedemptionSchema.index({ userId: 1, createdAt: -1 });
 couponRedemptionSchema.index({ couponId: 1, createdAt: -1 });
 couponRedemptionSchema.index({ code: 1, createdAt: -1 });
-couponRedemptionSchema.index({ entitlementId: 1 });
-
+couponRedemptionSchema.index({ planType: 1, tournamentId: 1 });
 
 const CouponRedemption = mongoose.model(
   "CouponRedemption",

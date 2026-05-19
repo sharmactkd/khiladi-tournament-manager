@@ -1,3 +1,4 @@
+// backend/routes/paymentRoutes.js
 import express from "express";
 import authMiddleware from "../middleware/authMiddleware.js";
 import {
@@ -5,12 +6,10 @@ import {
   verifyPayment,
   getMyAccessStatus,
   getPaymentStatus,
-   listAvailableCouponsForUser,
-} from "../controllers/paymentController.js";
-import {
+  listAvailableCouponsForUser,
   validateCoupon,
   applyCoupon,
-} from "../controllers/billingController.js";
+} from "../controllers/paymentController.js";
 import { requireCsrfToken } from "../middleware/csrfProtection.js";
 import { sensitiveRateLimiter } from "../middleware/rateLimiter.js";
 import { validateCouponValidate } from "../middleware/billingValidation.js";
@@ -36,6 +35,12 @@ router.post(
 router.get("/access-status", authMiddleware, getMyAccessStatus);
 router.get("/status", authMiddleware, getPaymentStatus);
 
+router.get(
+  "/coupons/available",
+  authMiddleware,
+  listAvailableCouponsForUser
+);
+
 router.post(
   "/coupon/validate",
   authMiddleware,
@@ -51,12 +56,6 @@ router.post(
   sensitiveRateLimiter,
   validateCouponValidate,
   applyCoupon
-);
-
-router.get(
-  "/coupons/available",
-  authMiddleware,
-  listAvailableCouponsForUser
 );
 
 export default router;

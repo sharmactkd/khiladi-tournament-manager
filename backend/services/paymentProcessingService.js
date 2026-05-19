@@ -1,13 +1,13 @@
+// backend/services/paymentProcessingService.js
 import mongoose from "mongoose";
 import Payment from "../models/payment.js";
 import PaymentTransaction from "../models/paymentTransaction.js";
 import User from "../models/user.js";
-import Coupon from "../models/coupon.js";
-import CouponRedemption from "../models/couponRedemption.js";
 import logger from "../utils/logger.js";
 import { getPaymentAccessFields } from "./subscriptionService.js";
 import { createAccessEntitlement } from "./accessEntitlementService.js";
 import { createBillingEvent } from "./billingEventService.js";
+import { redeemCouponAtomically } from "./couponService.js";
 
 const normalizeString = (value) => String(value || "").trim();
 
@@ -58,7 +58,9 @@ const getEntitlementAccessType = (payment) => {
 };
 
 const getAppliedCouponSnapshot = (payment) => {
-  const coupon = payment?.planSnapshot?.coupon;
+  const directCoupon = payment?.couponSnapshot;
+  const legacyCoupon = payment?.planSnapshot?.coupon;
+  const coupon = directCoupon?.code ? directCoupon : legacyCoupon;
 
   if (!coupon || !coupon.code) return null;
 
@@ -68,115 +70,10 @@ const getAppliedCouponSnapshot = (payment) => {
     category: coupon.category || "discount_coupon",
     type: coupon.type || "",
     value: Number(coupon.value || 0),
-    discountAmount: Number(coupon.discountAmount || 0),
+    originalAmount: Number(coupon.originalAmount || payment.originalAmount || 0),
+    discountAmount: Number(coupon.discountAmount || payment.discountAmount || 0),
+    finalAmount: Number(coupon.finalAmount || payment.finalAmount || payment.amount || 0),
   };
-};
-
-const redeemPaidDiscountCoupon = async ({
-  payment,
-  entitlement,
-  transaction,
-  session,
-}) => {
-  const couponSnapshot = getAppliedCouponSnapshot(payment);
-
-  if (!couponSnapshot?.code || !couponSnapshot?.couponId) {
-    return null;
-  }
-
-  const existingRedemption = await CouponRedemption.findOne({
-    couponId: couponSnapshot.couponId,
-    userId: payment.userId,
-  }).session(session);
-
-  if (existingRedemption) {
-    return existingRedemption;
-  }
-
-  const now = new Date();
-
-  const updatedCoupon = await Coupon.findOneAndUpdate(
-    {
-      _id: couponSnapshot.couponId,
-      code: couponSnapshot.code,
-      active: true,
-      deletedAt: null,
-      $or: [{ expiresAt: null }, { expiresAt: { $gt: now } }],
-      $expr: {
-        $or: [
-          { $eq: ["$maxUses", null] },
-          { $lt: ["$usedCount", "$maxUses"] },
-        ],
-      },
-    },
-    {
-      $inc: { usedCount: 1 },
-    },
-    {
-      new: true,
-      runValidators: true,
-      session,
-    }
-  );
-
-  if (!updatedCoupon) {
-    const error = new Error(
-      "Coupon became invalid, expired, inactive, or usage limit reached before payment processing"
-    );
-    error.statusCode = 409;
-    throw error;
-  }
-
-  const redemption = await CouponRedemption.create(
-    [
-      {
-        couponId: updatedCoupon._id,
-        userId: payment.userId,
-        code: updatedCoupon.code,
-        planType: payment.planType,
-        category: updatedCoupon.category || "discount_coupon",
-        couponType: updatedCoupon.type,
-        couponValue: updatedCoupon.value,
-        entitlementId: entitlement?._id || null,
-        transactionId: transaction?._id || null,
-        invoiceId: null,
-        metadata: {
-          tournamentId: payment.tournamentId || null,
-          paymentId: payment._id,
-          razorpayOrderId: payment.razorpayOrderId,
-          razorpayPaymentId: payment.razorpayPaymentId,
-          discountAmount: couponSnapshot.discountAmount,
-          originalAmount: payment.planSnapshot?.originalAmount || null,
-          finalAmount: payment.planSnapshot?.finalAmount || payment.amount,
-          accessStartsAt: payment.accessStartsAt || null,
-          accessExpiresAt: payment.accessExpiresAt || null,
-          appliedByAdmin: false,
-          appliedBy: payment.userId,
-        },
-      },
-    ],
-    { session }
-  );
-
-  await createBillingEvent({
-    eventType: "coupon.redeemed_after_paid_payment",
-    aggregateType: "coupon",
-    aggregateId: updatedCoupon._id,
-    userId: payment.userId,
-    idempotencyKey: `coupon.paid_redeemed:${updatedCoupon._id}:${payment._id}`,
-    payload: {
-      couponId: updatedCoupon._id,
-      code: updatedCoupon.code,
-      planType: payment.planType,
-      paymentId: payment._id,
-      transactionId: transaction?._id || null,
-      entitlementId: entitlement?._id || null,
-      discountAmount: couponSnapshot.discountAmount,
-    },
-    session,
-  });
-
-  return redemption[0];
 };
 
 export const processPaidPayment = async ({
@@ -283,6 +180,8 @@ export const processPaidPayment = async ({
         return;
       }
 
+      const couponSnapshot = getAppliedCouponSnapshot(payment);
+
       const entitlement = await createAccessEntitlement({
         userId: payment.userId,
         scope: getEntitlementScope(payment),
@@ -299,7 +198,10 @@ export const processPaidPayment = async ({
           razorpayPaymentId: safePaymentId,
           verifiedBy: safeVerifiedBy,
           planSnapshot: payment.planSnapshot,
-          coupon: getAppliedCouponSnapshot(payment),
+          coupon: couponSnapshot,
+          originalAmount: payment.originalAmount,
+          discountAmount: payment.discountAmount,
+          finalAmount: payment.finalAmount,
         },
         session,
       });
@@ -316,10 +218,13 @@ export const processPaidPayment = async ({
           razorpayPaymentId: safePaymentId,
           planType: payment.planType,
           amount: payment.amount,
+          originalAmount: payment.originalAmount,
+          discountAmount: payment.discountAmount,
+          finalAmount: payment.finalAmount,
           currency: payment.currency,
           entitlementId: entitlement?._id || null,
           verifiedBy: safeVerifiedBy,
-          coupon: getAppliedCouponSnapshot(payment),
+          coupon: couponSnapshot,
         },
         session,
       });
@@ -338,14 +243,23 @@ export const processPaidPayment = async ({
           $set: {
             status: "paid",
             paymentId: safePaymentId,
+            amount: payment.finalAmount ?? payment.amount,
+            originalAmount: payment.originalAmount,
+            discountAmount: payment.discountAmount,
+            finalAmount: payment.finalAmount,
             planSnapshot: payment.planSnapshot || null,
+            couponSnapshot,
+            couponUsed: couponSnapshot?.code || "",
             "metadata.legacyPaymentId": payment._id,
             "metadata.entitlementId": entitlement._id,
             "metadata.verifiedBy": safeVerifiedBy,
             "metadata.accessStartsAt": payment.accessStartsAt,
             "metadata.accessExpiresAt": payment.accessExpiresAt,
             "metadata.processedAt": new Date(),
-            "metadata.coupon": getAppliedCouponSnapshot(payment),
+            "metadata.coupon": couponSnapshot,
+            "metadata.originalAmount": payment.originalAmount,
+            "metadata.discountAmount": payment.discountAmount,
+            "metadata.finalAmount": payment.finalAmount,
           },
         },
         {
@@ -354,19 +268,55 @@ export const processPaidPayment = async ({
         }
       );
 
-      const couponRedemption = await redeemPaidDiscountCoupon({
-        payment,
-        entitlement,
-        transaction,
-        session,
-      });
+      let couponRedemption = null;
 
-      if (couponRedemption) {
+      if (couponSnapshot?.code && couponSnapshot?.couponId) {
+        couponRedemption = await redeemCouponAtomically({
+          couponSnapshot,
+          userId: payment.userId,
+          planType: payment.planType,
+          tournamentId: payment.tournamentId || null,
+          paymentId: payment._id,
+          transactionId: transaction?._id || null,
+          entitlementId: entitlement?._id || null,
+          source: "payment",
+          metadata: {
+            paymentId: payment._id,
+            razorpayOrderId: payment.razorpayOrderId,
+            razorpayPaymentId: safePaymentId,
+            verifiedBy: safeVerifiedBy,
+            accessStartsAt: payment.accessStartsAt || null,
+            accessExpiresAt: payment.accessExpiresAt || null,
+          },
+          session,
+        });
+
+        await createBillingEvent({
+          eventType: "coupon.redeemed_after_paid_payment",
+          aggregateType: "coupon",
+          aggregateId: couponSnapshot.couponId,
+          userId: payment.userId,
+          idempotencyKey: `coupon.paid_redeemed:${couponSnapshot.couponId}:${payment._id}`,
+          payload: {
+            couponId: couponSnapshot.couponId,
+            code: couponSnapshot.code,
+            planType: payment.planType,
+            paymentId: payment._id,
+            transactionId: transaction?._id || null,
+            entitlementId: entitlement?._id || null,
+            redemptionId: couponRedemption?._id || null,
+            originalAmount: couponSnapshot.originalAmount,
+            discountAmount: couponSnapshot.discountAmount,
+            finalAmount: couponSnapshot.finalAmount,
+          },
+          session,
+        });
+
         await PaymentTransaction.findOneAndUpdate(
           { orderId: safeOrderId },
           {
             $set: {
-              "metadata.couponRedemptionId": couponRedemption._id,
+              "metadata.couponRedemptionId": couponRedemption?._id || null,
             },
           },
           { session }

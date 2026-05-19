@@ -1,3 +1,4 @@
+// frontend/src/pages/admin/CouponManager.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import api from "../../api";
 import styles from "./Admin.module.css";
@@ -5,15 +6,23 @@ import styles from "./Admin.module.css";
 const defaultForm = {
   code: "",
   category: "discount_coupon",
-  value: 0,
   type: "percentage",
+  value: 0,
   active: true,
   maxUses: "",
   expiresAt: "",
   applicablePlans: [],
+  singleUsePerUser: false,
 };
 
-const planOptions = ["single", "six_months", "one_year", "monthly", "yearly", "lifetime"];
+const planOptions = [
+  { value: "single", label: "Single Tournament" },
+  { value: "six_months", label: "6 Months Unlimited" },
+  { value: "one_year", label: "1 Year Unlimited" },
+  { value: "monthly", label: "Monthly" },
+  { value: "yearly", label: "Yearly" },
+  { value: "lifetime", label: "Lifetime" },
+];
 
 const categoryOptions = [
   { value: "discount_coupon", label: "Discount Coupon" },
@@ -23,14 +32,31 @@ const categoryOptions = [
   { value: "full_access_coupon", label: "Full Access Coupon" },
 ];
 
+const typeOptions = [
+  { value: "percentage", label: "Percentage Discount" },
+  { value: "fixed", label: "Fixed Amount Discount" },
+  { value: "full_access", label: "Full / Free Access" },
+];
+
 const formatDate = (value) => {
   if (!value) return "-";
 
-  return new Date(value).toLocaleDateString("en-IN", {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) return "-";
+
+  return date.toLocaleDateString("en-IN", {
     day: "2-digit",
     month: "short",
     year: "numeric",
   });
+};
+
+const formatValue = (coupon) => {
+  if (coupon.type === "percentage") return `${coupon.value || 0}%`;
+  if (coupon.type === "fixed") return `₹${Number(coupon.value || 0).toLocaleString("en-IN")}`;
+  if (coupon.type === "full_access") return "Free Access";
+  return coupon.value || 0;
 };
 
 const CouponManager = () => {
@@ -52,6 +78,7 @@ const CouponManager = () => {
       const res = await api.get("/admin/billing/coupons", {
         params: {
           includeDeleted: includeDeleted ? "true" : "false",
+          limit: 100,
         },
       });
 
@@ -74,16 +101,17 @@ const CouponManager = () => {
     if (!query) return coupons;
 
     return coupons.filter((coupon) =>
-     [
-  coupon.code,
-  coupon.category,
-  coupon.type,
+      [
+        coupon.code,
+        coupon.category,
+        coupon.type,
         coupon.createdBy?.name,
         coupon.createdBy?.email,
         coupon.deletedBy?.name,
         coupon.deletedBy?.email,
         coupon.deleteReason,
         coupon.applicablePlans?.join(" "),
+        coupon.singleUsePerUser ? "single use per user" : "multiple use",
       ]
         .join(" ")
         .toLowerCase()
@@ -97,7 +125,20 @@ const CouponManager = () => {
   };
 
   const updateField = (field, value) => {
-    setForm((prev) => ({ ...prev, [field]: value }));
+    setForm((prev) => {
+      const next = { ...prev, [field]: value };
+
+      if (field === "type" && value === "full_access") {
+        next.value = 0;
+        next.category = "full_access_coupon";
+      }
+
+      if (field === "type" && value !== "full_access" && prev.type === "full_access") {
+        next.category = "discount_coupon";
+      }
+
+      return next;
+    });
   };
 
   const togglePlan = (plan) => {
@@ -117,14 +158,59 @@ const CouponManager = () => {
     });
   };
 
+  const selectAllPlans = () => {
+    setForm((prev) => ({
+      ...prev,
+      applicablePlans: planOptions.map((plan) => plan.value),
+    }));
+  };
+
+  const clearPlans = () => {
+    setForm((prev) => ({
+      ...prev,
+      applicablePlans: [],
+    }));
+  };
+
+  const validateForm = () => {
+    const code = form.code.trim().toUpperCase();
+
+    if (!code) return "Coupon code is required";
+
+    if (!/^[A-Z0-9_-]{3,50}$/.test(code)) {
+      return "Coupon code must be 3-50 characters and contain only A-Z, 0-9, _ or -";
+    }
+
+    if (!["percentage", "fixed", "full_access"].includes(form.type)) {
+      return "Invalid coupon type";
+    }
+
+    const value = Number(form.value || 0);
+
+    if (form.type === "percentage" && (value < 0 || value > 100)) {
+      return "Percentage value must be between 0 and 100";
+    }
+
+    if (form.type === "fixed" && value < 0) {
+      return "Fixed discount cannot be negative";
+    }
+
+    if (form.maxUses !== "" && Number(form.maxUses) < 1) {
+      return "Max uses must be empty or greater than 0";
+    }
+
+    return "";
+  };
+
   const buildPayload = () => {
     const payload = {
       code: form.code.trim().toUpperCase(),
       category: form.category,
       type: form.type,
-      value: Number(form.value || 0),
+      value: form.type === "full_access" ? 0 : Number(form.value || 0),
       active: Boolean(form.active),
       applicablePlans: form.applicablePlans || [],
+      singleUsePerUser: Boolean(form.singleUsePerUser),
     };
 
     if (form.maxUses !== "" && form.maxUses !== null) {
@@ -145,29 +231,31 @@ const CouponManager = () => {
   const submitCoupon = async (event) => {
     event.preventDefault();
 
-    if (!form.code.trim()) {
-      alert("Coupon code is required");
+    const validationError = validateForm();
+
+    if (validationError) {
+      alert(validationError);
       return;
     }
 
-   try {
-  setSaving(true);
+    try {
+      setSaving(true);
 
-  const payload = buildPayload();
+      const payload = buildPayload();
 
-  if (editingId) {
-    await api.patch(`/admin/billing/coupons/${editingId}`, payload);
-  } else {
-    await api.post("/admin/billing/coupons", payload);
-  }
+      if (editingId) {
+        await api.patch(`/admin/billing/coupons/${editingId}`, payload);
+      } else {
+        await api.post("/admin/billing/coupons", payload);
+      }
 
-  resetForm();
-  await loadCoupons();
-} catch (err) {
-  alert(err.response?.data?.message || err.message || "Failed to save coupon");
-} finally {
-  setSaving(false);
-}
+      resetForm();
+      await loadCoupons();
+    } catch (err) {
+      alert(err.response?.data?.message || err.message || "Failed to save coupon");
+    } finally {
+      setSaving(false);
+    }
   };
 
   const editCoupon = (coupon) => {
@@ -181,7 +269,7 @@ const CouponManager = () => {
     setForm({
       code: coupon.code || "",
       category: coupon.category || "discount_coupon",
-      value: coupon.value || 0,
+      value: coupon.type === "full_access" ? 0 : coupon.value || 0,
       type: coupon.type || "percentage",
       active: coupon.active !== false,
       maxUses: coupon.maxUses || "",
@@ -189,57 +277,58 @@ const CouponManager = () => {
         ? new Date(coupon.expiresAt).toISOString().slice(0, 10)
         : "",
       applicablePlans: coupon.applicablePlans || [],
+      singleUsePerUser: Boolean(coupon.singleUsePerUser),
     });
   };
 
-const disableCoupon = async (coupon) => {
-  const typed = window.prompt(
-    `Disable coupon ${coupon.code}?\n\nThis will prevent future usage but keep audit history.\n\nType DISABLE to confirm.`
-  );
+  const disableCoupon = async (coupon) => {
+    const typed = window.prompt(
+      `Disable coupon ${coupon.code}?\n\nThis will prevent future usage but keep audit history.\n\nType DISABLE to confirm.`
+    );
 
-  if (typed !== "DISABLE") return;
+    if (typed !== "DISABLE") return;
 
-  try {
-    setActionLoadingId(`${coupon._id}:disable`);
+    try {
+      setActionLoadingId(`${coupon._id}:disable`);
 
-    await api.patch(`/admin/billing/coupons/${coupon._id}/disable`);
+      await api.patch(`/admin/billing/coupons/${coupon._id}/disable`);
 
-    await loadCoupons();
-  } catch (err) {
-    alert(err.response?.data?.message || err.message || "Failed to disable coupon");
-  } finally {
-    setActionLoadingId("");
-  }
-};
+      await loadCoupons();
+    } catch (err) {
+      alert(err.response?.data?.message || err.message || "Failed to disable coupon");
+    } finally {
+      setActionLoadingId("");
+    }
+  };
 
-const deleteCoupon = async (coupon) => {
-  const typed = window.prompt(
-    `Soft delete coupon ${coupon.code}?\n\nThis will disable the coupon and preserve audit history. It will not be permanently removed.\n\nType DELETE to confirm.`
-  );
+  const deleteCoupon = async (coupon) => {
+    const typed = window.prompt(
+      `Soft delete coupon ${coupon.code}?\n\nThis will disable the coupon and preserve audit history. It will not be permanently removed.\n\nType DELETE to confirm.`
+    );
 
-  if (typed !== "DELETE") return;
+    if (typed !== "DELETE") return;
 
-  const reason = window.prompt("Enter delete reason for audit log:") || "";
+    const reason = window.prompt("Enter delete reason for audit log:") || "";
 
-  if (!reason.trim()) {
-    alert("Delete reason is required.");
-    return;
-  }
+    if (!reason.trim()) {
+      alert("Delete reason is required.");
+      return;
+    }
 
-  try {
-    setActionLoadingId(`${coupon._id}:delete`);
+    try {
+      setActionLoadingId(`${coupon._id}:delete`);
 
-    await api.delete(`/admin/billing/coupons/${coupon._id}`, {
-      data: { reason },
-    });
+      await api.delete(`/admin/billing/coupons/${coupon._id}`, {
+        data: { reason },
+      });
 
-    await loadCoupons();
-  } catch (err) {
-    alert(err.response?.data?.message || err.message || "Failed to delete coupon");
-  } finally {
-    setActionLoadingId("");
-  }
-};
+      await loadCoupons();
+    } catch (err) {
+      alert(err.response?.data?.message || err.message || "Failed to delete coupon");
+    } finally {
+      setActionLoadingId("");
+    }
+  };
 
   const isActionDisabled = Boolean(actionLoadingId);
 
@@ -248,8 +337,11 @@ const deleteCoupon = async (coupon) => {
       <section className={styles.panel}>
         <div className={styles.panelHeader}>
           <div>
-            <h2>Coupon Manager</h2>
-            <p>Create, edit, disable and monitor premium billing coupons.</p>
+            <h2>{editingId ? "Edit Coupon" : "Create Coupon"}</h2>
+            <p>
+              Create secure billing coupons for selected plans. Backend remains
+              the final source of truth for discount calculation.
+            </p>
           </div>
 
           <button type="button" className={styles.secondaryBtn} onClick={loadCoupons}>
@@ -270,25 +362,51 @@ const deleteCoupon = async (coupon) => {
             </div>
 
             <div>
+              <span>Category</span>
+              <select
+                className={styles.searchInput}
+                value={form.category}
+                onChange={(e) => updateField("category", e.target.value)}
+              >
+                {categoryOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
               <span>Type</span>
               <select
                 className={styles.searchInput}
                 value={form.type}
                 onChange={(e) => updateField("type", e.target.value)}
               >
-                <option value="percentage">Percentage</option>
-                <option value="fixed">Fixed Amount</option>
-                <option value="full_access">Full Access</option>
+                {typeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
               </select>
             </div>
 
             <div>
-              <span>Value</span>
+              <span>
+                Value{" "}
+                {form.type === "percentage"
+                  ? "(0-100%)"
+                  : form.type === "fixed"
+                    ? "(₹)"
+                    : "(auto 0)"}
+              </span>
               <input
                 className={styles.searchInput}
                 type="number"
                 min="0"
-                value={form.value}
+                max={form.type === "percentage" ? "100" : undefined}
+                value={form.type === "full_access" ? 0 : form.value}
+                disabled={form.type === "full_access"}
                 onChange={(e) => updateField("value", e.target.value)}
               />
             </div>
@@ -326,6 +444,20 @@ const deleteCoupon = async (coupon) => {
                 <option value="inactive">Inactive</option>
               </select>
             </div>
+
+            <div>
+              <span>Single Use Per User</span>
+              <select
+                className={styles.searchInput}
+                value={form.singleUsePerUser ? "true" : "false"}
+                onChange={(e) =>
+                  updateField("singleUsePerUser", e.target.value === "true")
+                }
+              >
+                <option value="false">No</option>
+                <option value="true">Yes</option>
+              </select>
+            </div>
           </div>
 
           <section className={styles.panel}>
@@ -334,21 +466,30 @@ const deleteCoupon = async (coupon) => {
                 <h2>Applicable Plans</h2>
                 <p>Leave all unchecked to make coupon valid for every plan.</p>
               </div>
+
+              <div className={styles.actionGroup}>
+                <button type="button" className={styles.secondaryBtn} onClick={selectAllPlans}>
+                  Select All
+                </button>
+                <button type="button" className={styles.secondaryBtn} onClick={clearPlans}>
+                  All Plans
+                </button>
+              </div>
             </div>
 
             <div className={styles.actionGroup}>
               {planOptions.map((plan) => (
                 <button
-                  key={plan}
+                  key={plan.value}
                   type="button"
                   className={
-                    form.applicablePlans.includes(plan)
+                    form.applicablePlans.includes(plan.value)
                       ? styles.primaryBtn
                       : styles.secondaryBtn
                   }
-                  onClick={() => togglePlan(plan)}
+                  onClick={() => togglePlan(plan.value)}
                 >
-                  {plan}
+                  {plan.label}
                 </button>
               ))}
             </div>
@@ -403,10 +544,11 @@ const deleteCoupon = async (coupon) => {
               <thead>
                 <tr>
                   <th>Code</th>
-                 <th>Category</th>
-<th>Type</th>
-<th>Value</th>
+                  <th>Category</th>
+                  <th>Type</th>
+                  <th>Value</th>
                   <th>Uses</th>
+                  <th>Single Use</th>
                   <th>Plans</th>
                   <th>Status</th>
                   <th>Expires</th>
@@ -417,6 +559,11 @@ const deleteCoupon = async (coupon) => {
               <tbody>
                 {filteredCoupons.map((coupon) => {
                   const deleted = Boolean(coupon.deletedAt);
+                  const expired =
+                    coupon.expiresAt && new Date(coupon.expiresAt) <= new Date();
+                  const maxReached =
+                    coupon.maxUses &&
+                    Number(coupon.usedCount || 0) >= Number(coupon.maxUses);
 
                   return (
                     <tr key={coupon._id}>
@@ -430,23 +577,35 @@ const deleteCoupon = async (coupon) => {
                         )}
                       </td>
 
-                     <td>
-  <span className={styles.badge}>
-    {coupon.category || "discount_coupon"}
-  </span>
-</td>
+                      <td>
+                        <span className={styles.badge}>
+                          {coupon.category || "discount_coupon"}
+                        </span>
+                      </td>
 
-<td>
-  <span className={styles.badge}>{coupon.type}</span>
-</td>
+                      <td>
+                        <span className={styles.badge}>{coupon.type}</span>
+                      </td>
 
-<td>{coupon.value || 0}</td>
-
-                     
+                      <td>{formatValue(coupon)}</td>
 
                       <td>
                         {coupon.usedCount || 0}
                         {coupon.maxUses ? ` / ${coupon.maxUses}` : " / Unlimited"}
+                        {maxReached && (
+                          <>
+                            <br />
+                            <span className={styles.errorBadge}>Max reached</span>
+                          </>
+                        )}
+                      </td>
+
+                      <td>
+                        {coupon.singleUsePerUser ? (
+                          <span className={styles.successBadge}>Yes</span>
+                        ) : (
+                          <span className={styles.mutedBadge}>No</span>
+                        )}
                       </td>
 
                       <td>
@@ -458,6 +617,8 @@ const deleteCoupon = async (coupon) => {
                       <td>
                         {deleted ? (
                           <span className={styles.errorBadge}>Deleted</span>
+                        ) : expired ? (
+                          <span className={styles.errorBadge}>Expired</span>
                         ) : coupon.active ? (
                           <span className={styles.successBadge}>Active</span>
                         ) : (
@@ -507,7 +668,7 @@ const deleteCoupon = async (coupon) => {
 
                 {filteredCoupons.length === 0 && (
                   <tr>
-                    <td colSpan="9" className={styles.emptyCell}>
+                    <td colSpan="10" className={styles.emptyCell}>
                       No coupons found.
                     </td>
                   </tr>

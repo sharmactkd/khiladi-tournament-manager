@@ -1,3 +1,4 @@
+/* frontend/src/components/payment/PaymentPage.module.css */
 .paymentOverlay {
   width: 100%;
   min-height: 100vh;
@@ -6,15 +7,12 @@
   align-items: center;
   justify-content: center;
   font-family: "Inter", Arial, sans-serif;
-  
 }
 
 .paymentCard {
   width: 100%;
   max-width: 1120px;
-  
   padding: 36px;
-  
 }
 
 .hero {
@@ -76,7 +74,6 @@
   margin-top: 18px;
   display: flex;
   justify-content: center;
-  color: green;
   gap: 14px;
   flex-wrap: wrap;
 }
@@ -86,10 +83,10 @@
   align-items: center;
   gap: 7px;
   padding: 9px 13px;
-  border: 1px solid rgba(207, 0, 6, 0.12);
+  border: 1px solid rgba(22, 163, 74, 0.16);
   border-radius: 999px;
   background: #ffffff;
-  color: green;
+  color: #15803d;
   font-size: 13px;
   font-weight: 800;
 }
@@ -106,7 +103,7 @@
   border: 2px solid #eeeeee;
   background: linear-gradient(180deg, #ffffff 0%, #fffdfd 100%);
   border-radius: 24px;
-  padding: 24px;
+  padding: 42px 24px 24px;
   text-align: left;
   cursor: pointer;
   transition: 0.24s ease;
@@ -137,11 +134,6 @@
   border-color: #cf0006;
   box-shadow: 0 22px 54px rgba(207, 0, 6, 0.2);
 }
-
-.planCard {
-  padding-top: 42px;  /* 🔥 ye add karo */
-}
-
 
 .popular {
   position: absolute;
@@ -246,6 +238,199 @@
   flex-shrink: 0;
 }
 
+.couponBox {
+  margin-top: 22px;
+  padding: 18px;
+  border: 1px dashed #fecaca;
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at top left, rgba(207, 0, 6, 0.08), transparent 32%),
+    #fff7f7;
+}
+
+.couponHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.couponHeader label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 950;
+  color: #111827;
+  margin-bottom: 5px;
+}
+
+.couponHeader p {
+  margin: 0;
+  color: #6b7280;
+  font-weight: 650;
+  line-height: 1.5;
+}
+
+.removeCouponBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #111827;
+  color: #ffffff;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.availableCoupons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.couponChip {
+  border: 1px solid rgba(207, 0, 6, 0.2);
+  background: #ffffff;
+  color: #111827;
+  border-radius: 16px;
+  padding: 10px 12px;
+  cursor: pointer;
+  display: grid;
+  gap: 3px;
+  min-width: 132px;
+  text-align: left;
+  transition: 0.2s ease;
+}
+
+.couponChip:hover:not(:disabled) {
+  transform: translateY(-2px);
+  border-color: #cf0006;
+  box-shadow: 0 12px 24px rgba(207, 0, 6, 0.12);
+}
+
+.couponChip strong {
+  font-size: 13px;
+  letter-spacing: 0.8px;
+}
+
+.couponChip span {
+  font-size: 12px;
+  color: #cf0006;
+  font-weight: 900;
+}
+
+.activeCouponChip {
+  border-color: #cf0006;
+  background: #fff0f0;
+  box-shadow: 0 12px 28px rgba(207, 0, 6, 0.16);
+}
+
+.couponEmpty {
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: #ffffff;
+  color: #6b7280;
+  font-weight: 800;
+  margin-bottom: 14px;
+}
+
+.couponInputRow {
+  display: flex;
+  gap: 10px;
+}
+
+.couponInputRow input {
+  flex: 1;
+  padding: 13px 14px;
+  border: 1px solid #fecaca;
+  border-radius: 14px;
+  font-weight: 850;
+  text-transform: uppercase;
+  outline: none;
+  background: #ffffff;
+}
+
+.couponInputRow input:focus {
+  border-color: #cf0006;
+  box-shadow: 0 0 0 4px rgba(207, 0, 6, 0.08);
+}
+
+.couponInputRow button {
+  padding: 12px 20px;
+  border: none;
+  border-radius: 14px;
+  background: #dc0006;
+  color: white;
+  font-weight: 950;
+  cursor: pointer;
+}
+
+.couponInputRow button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.discountBox {
+  margin-top: 14px;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid rgba(22, 163, 74, 0.18);
+  padding: 14px;
+  display: grid;
+  gap: 12px;
+}
+
+.discountBox > div:first-child span {
+  display: block;
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 850;
+  text-transform: uppercase;
+  letter-spacing: 0.7px;
+}
+
+.discountBox > div:first-child strong {
+  display: block;
+  color: #15803d;
+  font-size: 18px;
+  font-weight: 950;
+}
+
+.priceRows {
+  display: grid;
+  gap: 7px;
+}
+
+.priceRows p {
+  margin: 0;
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  color: #374151;
+  font-weight: 800;
+}
+
+.priceRows p:last-child {
+  padding-top: 8px;
+  border-top: 1px solid #e5e7eb;
+  color: #111827;
+  font-size: 16px;
+}
+
+.couponMessage {
+  margin-top: 12px;
+  font-weight: 850;
+  color: #991b1b;
+}
+
+.successMessage {
+  color: #15803d;
+}
+
 .error {
   margin-top: 22px;
   padding: 14px 16px;
@@ -283,6 +468,13 @@
   font-size: 18px;
   font-weight: 900;
   letter-spacing: 0.2px;
+}
+
+.strikePrice {
+  display: inline !important;
+  color: rgba(255, 255, 255, 0.62) !important;
+  text-decoration: line-through;
+  margin-right: 6px;
 }
 
 .payButton {
@@ -336,6 +528,14 @@
   .paymentCard {
     padding: 24px;
   }
+
+  .couponHeader {
+    flex-direction: column;
+  }
+
+  .couponInputRow {
+    flex-direction: column;
+  }
 }
 
 :global(.premiumAccessPreviewWrapper) {
@@ -350,71 +550,13 @@
   user-select: none;
 }
 
-/* 🔥 MOST IMPORTANT FIX */
 :global(.premiumPaymentOverlay) {
-  position: absolute;   /* NOT fixed */
-  top: 120px;           /* navbar ke niche */
+  position: absolute;
+  top: 120px;
   left: 0;
   right: 0;
   z-index: 50;
-
   display: flex;
   justify-content: center;
   padding: 20px;
-}
-
-.couponBox {
-  margin-top: 22px;
-  padding: 18px;
-  border: 1px dashed #fecaca;
-  border-radius: 18px;
-  background: #fff7f7;
-}
-
-.couponBox label {
-  display: block;
-  font-weight: 900;
-  color: #111827;
-  margin-bottom: 4px;
-}
-
-.couponBox p {
-  margin: 0 0 14px;
-  color: #6b7280;
-  font-weight: 600;
-}
-
-.couponInputRow {
-  display: flex;
-  gap: 10px;
-}
-
-.couponInputRow input {
-  flex: 1;
-  padding: 12px 14px;
-  border: 1px solid #fecaca;
-  border-radius: 12px;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.couponInputRow button {
-  padding: 12px 18px;
-  border: none;
-  border-radius: 12px;
-  background: #dc0006;
-  color: white;
-  font-weight: 900;
-  cursor: pointer;
-}
-
-.couponInputRow button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.couponMessage {
-  margin-top: 12px;
-  font-weight: 800;
-  color: #991b1b;
 }

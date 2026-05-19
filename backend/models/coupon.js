@@ -1,3 +1,4 @@
+// backend/models/coupon.js
 import mongoose from "mongoose";
 
 export const COUPON_CATEGORIES = [
@@ -8,6 +9,20 @@ export const COUPON_CATEGORIES = [
   "full_access_coupon",
 ];
 
+export const COUPON_TYPES = ["percentage", "fixed", "full_access"];
+
+export const COUPON_PLAN_TYPES = [
+  "single",
+  "six_months",
+  "one_year",
+  "monthly",
+  "yearly",
+  "lifetime",
+];
+
+const normalizeCouponCode = (value) =>
+  String(value || "").trim().toUpperCase();
+
 const couponSchema = new mongoose.Schema(
   {
     code: {
@@ -16,7 +31,8 @@ const couponSchema = new mongoose.Schema(
       uppercase: true,
       trim: true,
       minlength: 3,
-      maxlength: 40,
+      maxlength: 50,
+      set: normalizeCouponCode,
     },
 
     category: {
@@ -28,15 +44,10 @@ const couponSchema = new mongoose.Schema(
 
     type: {
       type: String,
-      enum: ["percentage", "fixed", "full_access"],
+      enum: COUPON_TYPES,
       required: true,
       index: true,
     },
-
-    singleUsePerUser: {
-  type: Boolean,
-  default: false,
-},
 
     value: {
       type: Number,
@@ -70,8 +81,14 @@ const couponSchema = new mongoose.Schema(
 
     applicablePlans: {
       type: [String],
-      enum: ["single", "six_months", "one_year", "monthly", "yearly", "lifetime"],
+      enum: COUPON_PLAN_TYPES,
       default: [],
+    },
+
+    singleUsePerUser: {
+      type: Boolean,
+      default: false,
+      index: true,
     },
 
     allowedUsers: [
@@ -80,10 +97,6 @@ const couponSchema = new mongoose.Schema(
         ref: "User",
       },
     ],
-
-    // LEGACY ONLY:
-// Do not write new coupon usage here.
-// New usage tracking must use CouponRedemption collection.
 
     usedBy: [
       {
@@ -155,7 +168,31 @@ couponSchema.index(
 couponSchema.index({ category: 1, active: 1, deletedAt: 1 });
 couponSchema.index({ expiresAt: 1, active: 1 });
 couponSchema.index({ active: 1, deletedAt: 1 });
+couponSchema.index({ applicablePlans: 1, active: 1, deletedAt: 1 });
+couponSchema.index({ "allowedUsers": 1 });
 couponSchema.index({ "usedBy.userId": 1 });
+
+couponSchema.pre("validate", function (next) {
+  this.code = normalizeCouponCode(this.code);
+
+  if (this.type === "percentage" && Number(this.value) > 100) {
+    this.invalidate("value", "Percentage coupon value cannot be more than 100");
+  }
+
+  if (this.type === "full_access") {
+    this.value = 0;
+  }
+
+  if (this.maxUses !== null && this.maxUses !== undefined) {
+    this.maxUses = Math.max(1, Math.floor(Number(this.maxUses)));
+  }
+
+  if (this.usedCount < 0) {
+    this.usedCount = 0;
+  }
+
+  next();
+});
 
 couponSchema.methods.isExpired = function () {
   return Boolean(this.expiresAt && this.expiresAt <= new Date());
@@ -163,7 +200,7 @@ couponSchema.methods.isExpired = function () {
 
 couponSchema.methods.hasRemainingUses = function () {
   if (!this.maxUses) return true;
-  return this.usedCount < this.maxUses;
+  return Number(this.usedCount || 0) < Number(this.maxUses);
 };
 
 couponSchema.methods.isUserAllowed = function (userId) {
@@ -173,7 +210,7 @@ couponSchema.methods.isUserAllowed = function (userId) {
 
 couponSchema.methods.isPlanAllowed = function (planType) {
   if (!this.applicablePlans || this.applicablePlans.length === 0) return true;
-  return this.applicablePlans.includes(planType);
+  return this.applicablePlans.includes(String(planType || "").trim());
 };
 
 const Coupon = mongoose.model("Coupon", couponSchema);

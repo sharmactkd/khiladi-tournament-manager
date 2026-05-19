@@ -1,6 +1,11 @@
+// frontend/src/api/paymentApi.js
 import api from "../api";
 
-export const createPaymentOrder = async ({ planType, tournamentId, couponCode = "" }) => {
+export const createPaymentOrder = async ({
+  planType,
+  tournamentId,
+  couponCode = "",
+}) => {
   const { data } = await api.post("/payment/create-order", {
     planType,
     tournamentId,
@@ -70,4 +75,3 @@ export const applyCoupon = async ({ code, planType, tournamentId }) => {
 
   return data;
 };
-

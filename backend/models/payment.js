@@ -1,3 +1,4 @@
+// backend/models/payment.js
 import mongoose from "mongoose";
 
 export const PAYMENT_STATUSES = [
@@ -38,6 +39,29 @@ const planSnapshotSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const couponSnapshotSchema = new mongoose.Schema(
+  {
+    couponId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Coupon",
+      default: null,
+    },
+    code: { type: String, default: "", trim: true, uppercase: true },
+    category: { type: String, default: "", trim: true },
+    type: {
+      type: String,
+      enum: ["percentage", "fixed", "full_access", ""],
+      default: "",
+    },
+    value: { type: Number, default: 0, min: 0 },
+    originalAmount: { type: Number, default: 0, min: 0 },
+    discountAmount: { type: Number, default: 0, min: 0 },
+    finalAmount: { type: Number, default: 0, min: 0 },
+    appliedAt: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
 const paymentSchema = new mongoose.Schema(
   {
     userId: {
@@ -64,6 +88,36 @@ const paymentSchema = new mongoose.Schema(
     planSnapshot: {
       type: planSnapshotSchema,
       required: true,
+    },
+
+    originalAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    discountAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    finalAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    couponSnapshot: {
+      type: couponSnapshotSchema,
+      default: null,
+    },
+
+    couponUsed: {
+      type: String,
+      default: "",
+      trim: true,
+      uppercase: true,
     },
 
     amount: {
@@ -121,17 +175,17 @@ const paymentSchema = new mongoose.Schema(
     },
 
     accessLifecycle: {
-  type: String,
-  enum: [
-    "single_tournament_lifetime",
-    "fixed_duration",
-    "lifetime",
-    "manual",
-    "coupon",
-  ],
-  default: "fixed_duration",
-  index: true,
-},
+      type: String,
+      enum: [
+        "single_tournament_lifetime",
+        "fixed_duration",
+        "lifetime",
+        "manual",
+        "coupon",
+      ],
+      default: "fixed_duration",
+      index: true,
+    },
 
     gateway: {
       type: String,
@@ -167,10 +221,31 @@ const paymentSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+paymentSchema.pre("validate", function (next) {
+  const original = Number(this.originalAmount || this.planSnapshot?.amount || 0);
+  const discount = Math.min(
+    Math.max(Number(this.discountAmount || 0), 0),
+    original
+  );
+  const final = Math.max(original - discount, 0);
+
+  this.originalAmount = original;
+  this.discountAmount = discount;
+  this.finalAmount = Number(this.finalAmount ?? final);
+  this.amount = Number(this.amount ?? this.finalAmount);
+
+  if (this.couponSnapshot?.code) {
+    this.couponUsed = this.couponSnapshot.code;
+  }
+
+  next();
+});
+
 paymentSchema.index({ userId: 1, status: 1, accessType: 1 });
 paymentSchema.index({ userId: 1, tournamentId: 1, status: 1 });
 paymentSchema.index({ userId: 1, accessType: 1, accessExpiresAt: 1 });
 paymentSchema.index({ gateway: 1, status: 1, createdAt: -1 });
+paymentSchema.index({ couponUsed: 1, status: 1 });
 
 paymentSchema.index(
   { razorpayPaymentId: 1 },

@@ -1,3 +1,4 @@
+// backend/routes/adminRoutes.js
 import express from "express";
 import authMiddleware from "../middleware/authMiddleware.js";
 import adminMiddleware, {
@@ -36,13 +37,6 @@ import {
   blockUser,
   unblockUser,
   forceLogoutUser,
-  listCoupons,
-  createCoupon,
-  updateCoupon,
-  disableCoupon,
-  deleteCoupon,
-  validateCoupon,
-  applyCouponForUserByAdmin,
   listTransactions,
   listAuditLogs,
   reconcileBillingPayments,
@@ -50,6 +44,16 @@ import {
   cleanupStaleBillingPayments,
   listInvoices,
 } from "../controllers/billingController.js";
+
+import {
+  listCoupons,
+  createCoupon,
+  updateCoupon,
+  disableCoupon,
+  deleteCoupon,
+  validateCoupon,
+  applyCouponForUserByAdmin,
+} from "../controllers/couponController.js";
 
 import { requireCsrfToken } from "../middleware/csrfProtection.js";
 
@@ -267,7 +271,6 @@ router.patch(
   requireCsrfToken,
   requireAdminPermission("users:manage"),
   superAdminMiddleware,
-  adminReauthMiddleware,
   validateAccessAction,
   forceLogoutUser
 );
@@ -283,7 +286,6 @@ router.post(
   requireCsrfToken,
   requireAdminPermission("coupons:manage"),
   superAdminMiddleware,
-
   validateCouponCreate,
   createCoupon
 );
