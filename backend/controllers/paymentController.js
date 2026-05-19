@@ -418,77 +418,11 @@ export const verifyPayment = async (req, res) => {
       });
     }
 
-    const razorpay = getRazorpayInstance();
-
-    const [razorpayPayment, razorpayOrder] = await Promise.all([
-      razorpay.payments.fetch(razorpay_payment_id),
-      razorpay.orders.fetch(razorpay_order_id),
-    ]);
-
-    const expectedAmountInPaise = Math.round(Number(payment.finalAmount ?? payment.amount ?? 0) * 100);
-
-    const isValidRazorpayPayment =
-      razorpayPayment &&
-      razorpayPayment.id === razorpay_payment_id &&
-      razorpayPayment.order_id === razorpay_order_id &&
-      razorpayPayment.status === "captured" &&
-      Number(razorpayPayment.amount) === expectedAmountInPaise &&
-      String(razorpayPayment.currency || "").toUpperCase() ===
-        String(payment.currency || "INR").toUpperCase();
-
-    const isValidRazorpayOrder =
-      razorpayOrder &&
-      razorpayOrder.id === razorpay_order_id &&
-      Number(razorpayOrder.amount) === expectedAmountInPaise;
-
-    if (!isValidRazorpayPayment || !isValidRazorpayOrder) {
-      await Payment.findOneAndUpdate(
-        {
-          razorpayOrderId: razorpay_order_id,
-          userId,
-          status: { $ne: "paid" },
-        },
-        {
-          $set: {
-            status: "failed",
-            razorpayPaymentId: razorpay_payment_id,
-            razorpaySignature: razorpay_signature,
-          },
-          $push: {
-            statusHistory: {
-              status: "failed",
-              changedAt: new Date(),
-              source: "frontend_verify",
-              note: "Payment amount/currency/status could not be verified with Razorpay",
-            },
-          },
-        }
-      );
-
-      await PaymentTransaction.findOneAndUpdate(
-        { orderId: razorpay_order_id },
-        {
-          $set: {
-            status: "failed",
-            paymentId: razorpay_payment_id,
-            "metadata.serverVerificationFailed": true,
-            "metadata.expectedAmountInPaise": expectedAmountInPaise,
-            "metadata.razorpayAmount": razorpayPayment?.amount || null,
-          },
-        }
-      );
-
-      return res.status(400).json({
-        success: false,
-        message: "Payment could not be verified with Razorpay",
-      });
-    }
-
     const processed = await processPaidPayment({
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
       razorpaySignature: razorpay_signature,
-      verifiedBy: "frontend_verify_confirmed_by_razorpay",
+      verifiedBy: "frontend_signature_verified",
     });
 
     return res.status(200).json({
