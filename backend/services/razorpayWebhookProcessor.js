@@ -1,10 +1,21 @@
+import Razorpay from "razorpay";
 import Payment from "../models/payment.js";
 import logger from "../utils/logger.js";
 import processPaidPayment from "./paymentProcessingService.js";
 import processPaymentStatusUpdate from "./paymentStatusService.js";
 
-const getEntity = (event, entityName) => {
-  return event?.payload?.[entityName]?.entity || {};
+const getEntity = (event, entityName) =>
+  event?.payload?.[entityName]?.entity || {};
+
+const getRazorpayInstance = () => {
+  if (!process.env.RAZORPAY_KEY_ID || !process.env.RAZORPAY_KEY_SECRET) {
+    throw new Error("Razorpay keys are not configured");
+  }
+
+  return new Razorpay({
+    key_id: process.env.RAZORPAY_KEY_ID,
+    key_secret: process.env.RAZORPAY_KEY_SECRET,
+  });
 };
 
 const getPaymentByOrderId = async (orderId) => {
@@ -12,21 +23,18 @@ const getPaymentByOrderId = async (orderId) => {
   return Payment.findOne({ razorpayOrderId: orderId });
 };
 
-const getCapturedPaymentFromOrder = ({ orderEntity }) => {
-  const payments = Array.isArray(orderEntity?.payments) ? orderEntity.payments : [];
-  return payments.find((payment) => payment?.status === "captured") || null;
-};
+const getExpectedAmountInPaise = (payment) =>
+  Math.round(Number(payment.finalAmount ?? payment.amount ?? 0) * 100);
 
 const validateCapturedPayment = ({ payment, paymentEntity }) => {
-  const expectedAmountInPaise = Number(payment.amount || 0) * 100;
+  const expectedAmountInPaise = getExpectedAmountInPaise(payment);
 
   return (
-    paymentEntity.id &&
-    paymentEntity.order_id === payment.razorpayOrderId &&
-    paymentEntity.status === "captured" &&
-    paymentEntity.captured === true &&
-    Number(paymentEntity.amount) === expectedAmountInPaise &&
-    String(paymentEntity.currency || "").toUpperCase() ===
+    paymentEntity?.id &&
+    paymentEntity?.order_id === payment.razorpayOrderId &&
+    paymentEntity?.status === "captured" &&
+    Number(paymentEntity?.amount) === expectedAmountInPaise &&
+    String(paymentEntity?.currency || "").toUpperCase() ===
       String(payment.currency || "INR").toUpperCase()
   );
 };
@@ -35,10 +43,7 @@ const validateNotes = ({ payment, paymentEntity }) => {
   const paymentNotes = paymentEntity.notes || {};
 
   if (paymentNotes.userId && String(paymentNotes.userId) !== String(payment.userId)) {
-    return {
-      valid: false,
-      message: "Webhook user mismatch",
-    };
+    return { valid: false, message: "Webhook user mismatch" };
   }
 
   if (
@@ -46,19 +51,13 @@ const validateNotes = ({ payment, paymentEntity }) => {
     paymentNotes.tournamentId &&
     String(paymentNotes.tournamentId) !== String(payment.tournamentId)
   ) {
-    return {
-      valid: false,
-      message: "Webhook tournament mismatch",
-    };
+    return { valid: false, message: "Webhook tournament mismatch" };
   }
 
-  return {
-    valid: true,
-    message: "",
-  };
+  return { valid: true, message: "" };
 };
 
-const handlePaymentCaptured = async ({ paymentEntity, signature }) => {
+const handlePaymentCaptured = async ({ paymentEntity, signature, source }) => {
   if (!paymentEntity?.order_id || !paymentEntity?.id) {
     const error = new Error("Invalid payment captured payload");
     error.statusCode = 400;
@@ -73,21 +72,13 @@ const handlePaymentCaptured = async ({ paymentEntity, signature }) => {
     throw error;
   }
 
-  const isValidWebhookPayment = validateCapturedPayment({
-    payment,
-    paymentEntity,
-  });
-
-  if (!isValidWebhookPayment) {
+  if (!validateCapturedPayment({ payment, paymentEntity })) {
     const error = new Error("Webhook payment validation failed");
     error.statusCode = 400;
     throw error;
   }
 
-  const noteValidation = validateNotes({
-    payment,
-    paymentEntity,
-  });
+  const noteValidation = validateNotes({ payment, paymentEntity });
 
   if (!noteValidation.valid) {
     const error = new Error(noteValidation.message);
@@ -99,8 +90,23 @@ const handlePaymentCaptured = async ({ paymentEntity, signature }) => {
     razorpayOrderId: paymentEntity.order_id,
     razorpayPaymentId: paymentEntity.id,
     razorpaySignature: signature,
-    verifiedBy: "razorpay_webhook_payment_captured_worker",
+    verifiedBy: source || "razorpay_webhook_payment_captured_worker",
   });
+};
+
+const findCapturedPaymentFromRazorpayOrder = async ({ orderId, localPayment }) => {
+  const razorpay = getRazorpayInstance();
+  const paymentsResult = await razorpay.orders.fetchPayments(orderId);
+  const items = Array.isArray(paymentsResult?.items) ? paymentsResult.items : [];
+
+  return (
+    items.find((item) =>
+      validateCapturedPayment({
+        payment: localPayment,
+        paymentEntity: item,
+      })
+    ) || null
+  );
 };
 
 const handlePaymentAuthorized = async ({ paymentEntity }) => {
@@ -116,6 +122,56 @@ const handlePaymentAuthorized = async ({ paymentEntity }) => {
     status: "authorized",
     source: "razorpay_webhook_payment_authorized_worker",
     note: "Payment authorized by Razorpay",
+  });
+};
+
+const handleOrderPaid = async ({ orderEntity, signature }) => {
+  if (!orderEntity?.id) {
+    const error = new Error("Invalid order paid payload");
+    error.statusCode = 400;
+    throw error;
+  }
+
+  const localPayment = await getPaymentByOrderId(orderEntity.id);
+
+  if (!localPayment) {
+    const error = new Error("Payment order not found for order.paid");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (localPayment.status === "paid") {
+    return {
+      alreadyProcessed: true,
+      payment: localPayment,
+      access: {
+        planType: localPayment.planType,
+        accessType: localPayment.accessType,
+        tournamentId: localPayment.tournamentId,
+        accessStartsAt: localPayment.accessStartsAt,
+        accessExpiresAt: localPayment.accessExpiresAt,
+      },
+    };
+  }
+
+  const capturedPayment = await findCapturedPaymentFromRazorpayOrder({
+    orderId: orderEntity.id,
+    localPayment,
+  });
+
+  if (!capturedPayment?.id) {
+    return processPaymentStatusUpdate({
+      razorpayOrderId: orderEntity.id,
+      status: "captured",
+      source: "razorpay_webhook_order_paid_no_payment_entity_worker",
+      note: "Razorpay order.paid received but captured payment was not fetchable yet",
+    });
+  }
+
+  return handlePaymentCaptured({
+    paymentEntity: capturedPayment,
+    signature,
+    source: "razorpay_webhook_order_paid_reconciled_worker",
   });
 };
 
@@ -142,131 +198,21 @@ const handlePaymentFailed = async ({ paymentEntity }) => {
   });
 };
 
-const handlePaymentRefunded = async ({ paymentEntity }) => {
-  if (!paymentEntity?.order_id && !paymentEntity?.id) {
-    const error = new Error("Invalid payment refunded payload");
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const refundStatus =
-    Number(paymentEntity.amount_refunded || 0) > 0 &&
-    Number(paymentEntity.amount_refunded || 0) < Number(paymentEntity.amount || 0)
-      ? "partially_refunded"
-      : "refunded";
-
-  return processPaymentStatusUpdate({
-    razorpayOrderId: paymentEntity.order_id,
-    razorpayPaymentId: paymentEntity.id,
-    status: refundStatus,
-    source: "razorpay_webhook_payment_refunded_worker",
-    note: "Payment refund updated by Razorpay",
-    metadata: {
-      amountRefunded: paymentEntity.amount_refunded || 0,
-      refundStatus,
-    },
-  });
-};
-
-const handleRefundProcessed = async ({ refundEntity }) => {
-  if (!refundEntity?.payment_id) {
-    const error = new Error("Invalid refund processed payload");
-    error.statusCode = 400;
-    throw error;
-  }
-
-  return processPaymentStatusUpdate({
-    razorpayPaymentId: refundEntity.payment_id,
-    status: "refunded",
-    source: "razorpay_webhook_refund_processed_worker",
-    note: "Refund processed by Razorpay",
-    metadata: {
-      refundId: refundEntity.id || "",
-      refundAmount: refundEntity.amount || 0,
-      refundStatus: refundEntity.status || "",
-    },
-  });
-};
-
-const handleDisputeCreated = async ({ disputeEntity }) => {
-  const paymentId = disputeEntity?.payment_id || disputeEntity?.paymentId || "";
-
-  if (!paymentId) {
-    const error = new Error("Invalid dispute payload");
-    error.statusCode = 400;
-    throw error;
-  }
-
-  return processPaymentStatusUpdate({
-    razorpayPaymentId: paymentId,
-    status: "disputed",
-    source: "razorpay_webhook_dispute_created_worker",
-    note: "Payment dispute created",
-    metadata: {
-      disputeId: disputeEntity.id || "",
-      disputeStatus: disputeEntity.status || "",
-      disputeReason: disputeEntity.reason || "",
-    },
-  });
-};
-
-const handleOrderPaid = async ({ orderEntity, signature }) => {
-  if (!orderEntity?.id) {
-    const error = new Error("Invalid order paid payload");
-    error.statusCode = 400;
-    throw error;
-  }
-
-  const localPayment = await getPaymentByOrderId(orderEntity.id);
-
-  if (!localPayment) {
-    const error = new Error("Payment order not found for order.paid");
-    error.statusCode = 404;
-    throw error;
-  }
-
-  const capturedPayment = getCapturedPaymentFromOrder({ orderEntity });
-
-  if (capturedPayment?.id) {
-    return handlePaymentCaptured({
-      paymentEntity: {
-        ...capturedPayment,
-        order_id: capturedPayment.order_id || orderEntity.id,
-      },
-      signature,
-    });
-  }
-
-  if (localPayment.razorpayPaymentId) {
-    return processPaidPayment({
-      razorpayOrderId: localPayment.razorpayOrderId,
-      razorpayPaymentId: localPayment.razorpayPaymentId,
-      razorpaySignature: signature,
-      verifiedBy: "razorpay_webhook_order_paid_fallback_worker",
-    });
-  }
-
-  return processPaymentStatusUpdate({
-    razorpayOrderId: orderEntity.id,
-    status: "captured",
-    source: "razorpay_webhook_order_paid_worker",
-    note: "Razorpay order marked paid but payment entity was not available",
-  });
-};
-
 export const processRazorpayWebhookEvent = async ({
   eventType,
   event,
   signature,
 }) => {
   const paymentEntity = getEntity(event, "payment");
-  const refundEntity = getEntity(event, "refund");
-  const disputeEntity = getEntity(event, "dispute");
   const orderEntity = getEntity(event, "order");
 
   switch (eventType) {
     case "payment.captured":
-      return handlePaymentCaptured({ paymentEntity, signature });
+      return handlePaymentCaptured({
+        paymentEntity,
+        signature,
+        source: "razorpay_webhook_payment_captured_worker",
+      });
 
     case "payment.authorized":
       return handlePaymentAuthorized({ paymentEntity });
@@ -274,25 +220,12 @@ export const processRazorpayWebhookEvent = async ({
     case "payment.failed":
       return handlePaymentFailed({ paymentEntity });
 
-    case "payment.refunded":
-      return handlePaymentRefunded({ paymentEntity });
-
-    case "refund.processed":
-      return handleRefundProcessed({ refundEntity });
-
-    case "payment.dispute.created":
-    case "dispute.created":
-      return handleDisputeCreated({ disputeEntity });
-
     case "order.paid":
       return handleOrderPaid({ orderEntity, signature });
 
     default:
       logger.info("Webhook event ignored by processor", { eventType });
-      return {
-        ignored: true,
-        eventType,
-      };
+      return { ignored: true, eventType };
   }
 };
 
