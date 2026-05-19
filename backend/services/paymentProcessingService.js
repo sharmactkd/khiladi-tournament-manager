@@ -119,11 +119,11 @@ export const processPaidPayment = async ({
         return;
       }
 
-      if (
-        !["created", "attempted", "authorized", "captured"].includes(
-          existingPayment.status
-        )
-      ) {
+   if (
+  !["created", "attempted", "authorized", "captured", "expired"].includes(
+    existingPayment.status
+  )
+) {
         const error = new Error(
           `Payment cannot be processed from status: ${existingPayment.status}`
         );
@@ -139,7 +139,7 @@ export const processPaidPayment = async ({
       const payment = await Payment.findOneAndUpdate(
         {
           _id: existingPayment._id,
-          status: { $in: ["created", "attempted", "authorized", "captured"] },
+          status: { $in: ["created", "attempted", "authorized", "captured", "expired"] },
         },
         {
           $set: {
@@ -251,7 +251,7 @@ export const processPaidPayment = async ({
             couponSnapshot,
             couponUsed: couponSnapshot?.code || "",
             "metadata.legacyPaymentId": payment._id,
-            "metadata.entitlementId": entitlement._id,
+           "metadata.entitlementId": entitlement?._id || null,
             "metadata.verifiedBy": safeVerifiedBy,
             "metadata.accessStartsAt": payment.accessStartsAt,
             "metadata.accessExpiresAt": payment.accessExpiresAt,
