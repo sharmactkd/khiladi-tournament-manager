@@ -627,6 +627,9 @@ export const getPaymentStatus = async (req, res) => {
     const userId = getUserId(req);
     const { orderId = "", paymentId = "" } = req.query || {};
 
+    const safeOrderId = String(orderId || "").trim();
+    const safePaymentId = String(paymentId || "").trim();
+
     if (!userId) {
       return res.status(401).json({
         success: false,
@@ -634,49 +637,137 @@ export const getPaymentStatus = async (req, res) => {
       });
     }
 
-    if (!orderId && !paymentId) {
+    if (!safeOrderId && !safePaymentId) {
       return res.status(400).json({
         success: false,
         message: "orderId or paymentId is required",
       });
     }
 
-    const query = { userId };
+    const baseQuery = {};
+    if (safeOrderId) baseQuery.razorpayOrderId = safeOrderId;
+    if (safePaymentId) baseQuery.razorpayPaymentId = safePaymentId;
 
-    if (orderId) query.razorpayOrderId = String(orderId).trim();
-    if (paymentId) query.razorpayPaymentId = String(paymentId).trim();
-
-    const payment = await Payment.findOne(query).lean();
+    let payment = await Payment.findOne({
+      ...baseQuery,
+      userId,
+    });
 
     if (!payment) {
+      const paymentWithoutUser = await Payment.findOne(baseQuery).lean();
+
+      if (paymentWithoutUser) {
+        return res.status(403).json({
+          success: false,
+          message: "Payment exists but does not belong to current logged-in user",
+          debug: {
+            requestedUserId: String(userId),
+            paymentUserId: String(paymentWithoutUser.userId),
+            orderId: safeOrderId,
+            paymentId: safePaymentId,
+            paymentStatus: paymentWithoutUser.status,
+          },
+        });
+      }
+
       return res.status(404).json({
         success: false,
         message: "Payment not found",
+        debug: {
+          requestedUserId: String(userId),
+          orderId: safeOrderId,
+          paymentId: safePaymentId,
+        },
       });
     }
 
+    if (
+      payment.status !== "paid" &&
+      safeOrderId &&
+      ["created", "attempted", "authorized", "captured", "expired"].includes(
+        payment.status
+      )
+    ) {
+      try {
+        const razorpay = getRazorpayInstance();
+
+        const paymentsResult = await Promise.race([
+          razorpay.orders.fetchPayments(safeOrderId),
+          new Promise((_, reject) =>
+            setTimeout(
+              () => reject(new Error("Razorpay fetchPayments timeout")),
+              10000
+            )
+          ),
+        ]);
+
+        const expectedAmountInPaise = Math.round(
+          Number(payment.finalAmount ?? payment.amount ?? 0) * 100
+        );
+
+        const payments = Array.isArray(paymentsResult?.items)
+          ? paymentsResult.items
+          : [];
+
+        const capturedPayment = payments.find((item) => {
+          return (
+            item?.order_id === safeOrderId &&
+            item?.status === "captured" &&
+            Number(item?.amount) === expectedAmountInPaise &&
+            String(item?.currency || "").toUpperCase() ===
+              String(payment.currency || "INR").toUpperCase()
+          );
+        });
+
+        if (capturedPayment?.id) {
+          await processPaidPayment({
+            razorpayOrderId: safeOrderId,
+            razorpayPaymentId: capturedPayment.id,
+            razorpaySignature: "",
+            verifiedBy: "payment_status_auto_reconcile",
+          });
+
+          payment = await Payment.findOne({
+            razorpayOrderId: safeOrderId,
+            userId,
+          });
+        }
+      } catch (reconcileError) {
+        logger.warn("Payment status auto-reconcile skipped/failed", {
+          error: reconcileError.message,
+          orderId: safeOrderId,
+          userId,
+          paymentId: payment?._id,
+        });
+      }
+    }
+
+    const paymentLean = payment.toObject ? payment.toObject() : payment;
+
     const access = await hasPremiumAccess({
       userId,
-      tournamentId: payment.tournamentId || req.query?.tournamentId || null,
+      tournamentId:
+        paymentLean.tournamentId || req.query?.tournamentId || null,
       feature: req.query?.feature || null,
     });
 
     return res.json({
       success: true,
       payment: {
-        id: payment._id,
-        status: payment.status,
-        planType: payment.planType,
-        accessType: payment.accessType,
-        razorpayOrderId: payment.razorpayOrderId,
-        razorpayPaymentId: payment.razorpayPaymentId,
-        tournamentId: payment.tournamentId,
-        accessStartsAt: payment.accessStartsAt,
-        accessExpiresAt: payment.accessExpiresAt,
-        originalAmount: payment.originalAmount,
-        discountAmount: payment.discountAmount,
-        finalAmount: payment.finalAmount,
-        coupon: payment.couponSnapshot || payment.planSnapshot?.coupon || null,
+        id: paymentLean._id,
+        status: paymentLean.status,
+        planType: paymentLean.planType,
+        accessType: paymentLean.accessType,
+        razorpayOrderId: paymentLean.razorpayOrderId,
+        razorpayPaymentId: paymentLean.razorpayPaymentId,
+        tournamentId: paymentLean.tournamentId,
+        accessStartsAt: paymentLean.accessStartsAt,
+        accessExpiresAt: paymentLean.accessExpiresAt,
+        originalAmount: paymentLean.originalAmount,
+        discountAmount: paymentLean.discountAmount,
+        finalAmount: paymentLean.finalAmount,
+        coupon:
+          paymentLean.couponSnapshot || paymentLean.planSnapshot?.coupon || null,
       },
       access: {
         hasAccess: access.hasAccess,
@@ -687,16 +778,21 @@ export const getPaymentStatus = async (req, res) => {
         entitlementId: access.entitlementId || null,
         expiresAt: access.expiresAt || null,
       },
-      final: payment.status === "paid" && access.hasAccess === true,
+      final: paymentLean.status === "paid" && access.hasAccess === true,
+      pending:
+        ["created", "attempted", "authorized", "captured"].includes(
+          paymentLean.status
+        ) && !access.hasAccess,
       retryRecommended:
-        ["created", "attempted", "authorized", "captured"].includes(payment.status) &&
-        !access.hasAccess,
+        ["created", "attempted", "authorized", "captured"].includes(
+          paymentLean.status
+        ) && !access.hasAccess,
     });
   } catch (error) {
     logger.error("Get payment status failed", {
       error: error.message,
       stack: error.stack,
-      userId: req.user?._id,
+      userId: req.user?._id || req.user?.id || req.user?.userId,
       query: req.query,
     });
 
