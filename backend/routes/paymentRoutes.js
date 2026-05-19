@@ -6,6 +6,7 @@ import {
   verifyPayment,
   getMyAccessStatus,
   getPaymentStatus,
+  getMyPlan,
   listAvailableCouponsForUser,
   validateCoupon,
   applyCoupon,
@@ -43,6 +44,7 @@ router.post(
 
 router.get("/access-status", authMiddleware, getMyAccessStatus);
 router.get("/status", authMiddleware, getPaymentStatus);
+router.get("/my-plan", authMiddleware, getMyPlan);
 
 router.get(
   "/coupons/available",

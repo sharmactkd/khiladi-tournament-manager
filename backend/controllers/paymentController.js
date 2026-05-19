@@ -19,6 +19,7 @@ import {
   listAvailableCoupons,
 } from "../services/couponService.js";
 import { applyCouponCore } from "./couponController.js";
+import AccessEntitlement from "../models/accessEntitlement.js";
 
 const getUserId = (req) => req.user?._id || req.user?.id || req.user?.userId;
 
@@ -896,4 +897,162 @@ export const applyCoupon = async (req, res) => {
     targetUserId: getUserId(req),
     appliedByAdmin: false,
   });
+};
+
+export const getMyPlan = async (req, res) => {
+  try {
+    const userId = getUserId(req);
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        hasPlan: false,
+        message: "Unauthorized user",
+      });
+    }
+
+    const now = new Date();
+
+    const [latestPaidPayment, latestEntitlement] = await Promise.all([
+      Payment.findOne({ userId, status: "paid" })
+        .sort({ updatedAt: -1, createdAt: -1 })
+        .populate("tournamentId", "name tournamentName title")
+        .lean(),
+
+      AccessEntitlement.findOne({ userId })
+        .sort({
+          status: 1,
+          priority: 1,
+          updatedAt: -1,
+          createdAt: -1,
+        })
+        .populate("tournamentId", "name tournamentName title")
+        .lean(),
+    ]);
+
+    if (!latestPaidPayment && !latestEntitlement) {
+      return res.json({
+        success: true,
+        hasPlan: false,
+        plan: null,
+        entitlement: null,
+      });
+    }
+
+    const entitlement = latestEntitlement
+      ? {
+          id: latestEntitlement._id,
+          scope: latestEntitlement.scope || null,
+          status: latestEntitlement.status || null,
+          source: latestEntitlement.source || null,
+          startsAt: latestEntitlement.startsAt || null,
+          expiresAt: latestEntitlement.expiresAt || null,
+          revokedAt: latestEntitlement.revokedAt || null,
+          revokeReason: latestEntitlement.revokeReason || "",
+        }
+      : null;
+
+    const planSource =
+      latestEntitlement?.source === "coupon"
+        ? "coupon"
+        : latestPaidPayment?.gateway || latestEntitlement?.source || "system";
+
+    const sourcePayment = latestPaidPayment || {};
+    const tournamentDoc =
+      sourcePayment.tournamentId || latestEntitlement?.tournamentId || null;
+
+    const tournamentId =
+      tournamentDoc?._id ||
+      sourcePayment.tournamentId ||
+      latestEntitlement?.tournamentId ||
+      null;
+
+    const tournamentName =
+      tournamentDoc?.name ||
+      tournamentDoc?.tournamentName ||
+      tournamentDoc?.title ||
+      null;
+
+    const accessExpiresAt =
+      sourcePayment.accessExpiresAt || latestEntitlement?.expiresAt || null;
+
+    const isLifetime =
+      sourcePayment.accessLifecycle === "lifetime" ||
+      sourcePayment.accessLifecycle === "single_tournament_lifetime" ||
+      sourcePayment.planType === "lifetime" ||
+      (!accessExpiresAt &&
+        ["active", undefined, null].includes(latestEntitlement?.status));
+
+    const isExpired =
+      accessExpiresAt && new Date(accessExpiresAt).getTime() < now.getTime();
+
+    const accessStatus =
+      latestEntitlement?.status ||
+      (isExpired ? "expired" : sourcePayment.status || "active");
+
+    const plan = {
+      planType:
+        sourcePayment.planType ||
+        latestEntitlement?.planType ||
+        latestEntitlement?.accessType ||
+        null,
+      label:
+        sourcePayment.planSnapshot?.label ||
+        sourcePayment.planType ||
+        latestEntitlement?.planType ||
+        latestEntitlement?.accessType ||
+        "Subscription",
+      status: accessStatus,
+      accessType:
+        sourcePayment.accessType ||
+        latestEntitlement?.accessType ||
+        latestEntitlement?.scope ||
+        null,
+      accessLifecycle:
+        sourcePayment.accessLifecycle ||
+        (isLifetime ? "lifetime" : "fixed_duration"),
+      tournamentId,
+      tournamentName,
+      originalAmount: Number(sourcePayment.originalAmount || 0),
+      discountAmount: Number(sourcePayment.discountAmount || 0),
+      finalAmount: Number(sourcePayment.finalAmount || sourcePayment.amount || 0),
+      currency: sourcePayment.currency || "INR",
+      couponUsed:
+        sourcePayment.couponUsed ||
+        sourcePayment.couponSnapshot?.code ||
+        sourcePayment.planSnapshot?.coupon?.code ||
+        "",
+      razorpayOrderId: sourcePayment.razorpayOrderId || null,
+      razorpayPaymentId: sourcePayment.razorpayPaymentId || null,
+      paidAt:
+        sourcePayment.statusHistory?.find((item) => item.status === "paid")
+          ?.changedAt ||
+        sourcePayment.updatedAt ||
+        null,
+      accessStartsAt:
+        sourcePayment.accessStartsAt || latestEntitlement?.startsAt || null,
+      accessExpiresAt,
+      isLifetime,
+      source: planSource,
+    };
+
+    return res.json({
+      success: true,
+      hasPlan: Boolean(latestPaidPayment || latestEntitlement),
+      plan,
+      entitlement,
+    });
+  } catch (error) {
+    logger.error("Get my plan failed", {
+      error: error.message,
+      stack: error.stack,
+      userId: req.user?._id || req.user?.id || req.user?.userId,
+    });
+
+    return res.status(500).json({
+      success: false,
+      hasPlan: false,
+      message: "Failed to load subscription details",
+    });
+  }
 };

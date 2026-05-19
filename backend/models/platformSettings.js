@@ -17,6 +17,8 @@ export const PREMIUM_FEATURES = {
   OFFICIALS: "officials",
   TEAM_PAYMENTS: "team_payments",
   TIESHEET_RECORD: "tiesheet_record",
+  WINNER: "winner",
+  TEAM_CHAMPIONSHIP: "team_championship",
 };
 
 const normalizeFeatures = (features) => {

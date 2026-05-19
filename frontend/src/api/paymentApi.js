@@ -50,6 +50,14 @@ export const getPaymentStatus = async ({
   return data;
 };
 
+export const getMyPlan = async () => {
+  const { data } = await api.get("/payment/my-plan", {
+    timeout: PAYMENT_STATUS_TIMEOUT_MS,
+  });
+
+  return data;
+};
+
 export const getMyAccessStatus = async (tournamentId, feature = "") => {
   const { data } = await api.get("/payment/access-status", {
     params: { tournamentId, feature },
