@@ -688,12 +688,14 @@ export const listAvailableCouponsForUser = async (req, res) => {
 
     const settings = await PlatformSettings.getSettings();
 
-    if (!settings.couponSystemEnabled) {
-      return res.status(200).json({
-        success: true,
-        coupons: [],
-      });
-    }
+   if (!settings.couponSystemEnabled) {
+  return res.status(200).json({
+    success: true,
+    coupons: [],
+    message: "Coupon system is currently disabled",
+    reason: "coupon-system-disabled",
+  });
+}
 
     const now = new Date();
 
@@ -725,14 +727,17 @@ export const listAvailableCouponsForUser = async (req, res) => {
         continue;
       }
 
-      const alreadyUsed = await CouponRedemption.findOne({
+   const alreadyUsed =
+  coupon.singleUsePerUser === true
+    ? await CouponRedemption.findOne({
         couponId: coupon._id,
         userId,
-      }).lean();
+      }).lean()
+    : null;
 
-      if (alreadyUsed) {
-        continue;
-      }
+if (alreadyUsed) {
+  continue;
+}
 
       availableCoupons.push({
         _id: coupon._id,

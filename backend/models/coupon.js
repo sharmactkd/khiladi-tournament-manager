@@ -33,6 +33,11 @@ const couponSchema = new mongoose.Schema(
       index: true,
     },
 
+    singleUsePerUser: {
+  type: Boolean,
+  default: false,
+},
+
     value: {
       type: Number,
       default: 0,
