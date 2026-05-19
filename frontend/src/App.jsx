@@ -29,6 +29,7 @@ import Official from "./pages/Official";
 import Team from "./pages/Team";
 import TeamEntryForm from "./pages/TeamEntryForm";
 import TeamSubmissions from "./pages/TeamSubmissions";
+import MyPlan from "./pages/MyPlan";
 
 import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
@@ -187,6 +188,7 @@ function App() {
           <Route path="/tournament/create" element={requireAuth(<TournamentForm />)} />
           <Route path="/tournament-form" element={requireAuth(<TournamentForm />)} />
           <Route path="/tournaments" element={<TournamentsPages />} />
+          <Route path="/my-plan" element={requireAuth(<MyPlan />)} />
           <Route path="/team-entry/:id" element={requireAuth(<TeamEntryForm />)} />
 
           <Route path="/admin" element={requireAdmin(<AdminLayout />)}>
