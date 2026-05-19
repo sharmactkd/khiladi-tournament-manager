@@ -448,6 +448,125 @@ export const verifyPayment = async (req, res) => {
   }
 };
 
+export const reconcileRazorpayOrder = async (req, res) => {
+  let userId;
+  let payment;
+
+  try {
+    userId = getUserId(req);
+
+    const { orderId = "" } = req.body || {};
+    const safeOrderId = String(orderId || "").trim();
+
+    if (!userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized user",
+      });
+    }
+
+    if (!safeOrderId) {
+      return res.status(400).json({
+        success: false,
+        message: "orderId is required",
+      });
+    }
+
+    payment = await Payment.findOne({
+      razorpayOrderId: safeOrderId,
+      userId,
+    });
+
+    if (!payment) {
+      return res.status(404).json({
+        success: false,
+        message: "Payment order not found",
+      });
+    }
+
+    if (payment.status === "paid") {
+      return res.json({
+        success: true,
+        alreadyProcessed: true,
+        message: "Payment already verified",
+        access: {
+          planType: payment.planType,
+          accessType: payment.accessType,
+          tournamentId: payment.tournamentId,
+          accessStartsAt: payment.accessStartsAt,
+          accessExpiresAt: payment.accessExpiresAt,
+        },
+      });
+    }
+
+    const razorpay = getRazorpayInstance();
+
+    const expectedAmountInPaise = Math.round(
+      Number(payment.finalAmount ?? payment.amount ?? 0) * 100
+    );
+
+    const paymentsResult = await razorpay.orders.fetchPayments(safeOrderId);
+
+    const payments = Array.isArray(paymentsResult?.items)
+      ? paymentsResult.items
+      : [];
+
+    const capturedPayment = payments.find((item) => {
+      return (
+        item?.order_id === safeOrderId &&
+        item?.status === "captured" &&
+        Number(item?.amount) === expectedAmountInPaise &&
+        String(item?.currency || "").toUpperCase() ===
+          String(payment.currency || "INR").toUpperCase()
+      );
+    });
+
+    if (!capturedPayment) {
+      return res.status(202).json({
+        success: false,
+        pending: true,
+        message: "Payment is not captured yet",
+        payment: {
+          id: payment._id,
+          status: payment.status,
+          razorpayOrderId: payment.razorpayOrderId,
+          expectedAmountInPaise,
+        },
+      });
+    }
+
+    const processed = await processPaidPayment({
+      razorpayOrderId: safeOrderId,
+      razorpayPaymentId: capturedPayment.id,
+      razorpaySignature: "",
+      verifiedBy: "server_razorpay_order_reconcile",
+    });
+
+    return res.json({
+      success: true,
+      alreadyProcessed: processed.alreadyProcessed,
+      message: processed.alreadyProcessed
+        ? "Payment already verified"
+        : "Payment reconciled successfully",
+      access: processed.access,
+    });
+  } catch (error) {
+    logger.error("Reconcile Razorpay order failed", {
+      error: error.message,
+      stack: error.stack,
+      userId,
+      paymentId: payment?._id,
+    });
+
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      message: error.statusCode
+        ? error.message
+        : "Failed to reconcile Razorpay payment",
+    });
+  }
+};
+
 export const getAccessStatus = async (req, res) => {
   try {
     const userId = getUserId(req);

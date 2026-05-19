@@ -9,6 +9,7 @@ import {
   listAvailableCouponsForUser,
   validateCoupon,
   applyCoupon,
+  reconcileRazorpayOrder,
 } from "../controllers/paymentController.js";
 import { requireCsrfToken } from "../middleware/csrfProtection.js";
 import { sensitiveRateLimiter } from "../middleware/rateLimiter.js";
@@ -30,6 +31,14 @@ router.post(
   requireCsrfToken,
   sensitiveRateLimiter,
   verifyPayment
+);
+
+router.post(
+  "/reconcile-order",
+  authMiddleware,
+  requireCsrfToken,
+  sensitiveRateLimiter,
+  reconcileRazorpayOrder
 );
 
 router.get("/access-status", authMiddleware, getMyAccessStatus);

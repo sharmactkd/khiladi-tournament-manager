@@ -75,3 +75,11 @@ export const applyCoupon = async ({ code, planType, tournamentId }) => {
 
   return data;
 };
+
+export const reconcilePaymentOrder = async ({ orderId }) => {
+  const { data } = await api.post("/payment/reconcile-order", {
+    orderId,
+  });
+
+  return data;
+};

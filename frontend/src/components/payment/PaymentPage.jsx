@@ -14,6 +14,7 @@ import {
   getAvailableCoupons,
   validateCoupon,
   applyCoupon,
+  reconcilePaymentOrder,
 } from "../../api/paymentApi";
 import styles from "./PaymentPage.module.css";
 
@@ -246,7 +247,7 @@ const PaymentPage = ({ tournamentId, onPaymentSuccess }) => {
         name: "KHILADI Tournament Manager",
         description: activePlan.title,
         order_id: order?.id || orderRes?.orderId,
-      handler: async (response) => {
+  handler: async (response) => {
   try {
     setLoading(true);
     setError("");
@@ -268,14 +269,27 @@ const PaymentPage = ({ tournamentId, onPaymentSuccess }) => {
       return;
     }
 
+    let reconcileRes = null;
+
+    try {
+      reconcileRes = await reconcilePaymentOrder({
+        orderId: response.razorpay_order_id,
+      });
+    } catch (reconcileError) {
+      console.error("Payment reconcile failed:", reconcileError);
+    }
+
+    if (reconcileRes?.success) {
+      onPaymentSuccess?.();
+      return;
+    }
+
     const statusRes = await waitForPaymentFinalStatus({
       orderId: response.razorpay_order_id,
       paymentId: response.razorpay_payment_id,
       tournamentId,
       feature:
-        selectedPlan === "single"
-          ? "tiesheet"
-          : "premium_unlimited",
+        selectedPlan === "single" ? "tiesheet" : "premium_unlimited",
       maxAttempts: 12,
     });
 
