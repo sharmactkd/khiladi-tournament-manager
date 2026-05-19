@@ -49,12 +49,17 @@ const Header = () => {
 
         <div className={styles.right}>
           {isAuthenticated ? (
-            <div className={styles.userSection}>
-              <span>Hello, {displayName}</span>
-              <button onClick={handleLogout} className={styles.logoutButton}>
-                Logout
-              </button>
-            </div>
+         <div className={styles.userSection}>
+  <span>Hello, {displayName}</span>
+
+  <Link to="/my-plan" className={styles.navLink}>
+    My Plan
+  </Link>
+
+  <button onClick={handleLogout} className={styles.logoutButton}>
+    Logout
+  </button>
+</div>
           ) : (
             <div className={styles.authLinks}>
               <Link to="/login" className={styles.navLink}>Login /</Link>
