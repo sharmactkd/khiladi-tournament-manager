@@ -1,5 +1,4 @@
 // backend/services/paymentProcessingService.js
-import mongoose from "mongoose";
 import Payment from "../models/payment.js";
 import PaymentTransaction from "../models/paymentTransaction.js";
 import User from "../models/user.js";
@@ -10,6 +9,15 @@ import { createBillingEvent } from "./billingEventService.js";
 import { redeemCouponAtomically } from "./couponService.js";
 
 const normalizeString = (value) => String(value || "").trim();
+
+const PROCESSABLE_STATUSES = [
+  "created",
+  "attempted",
+  "authorized",
+  "captured",
+  "expired",
+  "paid",
+];
 
 const buildUserAccessUpdate = (payment) => {
   const isLifetime = payment.planType === "lifetime";
@@ -76,6 +84,228 @@ const getAppliedCouponSnapshot = (payment) => {
   };
 };
 
+const markPaymentPaidFast = async ({
+  safeOrderId,
+  safePaymentId,
+  safeSignature,
+  safeVerifiedBy,
+}) => {
+  const existingPayment = await Payment.findOne({
+    razorpayOrderId: safeOrderId,
+  });
+
+  if (!existingPayment) {
+    const error = new Error("Payment order not found");
+    error.statusCode = 404;
+    throw error;
+  }
+
+  if (!PROCESSABLE_STATUSES.includes(existingPayment.status)) {
+    const error = new Error(
+      `Payment cannot be processed from status: ${existingPayment.status}`
+    );
+    error.statusCode = 409;
+    throw error;
+  }
+
+  if (existingPayment.status === "paid") {
+    return {
+      payment: existingPayment,
+      alreadyProcessed: true,
+    };
+  }
+
+  const accessFields = await getPaymentAccessFields(
+    existingPayment.planType,
+    new Date()
+  );
+
+  const payment = await Payment.findOneAndUpdate(
+    {
+      _id: existingPayment._id,
+      status: {
+        $in: ["created", "attempted", "authorized", "captured", "expired"],
+      },
+    },
+    {
+      $set: {
+        status: "paid",
+        razorpayPaymentId: safePaymentId,
+        razorpaySignature: safeSignature,
+        accessType: accessFields.accessType,
+        accessStartsAt: accessFields.accessStartsAt,
+        accessExpiresAt: accessFields.accessExpiresAt,
+        accessLifecycle: getAccessLifecycle(existingPayment),
+      },
+      $push: {
+        statusHistory: {
+          status: "paid",
+          changedAt: new Date(),
+          source: safeVerifiedBy,
+          note: "Payment marked paid after Razorpay verification/reconciliation",
+        },
+      },
+    },
+    { new: true }
+  );
+
+  if (!payment) {
+    const latestPayment = await Payment.findById(existingPayment._id);
+
+    return {
+      payment: latestPayment,
+      alreadyProcessed: latestPayment?.status === "paid",
+    };
+  }
+
+  return {
+    payment,
+    alreadyProcessed: false,
+  };
+};
+
+const ensurePaymentArtifacts = async ({
+  payment,
+  safePaymentId,
+  safeVerifiedBy,
+}) => {
+  const couponSnapshot = getAppliedCouponSnapshot(payment);
+
+  const entitlement = await createAccessEntitlement({
+    userId: payment.userId,
+    scope: getEntitlementScope(payment),
+    tournamentId: payment.planType === "single" ? payment.tournamentId : null,
+    source: "payment",
+    sourceId: payment._id,
+    planType: payment.planType,
+    accessType: getEntitlementAccessType(payment),
+    startsAt: payment.accessStartsAt,
+    expiresAt: payment.accessExpiresAt,
+    metadata: {
+      gateway: payment.gateway,
+      razorpayOrderId: payment.razorpayOrderId,
+      razorpayPaymentId: safePaymentId,
+      verifiedBy: safeVerifiedBy,
+      planSnapshot: payment.planSnapshot,
+      coupon: couponSnapshot,
+      originalAmount: payment.originalAmount,
+      discountAmount: payment.discountAmount,
+      finalAmount: payment.finalAmount,
+    },
+  });
+
+  await createBillingEvent({
+    eventType: "payment.paid",
+    aggregateType: "payment",
+    aggregateId: payment._id,
+    userId: payment.userId,
+    idempotencyKey: `payment.paid:${payment._id}`,
+    payload: {
+      paymentId: payment._id,
+      razorpayOrderId: payment.razorpayOrderId,
+      razorpayPaymentId: safePaymentId,
+      planType: payment.planType,
+      amount: payment.amount,
+      originalAmount: payment.originalAmount,
+      discountAmount: payment.discountAmount,
+      finalAmount: payment.finalAmount,
+      currency: payment.currency,
+      entitlementId: entitlement?._id || null,
+      verifiedBy: safeVerifiedBy,
+      coupon: couponSnapshot,
+    },
+  });
+
+  await User.findByIdAndUpdate(payment.userId, {
+    $set: buildUserAccessUpdate(payment),
+  });
+
+  const transaction = await PaymentTransaction.findOneAndUpdate(
+    { orderId: payment.razorpayOrderId },
+    {
+      $set: {
+        status: "paid",
+        paymentId: safePaymentId,
+        amount: payment.finalAmount ?? payment.amount,
+        originalAmount: payment.originalAmount,
+        discountAmount: payment.discountAmount,
+        finalAmount: payment.finalAmount,
+        planSnapshot: payment.planSnapshot || null,
+        couponSnapshot,
+        couponUsed: couponSnapshot?.code || "",
+        "metadata.legacyPaymentId": payment._id,
+        "metadata.entitlementId": entitlement?._id || null,
+        "metadata.verifiedBy": safeVerifiedBy,
+        "metadata.accessStartsAt": payment.accessStartsAt,
+        "metadata.accessExpiresAt": payment.accessExpiresAt,
+        "metadata.processedAt": new Date(),
+        "metadata.coupon": couponSnapshot,
+        "metadata.originalAmount": payment.originalAmount,
+        "metadata.discountAmount": payment.discountAmount,
+        "metadata.finalAmount": payment.finalAmount,
+      },
+    },
+    { new: true }
+  );
+
+  let couponRedemption = null;
+
+  if (couponSnapshot?.code && couponSnapshot?.couponId) {
+    couponRedemption = await redeemCouponAtomically({
+      couponSnapshot,
+      userId: payment.userId,
+      planType: payment.planType,
+      tournamentId: payment.tournamentId || null,
+      paymentId: payment._id,
+      transactionId: transaction?._id || null,
+      entitlementId: entitlement?._id || null,
+      source: "payment",
+      metadata: {
+        paymentId: payment._id,
+        razorpayOrderId: payment.razorpayOrderId,
+        razorpayPaymentId: safePaymentId,
+        verifiedBy: safeVerifiedBy,
+        accessStartsAt: payment.accessStartsAt || null,
+        accessExpiresAt: payment.accessExpiresAt || null,
+      },
+    });
+
+    await createBillingEvent({
+      eventType: "coupon.redeemed_after_paid_payment",
+      aggregateType: "coupon",
+      aggregateId: couponSnapshot.couponId,
+      userId: payment.userId,
+      idempotencyKey: `coupon.paid_redeemed:${couponSnapshot.couponId}:${payment._id}`,
+      payload: {
+        couponId: couponSnapshot.couponId,
+        code: couponSnapshot.code,
+        planType: payment.planType,
+        paymentId: payment._id,
+        transactionId: transaction?._id || null,
+        entitlementId: entitlement?._id || null,
+        redemptionId: couponRedemption?._id || null,
+        originalAmount: couponSnapshot.originalAmount,
+        discountAmount: couponSnapshot.discountAmount,
+        finalAmount: couponSnapshot.finalAmount,
+      },
+    });
+
+    await PaymentTransaction.findOneAndUpdate(
+      { orderId: payment.razorpayOrderId },
+      {
+        $set: {
+          "metadata.couponRedemptionId": couponRedemption?._id || null,
+        },
+      }
+    );
+  }
+
+  return {
+    entitlement,
+    couponRedemption,
+  };
+};
+
 export const processPaidPayment = async ({
   razorpayOrderId,
   razorpayPaymentId,
@@ -93,259 +323,46 @@ export const processPaidPayment = async ({
     throw error;
   }
 
-  const session = await mongoose.startSession();
-
   try {
-    let result = null;
-
-    await session.withTransaction(async () => {
-      const existingPayment = await Payment.findOne({
-        razorpayOrderId: safeOrderId,
-      }).session(session);
-
-      if (!existingPayment) {
-        const error = new Error("Payment order not found");
-        error.statusCode = 404;
-        throw error;
-      }
-
-      if (existingPayment.status === "paid") {
-        result = {
-          alreadyProcessed: true,
-          payment: existingPayment,
-          access: buildAccessResponse(existingPayment),
-        };
-
-        return;
-      }
-
-   if (
-  !["created", "attempted", "authorized", "captured", "expired"].includes(
-    existingPayment.status
-  )
-) {
-        const error = new Error(
-          `Payment cannot be processed from status: ${existingPayment.status}`
-        );
-        error.statusCode = 409;
-        throw error;
-      }
-
-      const accessFields = await getPaymentAccessFields(
-        existingPayment.planType,
-        new Date()
-      );
-
-      const payment = await Payment.findOneAndUpdate(
-        {
-          _id: existingPayment._id,
-          status: { $in: ["created", "attempted", "authorized", "captured", "expired"] },
-        },
-        {
-          $set: {
-            status: "paid",
-            razorpayPaymentId: safePaymentId,
-            razorpaySignature: safeSignature,
-            accessType: accessFields.accessType,
-            accessStartsAt: accessFields.accessStartsAt,
-            accessExpiresAt: accessFields.accessExpiresAt,
-            accessLifecycle: getAccessLifecycle(existingPayment),
-          },
-          $push: {
-            statusHistory: {
-              status: "paid",
-              changedAt: new Date(),
-              source: safeVerifiedBy,
-              note: "Payment verified and premium access activated",
-            },
-          },
-        },
-        {
-          new: true,
-          session,
-        }
-      );
-
-      if (!payment) {
-        const latestPayment = await Payment.findById(existingPayment._id).session(
-          session
-        );
-
-        result = {
-          alreadyProcessed: true,
-          payment: latestPayment,
-          access: latestPayment ? buildAccessResponse(latestPayment) : null,
-        };
-
-        return;
-      }
-
-      const couponSnapshot = getAppliedCouponSnapshot(payment);
-
-      const entitlement = await createAccessEntitlement({
-        userId: payment.userId,
-        scope: getEntitlementScope(payment),
-        tournamentId: payment.planType === "single" ? payment.tournamentId : null,
-        source: "payment",
-        sourceId: payment._id,
-        planType: payment.planType,
-        accessType: getEntitlementAccessType(payment),
-        startsAt: payment.accessStartsAt,
-        expiresAt: payment.accessExpiresAt,
-        metadata: {
-          gateway: payment.gateway,
-          razorpayOrderId: payment.razorpayOrderId,
-          razorpayPaymentId: safePaymentId,
-          verifiedBy: safeVerifiedBy,
-          planSnapshot: payment.planSnapshot,
-          coupon: couponSnapshot,
-          originalAmount: payment.originalAmount,
-          discountAmount: payment.discountAmount,
-          finalAmount: payment.finalAmount,
-        },
-        session,
-      });
-
-      await createBillingEvent({
-        eventType: "payment.paid",
-        aggregateType: "payment",
-        aggregateId: payment._id,
-        userId: payment.userId,
-        idempotencyKey: `payment.paid:${payment._id}`,
-        payload: {
-          paymentId: payment._id,
-          razorpayOrderId: payment.razorpayOrderId,
-          razorpayPaymentId: safePaymentId,
-          planType: payment.planType,
-          amount: payment.amount,
-          originalAmount: payment.originalAmount,
-          discountAmount: payment.discountAmount,
-          finalAmount: payment.finalAmount,
-          currency: payment.currency,
-          entitlementId: entitlement?._id || null,
-          verifiedBy: safeVerifiedBy,
-          coupon: couponSnapshot,
-        },
-        session,
-      });
-
-      await User.findByIdAndUpdate(
-        payment.userId,
-        {
-          $set: buildUserAccessUpdate(payment),
-        },
-        { session }
-      );
-
-      const transaction = await PaymentTransaction.findOneAndUpdate(
-        { orderId: safeOrderId },
-        {
-          $set: {
-            status: "paid",
-            paymentId: safePaymentId,
-            amount: payment.finalAmount ?? payment.amount,
-            originalAmount: payment.originalAmount,
-            discountAmount: payment.discountAmount,
-            finalAmount: payment.finalAmount,
-            planSnapshot: payment.planSnapshot || null,
-            couponSnapshot,
-            couponUsed: couponSnapshot?.code || "",
-            "metadata.legacyPaymentId": payment._id,
-           "metadata.entitlementId": entitlement?._id || null,
-            "metadata.verifiedBy": safeVerifiedBy,
-            "metadata.accessStartsAt": payment.accessStartsAt,
-            "metadata.accessExpiresAt": payment.accessExpiresAt,
-            "metadata.processedAt": new Date(),
-            "metadata.coupon": couponSnapshot,
-            "metadata.originalAmount": payment.originalAmount,
-            "metadata.discountAmount": payment.discountAmount,
-            "metadata.finalAmount": payment.finalAmount,
-          },
-        },
-        {
-          session,
-          new: true,
-        }
-      );
-
-      let couponRedemption = null;
-
-      if (couponSnapshot?.code && couponSnapshot?.couponId) {
-        couponRedemption = await redeemCouponAtomically({
-          couponSnapshot,
-          userId: payment.userId,
-          planType: payment.planType,
-          tournamentId: payment.tournamentId || null,
-          paymentId: payment._id,
-          transactionId: transaction?._id || null,
-          entitlementId: entitlement?._id || null,
-          source: "payment",
-          metadata: {
-            paymentId: payment._id,
-            razorpayOrderId: payment.razorpayOrderId,
-            razorpayPaymentId: safePaymentId,
-            verifiedBy: safeVerifiedBy,
-            accessStartsAt: payment.accessStartsAt || null,
-            accessExpiresAt: payment.accessExpiresAt || null,
-          },
-          session,
-        });
-
-        await createBillingEvent({
-          eventType: "coupon.redeemed_after_paid_payment",
-          aggregateType: "coupon",
-          aggregateId: couponSnapshot.couponId,
-          userId: payment.userId,
-          idempotencyKey: `coupon.paid_redeemed:${couponSnapshot.couponId}:${payment._id}`,
-          payload: {
-            couponId: couponSnapshot.couponId,
-            code: couponSnapshot.code,
-            planType: payment.planType,
-            paymentId: payment._id,
-            transactionId: transaction?._id || null,
-            entitlementId: entitlement?._id || null,
-            redemptionId: couponRedemption?._id || null,
-            originalAmount: couponSnapshot.originalAmount,
-            discountAmount: couponSnapshot.discountAmount,
-            finalAmount: couponSnapshot.finalAmount,
-          },
-          session,
-        });
-
-        await PaymentTransaction.findOneAndUpdate(
-          { orderId: safeOrderId },
-          {
-            $set: {
-              "metadata.couponRedemptionId": couponRedemption?._id || null,
-            },
-          },
-          { session }
-        );
-      }
-
-      result = {
-        alreadyProcessed: false,
-        payment,
-        entitlement,
-        couponRedemption,
-        access: buildAccessResponse(payment, entitlement),
-      };
+    const { payment, alreadyProcessed } = await markPaymentPaidFast({
+      safeOrderId,
+      safePaymentId,
+      safeSignature,
+      safeVerifiedBy,
     });
 
-    logger.info("Payment processed safely with entitlement", {
+    if (!payment) {
+      const error = new Error("Payment could not be loaded after paid update");
+      error.statusCode = 500;
+      throw error;
+    }
+
+    const artifacts = await ensurePaymentArtifacts({
+      payment,
+      safePaymentId,
+      safeVerifiedBy,
+    });
+
+    logger.info("Payment processed safely with idempotent artifacts", {
       razorpayOrderId: safeOrderId,
       razorpayPaymentId: safePaymentId,
       verifiedBy: safeVerifiedBy,
-      alreadyProcessed: result?.alreadyProcessed || false,
-      paymentId: result?.payment?._id,
-      entitlementId: result?.entitlement?._id,
-      couponRedemptionId: result?.couponRedemption?._id,
-      userId: result?.payment?.userId,
-      planType: result?.payment?.planType,
-      status: result?.payment?.status,
+      alreadyProcessed,
+      paymentId: payment._id,
+      entitlementId: artifacts.entitlement?._id || null,
+      couponRedemptionId: artifacts.couponRedemption?._id || null,
+      userId: payment.userId,
+      planType: payment.planType,
+      status: payment.status,
     });
 
-    return result;
+    return {
+      alreadyProcessed,
+      payment,
+      entitlement: artifacts.entitlement,
+      couponRedemption: artifacts.couponRedemption,
+      access: buildAccessResponse(payment, artifacts.entitlement),
+    };
   } catch (error) {
     logger.error("Safe payment processing failed", {
       error: error.message,
@@ -356,8 +373,6 @@ export const processPaidPayment = async ({
     });
 
     throw error;
-  } finally {
-    session.endSession();
   }
 };
 
