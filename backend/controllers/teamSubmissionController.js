@@ -185,6 +185,25 @@ const getTournamentOwnerId = (tournament) => {
   return owner;
 };
 
+const now = new Date();
+
+const dateFrom = tournament.dateFrom ? new Date(tournament.dateFrom) : null;
+const dateTo = tournament.dateTo ? new Date(tournament.dateTo) : null;
+
+if (!dateFrom || !dateTo || Number.isNaN(dateFrom.getTime()) || Number.isNaN(dateTo.getTime())) {
+  return res.status(400).json({
+    success: false,
+    message: "Tournament dates are invalid. Team submission is not allowed.",
+  });
+}
+
+if (now > dateTo) {
+  return res.status(403).json({
+    success: false,
+    message: "Team submissions are closed for this tournament.",
+  });
+}
+
 export const submitTeamSubmission = async (req, res) => {
   try {
     const { tournamentId } = req.params;

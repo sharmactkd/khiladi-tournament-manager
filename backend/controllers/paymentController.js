@@ -19,7 +19,7 @@ import {
   listAvailableCoupons,
 } from "../services/couponService.js";
 import { applyCouponCore } from "./couponController.js";
-import AccessEntitlement from "../models/accessEntitlement.js";
+import { findBestActiveEntitlement } from "../services/accessEntitlementService.js";
 
 const getUserId = (req) => req.user?._id || req.user?.id || req.user?.userId;
 
@@ -654,33 +654,27 @@ export const getPaymentStatus = async (req, res) => {
       userId,
     });
 
-    if (!payment) {
-      const paymentWithoutUser = await Payment.findOne(baseQuery).lean();
+  if (!payment) {
+  const paymentWithoutUser = await Payment.exists(baseQuery);
 
-      if (paymentWithoutUser) {
-        return res.status(403).json({
-          success: false,
-          message: "Payment exists but does not belong to current logged-in user",
-          debug: {
-            requestedUserId: String(userId),
-            paymentUserId: String(paymentWithoutUser.userId),
-            orderId: safeOrderId,
-            paymentId: safePaymentId,
-            paymentStatus: paymentWithoutUser.status,
-          },
-        });
-      }
+  if (paymentWithoutUser) {
+    logger.warn("Payment status access denied", {
+      userId,
+      orderId: safeOrderId ? "[PRESENT]" : "",
+      paymentId: safePaymentId ? "[PRESENT]" : "",
+    });
 
-      return res.status(404).json({
-        success: false,
-        message: "Payment not found",
-        debug: {
-          requestedUserId: String(userId),
-          orderId: safeOrderId,
-          paymentId: safePaymentId,
-        },
-      });
-    }
+    return res.status(403).json({
+      success: false,
+      message: "Payment does not belong to current user",
+    });
+  }
+
+  return res.status(404).json({
+    success: false,
+    message: "Payment not found",
+  });
+}
 
     if (
       payment.status !== "paid" &&
@@ -919,15 +913,11 @@ export const getMyPlan = async (req, res) => {
         .populate("tournamentId", "name tournamentName title")
         .lean(),
 
-      AccessEntitlement.findOne({ userId })
-        .sort({
-          status: 1,
-          priority: 1,
-          updatedAt: -1,
-          createdAt: -1,
-        })
-        .populate("tournamentId", "name tournamentName title")
-        .lean(),
+    findBestActiveEntitlement({
+  userId,
+  tournamentId: null,
+  feature: "",
+}),
     ]);
 
     if (!latestPaidPayment && !latestEntitlement) {

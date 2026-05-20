@@ -110,10 +110,33 @@ const getSnapshotAccess = (tournament) => {
 
   if (!snapshot?.hasPremiumAccess) return null;
 
+  const planType = String(snapshot.planType || "").toLowerCase();
+  const accessType = String(snapshot.accessType || "").toLowerCase();
+
+  const isLifetime =
+    planType === "lifetime" ||
+    accessType === "lifetime" ||
+    snapshot.source === "lifetime";
+
+  const isSingleTournamentLifetime =
+    planType === "single" ||
+    accessType === "tournament";
+
+  const expiresAt = snapshot.planExpiresAt
+    ? new Date(snapshot.planExpiresAt)
+    : null;
+
+  const hasValidExpiry =
+    expiresAt && !Number.isNaN(expiresAt.getTime()) && expiresAt > new Date();
+
+  if (!isLifetime && !isSingleTournamentLifetime && !hasValidExpiry) {
+    return null;
+  }
+
   return {
     hasAccess: true,
     reason: "tournament-premium-snapshot",
-    expiresAt: null,
+    expiresAt: snapshot.planExpiresAt || null,
     source: snapshot.source || "premium_snapshot",
     accessType: snapshot.accessType || "tournament_snapshot",
     planType: snapshot.planType || null,
@@ -126,7 +149,7 @@ const getSnapshotAccess = (tournament) => {
     planExpiresAt: snapshot.planExpiresAt || null,
     snapshot: true,
   };
-};
+}; 
 
 const shouldShowPlanExpiryReminder = (premiumAccess) => {
   if (!premiumAccess?.hasAccess) return false;

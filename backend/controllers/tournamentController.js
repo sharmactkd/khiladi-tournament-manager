@@ -1220,10 +1220,10 @@ export const getTeamChampionshipAggregation = async (req, res) => {
 
 export const getAllTournaments = async (req, res) => {
   try {
-    const tournaments = await Tournament.find()
-      .populate("createdBy", "name email")
-      .sort({ createdAt: -1 })
-      .lean();
+  const tournaments = await Tournament.find(getPublicVisibilityFilter())
+  .populate("createdBy", "name email")
+  .sort({ createdAt: -1 })
+  .lean();
 
    const normalized = tournaments.map(buildPublicTournamentResponse);
 
