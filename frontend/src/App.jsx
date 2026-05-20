@@ -18,6 +18,9 @@ import TournamentForm from "./pages/TournamentForm";
 import TournamentDetails from "./pages/TournamentDetails";
 import SocialLogin from "./pages/SocialLogin";
 import TournamentsPages from "./pages/TournamentsPages";
+import TournamentManager from "./pages/TournamentManager";
+import BracketMaker from "./pages/BracketMaker";
+import TieSheetMaker from "./pages/TieSheetMaker";
 import About from "./pages/About";
 import Contact from "./pages/Contact";
 import Entry from "./pages/Entry";
@@ -113,6 +116,10 @@ function App() {
         <Routes>
           <Route path="/" element={<TournamentsPages />} />
 
+          <Route path="/tournament-manager" element={<TournamentManager />} />
+          <Route path="/bracket-maker" element={<BracketMaker />} />
+          <Route path="/tie-sheet-maker" element={<TieSheetMaker />} />
+
           <Route
             path="/login"
             element={
@@ -182,10 +189,15 @@ function App() {
 
           <Route
             path="/social-login"
-            element={!isAuthenticated ? <SocialLogin /> : <Navigate to="/" replace />}
+            element={
+              !isAuthenticated ? <SocialLogin /> : <Navigate to="/" replace />
+            }
           />
 
-          <Route path="/tournament/create" element={requireAuth(<TournamentForm />)} />
+          <Route
+            path="/tournament/create"
+            element={requireAuth(<TournamentForm />)}
+          />
           <Route path="/tournament-form" element={requireAuth(<TournamentForm />)} />
           <Route path="/tournaments" element={<TournamentsPages />} />
           <Route path="/my-plan" element={requireAuth(<MyPlan />)} />

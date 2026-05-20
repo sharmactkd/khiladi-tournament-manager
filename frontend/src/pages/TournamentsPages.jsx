@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import { getOngoingTournaments, getPreviousTournaments } from "../api";
 import TournamentPreviewCard from "../components/TournamentPreviewCard";
 import FilterComponent from "../components/FilterComponent";
@@ -23,11 +24,12 @@ const TournamentsPages = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch tournaments
   useEffect(() => {
     const controller = new AbortController();
+
     const fetchTournaments = async () => {
       setLoading(true);
+
       try {
         const [ongoingResponse, previousResponse] = await Promise.all([
           getOngoingTournaments(),
@@ -55,22 +57,22 @@ const TournamentsPages = () => {
     };
 
     fetchTournaments();
+
     return () => controller.abort();
   }, []);
 
-  // Unique countries with useMemo
   const getUniqueCountries = useMemo(
     () => () => {
       const allTournaments = [...ongoingTournaments, ...previousTournaments];
       const countries = allTournaments
         .filter((tournament) => tournament?.venue?.country)
         .map((tournament) => tournament.venue.country);
+
       return [...new Set(countries)].sort();
     },
     [ongoingTournaments, previousTournaments]
   );
 
-  // Filter function (case-insensitive)
   const filterTournament = (tournament) => {
     if (!tournament) return false;
 
@@ -79,16 +81,18 @@ const TournamentsPages = () => {
       (!tournament.venue ||
         !tournament.venue.country ||
         tournament.venue.country.toLowerCase() !== filters.country.toLowerCase())
-    )
+    ) {
       return false;
+    }
 
     if (
       filters.tournamentLevel &&
       (!tournament.tournamentLevel ||
         tournament.tournamentLevel.toLowerCase() !==
           filters.tournamentLevel.toLowerCase())
-    )
+    ) {
       return false;
+    }
 
     if (
       filters.tournamentType &&
@@ -96,25 +100,28 @@ const TournamentsPages = () => {
         !tournament.tournamentType.some(
           (type) => type.toLowerCase() === filters.tournamentType.toLowerCase()
         ))
-    )
+    ) {
       return false;
+    }
 
     return true;
   };
 
-  // Memoized filtered lists
   const filteredOngoing = useMemo(
     () => ongoingTournaments.filter(filterTournament),
     [ongoingTournaments, filters]
   );
+
   const filteredPrevious = useMemo(
     () => previousTournaments.filter(filterTournament),
     [previousTournaments, filters]
   );
+
   const filteredMyOngoing = useMemo(
     () => filteredOngoing.filter((t) => t.createdBy?._id === user?._id),
     [filteredOngoing, user]
   );
+
   const filteredMyPrevious = useMemo(
     () => filteredPrevious.filter((t) => t.createdBy?._id === user?._id),
     [filteredPrevious, user]
@@ -122,20 +129,19 @@ const TournamentsPages = () => {
 
   const handleToggle = () => {
     setShowPrevious((prev) => !prev);
-    setShowMyTournaments(false); // Reset My Tournaments
+    setShowMyTournaments(false);
   };
 
   const handleMyTournaments = () => {
     setShowMyTournaments((prev) => !prev);
     setShowPrevious(false);
-    setMyTournamentView("ongoing"); // Default view
+    setMyTournamentView("ongoing");
   };
 
   const handleCreateTournament = () => {
     navigate("/tournament/create");
   };
 
-  // Display logic
   let displayTournaments = [];
   let displayTitle = "";
 
@@ -155,83 +161,122 @@ const TournamentsPages = () => {
     displayTitle = `${displayTournaments.length} Ongoing Tournaments`;
   }
 
-  if (loading) return <div className={styles.loading}>Loading tournaments...</div>;
-  if (error) return <div className={styles.error}>{error}</div>;
+  if (loading) {
+    return <div className={styles.loading}>Loading tournaments...</div>;
+  }
+
+  if (error) {
+    return <div className={styles.error}>{error}</div>;
+  }
 
   return (
-    <div className={styles.container}>
-      <div className={styles.headerRow}>
-        <div className={styles.leftGroup}>
-          <button className={styles.toggleButton} onClick={handleToggle}>
-            {showPrevious
-              ? "Show Ongoing Tournaments"
-              : "Show Previous Tournaments"}
-          </button>
+    <>
+      <Helmet>
+        <title>KHILADI - Taekwondo Tournament Manager & Tie Sheet Maker</title>
+
+        <meta
+          name="description"
+          content="KHILADI is a professional Taekwondo Tournament Manager with tie-sheet maker, bracket manager, player entry system, winner records and team championship tools."
+        />
+
+        <meta
+          name="keywords"
+          content="taekwondo tournament manager, tie sheet maker, bracket manager, martial arts tournament software, taekwondo software, tournament management system, championship software, KHILADI"
+        />
+
+        <link rel="canonical" href="https://khiladi-khoj.com/" />
+
+        <meta property="og:title" content="KHILADI Tournament Manager" />
+        <meta
+          property="og:description"
+          content="Professional Taekwondo tournament manager and tie-sheet software."
+        />
+        <meta
+          property="og:image"
+          content="https://khiladi-khoj.com/khiladi-logo.png"
+        />
+        <meta property="og:url" content="https://khiladi-khoj.com/" />
+        <meta property="og:type" content="website" />
+      </Helmet>
+
+      <div className={styles.container}>
+        <div className={styles.headerRow}>
+          <div className={styles.leftGroup}>
+            <button className={styles.toggleButton} onClick={handleToggle}>
+              {showPrevious ? "Show Ongoing Tournaments" : "Show Previous Tournaments"}
+            </button>
+          </div>
+
+          <h1 className={styles.pageTitle}>Tournaments</h1>
+
+          <div className={styles.rightGroup}>
+            {user && (
+              <>
+                <button
+                  className={styles.toggleButton}
+                  onClick={handleCreateTournament}
+                >
+                  Create Tournament
+                </button>
+
+                <button
+                  className={styles.toggleButton}
+                  onClick={handleMyTournaments}
+                >
+                  My Tournaments
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
-        <h1 className={styles.pageTitle}>Tournaments</h1>
+        {showMyTournaments && (
+          <div className={styles.myToggleGroup}>
+            <button
+              className={`${styles.myToggleButton} ${
+                myTournamentView === "ongoing" ? styles.activeToggle : ""
+              }`}
+              onClick={() => setMyTournamentView("ongoing")}
+            >
+              My Ongoing Tournaments
+            </button>
 
-        <div className={styles.rightGroup}>
-          {user && (
-            <>
-              <button
-                className={styles.toggleButton}
-                onClick={handleCreateTournament}
-              >
-                Create Tournament
-              </button>
-              <button className={styles.toggleButton} onClick={handleMyTournaments}>
-                My Tournaments
-              </button>
-            </>
-          )}
-        </div>
+            <button
+              className={`${styles.myToggleButton} ${
+                myTournamentView === "previous" ? styles.activeToggle : ""
+              }`}
+              onClick={() => setMyTournamentView("previous")}
+            >
+              My Previous Tournaments
+            </button>
+          </div>
+        )}
+
+        <FilterComponent
+          filters={filters}
+          onFilterChange={setFilters}
+          availableCountries={getUniqueCountries()}
+        />
+
+        <section className={styles.section}>
+          <h2>{displayTitle}</h2>
+
+          <div className={styles.cardsContainer}>
+            {displayTournaments.length > 0 ? (
+              displayTournaments.map((tournament) => (
+                <TournamentPreviewCard
+                  key={tournament._id}
+                  tournament={tournament}
+                  onClick={() => navigate(`/tournaments/${tournament._id}`)}
+                />
+              ))
+            ) : (
+              <p>No tournaments found.</p>
+            )}
+          </div>
+        </section>
       </div>
-
-      {showMyTournaments && (
-        <div className={styles.myToggleGroup}>
-          <button
-            className={`${styles.myToggleButton} ${
-              myTournamentView === "ongoing" ? styles.activeToggle : ""
-            }`}
-            onClick={() => setMyTournamentView("ongoing")}
-          >
-            My Ongoing Tournaments
-          </button>
-          <button
-            className={`${styles.myToggleButton} ${
-              myTournamentView === "previous" ? styles.activeToggle : ""
-            }`}
-            onClick={() => setMyTournamentView("previous")}
-          >
-            My Previous Tournaments
-          </button>
-        </div>
-      )}
-
-      <FilterComponent
-        filters={filters}
-        onFilterChange={setFilters}
-        availableCountries={getUniqueCountries()}
-      />
-
-      <section className={styles.section}>
-        <h2>{displayTitle}</h2>
-        <div className={styles.cardsContainer}>
-          {displayTournaments.length > 0 ? (
-            displayTournaments.map((tournament) => (
-              <TournamentPreviewCard
-                key={tournament._id}
-                tournament={tournament}
-                onClick={() => navigate(`/tournaments/${tournament._id}`)}
-              />
-            ))
-          ) : (
-            <p>No tournaments found.</p>
-          )}
-        </div>
-      </section>
-    </div>
+    </>
   );
 };
 
