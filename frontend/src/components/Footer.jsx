@@ -49,11 +49,14 @@ const Footer = () => {
           <div>
             <div className={styles.footerTitle}>Quick Links</div>
             <div className={styles.footerLinks}>
-              <Link to="/">Home</Link>
-              <Link to="/tournaments">Tournaments</Link>
-              <Link to="/about">About</Link>
-              <Link to="/contact">Contact</Link>
-            </div>
+  <Link to="/">Home</Link>
+  <Link to="/tournaments">Tournaments</Link>
+  <Link to="/tournament-manager">Tournament Manager</Link>
+  <Link to="/bracket-maker">Bracket Maker</Link>
+  <Link to="/tie-sheet-maker">Tie Sheet Maker</Link>
+  <Link to="/about">About</Link>
+  <Link to="/contact">Contact</Link>
+</div>
           </div>
 
           {/* Right */}

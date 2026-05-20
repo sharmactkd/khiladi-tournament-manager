@@ -1931,3 +1931,656 @@ textarea {
     top: 12px;
   }
 }
+
+
+/* =========================================================
+   RESPONSIVE UPDATE PATCH
+   Add this at the END of TournamentForm.module.css
+   Purpose:
+   - Preserve desktop layout
+   - Fix fixed-width inputs/date fields
+   - Improve tablet/mobile responsiveness
+   - Prevent horizontal page overflow
+   ========================================================= */
+
+/* Global sizing safety */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+.container {
+  width: min(1000px, calc(100% - 32px));
+  max-width: 1000px;
+  overflow-x: hidden;
+}
+
+.form,
+.section,
+.mainSection,
+.genderSection,
+.ageGroupSection,
+.ageCustomTable,
+.cadetSection,
+.weightGroup,
+.tournamentLevelSection,
+.typeBox,
+.eventBox {
+  min-width: 0;
+}
+
+/* Remove old fixed/oversized widths safely */
+.nameFields,
+.rowFields,
+.dates,
+.pointSystem,
+.tournamentTypeRow,
+.radioGroup,
+.eventContainer,
+.typeContainer {
+  max-width: 100%;
+}
+
+.dateInput {
+  width: 100% !important;
+  max-width: 100% !important;
+}
+
+.fixedWidthInput,
+.presetInput,
+.presetControls .presetInput {
+  width: 100%;
+  max-width: 100%;
+}
+
+/* React Datepicker global classes inside CSS module */
+:global(.react-datepicker-wrapper),
+:global(.react-datepicker__input-container) {
+  width: 100%;
+}
+
+:global(.react-datepicker-popper) {
+  z-index: 9999 !important;
+}
+
+/* React Select global classes inside CSS module */
+.venueDropdowns :global(.reactSelect__control),
+.venueDropdowns :global(.react-select__control) {
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+.venueDropdowns :global(.reactSelect__menu),
+.venueDropdowns :global(.reactSelect__menuPortal),
+.venueDropdowns :global(.react-select__menu),
+.venueDropdowns :global(.react-select__menuPortal) {
+  z-index: 9999;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+/* Better flexible layout */
+.rowFields {
+  width: 100%;
+}
+
+.rowFields > * {
+  min-width: 0;
+}
+
+.dates {
+  width: 100%;
+}
+
+.venueNameRow,
+.venueContainer,
+.typeAndPaymentRow,
+.playerLimitContainer,
+.currencyContainer,
+.currency,
+.sectionHeader,
+.logoContainer,
+.presetControls {
+  min-width: 0;
+}
+
+/* Tables should scroll instead of breaking layout */
+.heightTableContainer,
+.weightTableContainer,
+.ageCustomTable {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.heightTable,
+.weightTable {
+  min-width: 720px;
+}
+
+/* File previews */
+.posterPreviewImage {
+  width: 100%;
+  max-width: 500px;
+  height: auto;
+}
+
+.logoPreviewImage {
+  width: min(250px, 100%);
+  height: auto;
+  aspect-ratio: 1 / 1;
+}
+
+/* Touch-friendly buttons */
+button,
+.levelButton,
+.ageButton,
+.genderTag,
+.playerLimitButton,
+.radioBox,
+.subEventButton,
+.feeButton,
+.typeButton,
+.paymentButton,
+.foodingOption,
+.cadetCategoryButton,
+.cadetRadioLabel,
+.weightActionBtn,
+.addRowButton,
+.removeRowBtn,
+.savePresetBtn,
+.submitButton {
+  touch-action: manipulation;
+}
+
+/* =======================
+   Tablet responsive
+   ======================= */
+@media (max-width: 1024px) {
+  .container {
+    width: min(100%, calc(100% - 24px));
+    margin: 1rem auto;
+    padding: 0.875rem;
+    max-height: none;
+  }
+
+  .headerRow {
+    gap: 1rem;
+  }
+
+  .headerRow h1 {
+    font-size: 1.55rem;
+  }
+
+  .typeContainer,
+  .eventContainer {
+    grid-template-columns: 1fr;
+  }
+
+  .venueContainer {
+    align-items: stretch;
+  }
+
+  .venueDropdowns {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .genderSections {
+    flex-direction: column;
+    gap: 1rem;
+  }
+
+  .genderColumn {
+    width: 100%;
+  }
+
+  .pointSystem {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .cadetRadioLabel {
+    flex: 1;
+    justify-content: center;
+    padding: 12px 24px;
+  }
+}
+
+/* =======================
+   Mobile responsive
+   ======================= */
+@media (max-width: 768px) {
+  :root {
+    --base-padding: 0.75rem;
+  }
+
+  .container {
+    width: 100%;
+    margin: 0;
+    padding: 0.75rem;
+    border-radius: 0;
+    box-shadow: none;
+    min-height: 100vh;
+  }
+
+  .headerRow {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .headerRow h1 {
+    font-size: 1.35rem;
+    line-height: 1.25;
+  }
+
+  .visibilityToggle {
+    width: 92px;
+    height: 36px;
+  }
+
+  .section {
+    padding: 0.875rem;
+    margin-bottom: 0.875rem;
+  }
+
+  .section h2,
+  .tournamentLevelSection h2 {
+    font-size: 1.08rem;
+  }
+
+  .nameFields,
+  .rowFields {
+    max-width: 100%;
+  }
+
+  .rowFields {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.875rem;
+  }
+
+  .rowFields > * {
+    flex: unset;
+    width: 100%;
+  }
+
+  .dates {
+    grid-template-columns: 1fr;
+    gap: 0.875rem;
+    width: 100%;
+  }
+
+  .datePickerContainer {
+    height: auto;
+  }
+
+  .dateInput {
+    height: 42px;
+  }
+
+  .venueNameRow,
+  .venueContainer {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .mapButton {
+    align-self: flex-start;
+    font-size: 1.5rem;
+  }
+
+  .venueDropdowns {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .levelButtonsContainer,
+  .playerLimitButtons,
+  .genderSelection,
+  .individualGenderSelection,
+  .feeButtons,
+  .cadetCategoryButtons,
+  .cadetRadioGroup {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .levelButton,
+  .playerLimitButton,
+  .genderTag,
+  .feeButton,
+  .cadetCategoryButton,
+  .cadetRadioLabel {
+    width: 100%;
+  }
+
+  .typeContainer,
+  .eventContainer,
+  .tournamentTypeRow,
+  .radioGroup,
+  .regularAgeContainer {
+    grid-template-columns: 1fr !important;
+  }
+
+  .tournamentTypeRow > :nth-child(1) {
+    grid-column: auto;
+  }
+
+  .underAgeContainer {
+    flex-direction: column;
+  }
+
+  .typeHeader,
+  .eventHeader {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    padding: 0;
+    text-align: center;
+  }
+
+  .selectAllButton,
+  .selectAllButtonEvent,
+  .eventToggle {
+    position: static;
+    transform: none;
+    width: 100%;
+    text-align: center;
+  }
+
+  .typeLabel,
+  .eventTitle {
+    width: 100%;
+  }
+
+  .subEventRow {
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .subEventItem {
+    width: 100%;
+  }
+
+  .feeOptions {
+    align-items: stretch;
+  }
+
+  .feeButtons {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .feeButton {
+    width: 100%;
+  }
+
+  .amountInput {
+    width: 100%;
+    flex: unset;
+  }
+
+  .foodingOptions {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .typeAndPaymentRow {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .typeAndPaymentRow .typeButton,
+  .typeAndPaymentRow:has(> .amountInput) .typeButton,
+  .paymentButton,
+  .amountInput {
+    flex: unset;
+    width: 100%;
+  }
+
+  .pointSystem {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .logoContainer {
+    flex-direction: column;
+  }
+
+  .logoItem {
+    width: 100%;
+    flex: unset;
+  }
+
+  .posterInputWrapper,
+  .logoInputWrapper {
+    min-height: 72px;
+  }
+
+  .posterPreviewImage {
+    max-height: 420px;
+  }
+
+  .logoPreviewImage {
+    max-width: 220px;
+  }
+
+  .presetControls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .presetControls select,
+  .presetControls .presetInput,
+  .presetControls .savePresetBtn {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .cadetToggleContainer {
+    height: auto;
+  }
+
+  .cadetRadioLabel {
+    padding: 12px 16px;
+  }
+
+  .ageCustomTable {
+    padding: 12px;
+  }
+
+  .ageCustomTable h3 {
+    font-size: 1.1rem;
+  }
+
+  .openCategoryHint {
+    font-size: 14px;
+    padding: 14px 16px;
+  }
+
+  .submitButton {
+    margin-top: 0;
+    width: 100%;
+    min-height: 44px;
+  }
+
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="tel"],
+  textarea,
+  select,
+  .select,
+  .textarea,
+  .customWeightTextarea,
+  .descriptionInput,
+  .phoneNumberInput {
+    font-size: 16px; /* prevents iOS zoom */
+  }
+}
+
+/* =======================
+   Small mobile responsive
+   ======================= */
+@media (max-width: 480px) {
+  .container {
+    padding: 0.625rem;
+  }
+
+  .section,
+  .mainSection,
+  .genderSection,
+  .cadetSection,
+  .weightGroup,
+  .tournamentLevelSection,
+  .typeBox,
+  .eventBox,
+  .ageCustomTable {
+    padding: 0.75rem;
+  }
+
+  .headerRow h1 {
+    font-size: 1.2rem;
+  }
+
+  .foodingOptions {
+    grid-template-columns: 1fr;
+  }
+
+  .feeButtons {
+    grid-template-columns: 1fr;
+  }
+
+  .playerLimitContainer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .playerLimitLabel {
+    font-size: 0.95rem;
+  }
+
+  .phoneInputRow {
+    align-items: stretch;
+  }
+
+  .errorMessage {
+    white-space: normal;
+  }
+
+  .heightTable,
+  .weightTable {
+    min-width: 640px;
+  }
+
+  .weightActionBtn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .posterPreviewImage {
+    max-height: 320px;
+  }
+
+  .logoPreviewImage {
+    max-width: 180px;
+  }
+}
+
+  /* Venue row */
+  .venueNameRow {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 8px !important;
+  }
+
+  .venueNameRow input[type="text"] {
+    flex: 1 !important;
+  }
+
+  .mapButton {
+    width: 42px !important;
+    height: 42px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    flex-shrink: 0 !important;
+  }
+
+/* Mobile country code width fix */
+@media (max-width: 600px) {
+
+  .phoneInputRow :global(.css-1wfb0di-control) {
+    width: 130px !important;
+    min-width: 130px !important;
+  }
+
+}
+
+/* ===== Mobile currency/event fee overflow fix ===== */
+@media (max-width: 600px) {
+  .sectionHeader {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .currencyContainer,
+  .currency {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex-wrap: wrap !important;
+    align-items: stretch !important;
+  }
+
+  .currencyContainer select,
+  .currency select,
+  .currencyContainer input,
+  .currency input {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .eventContainer {
+    grid-template-columns: 1fr !important;
+    width: 100% !important;
+    overflow: hidden !important;
+  }
+
+  .eventBox {
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    overflow: hidden !important;
+  }
+
+  .subEventRow {
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .subEventItem,
+  .feeOptions,
+  .feeButtons,
+  .amountInput {
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .feeButtons {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+  }
+
+  .feeButton {
+    width: 100% !important;
+  }
+}

@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
+import { Helmet } from "react-helmet-async";
 import { useAuth } from "../context/AuthContext";
 import ReactCountryFlag from "react-country-flag";
 import styles from "./TournamentDetails.module.css";
@@ -124,6 +125,15 @@ const TournamentDetails = () => {
   const loading = outletCtx.loading || false;
   const error = outletCtx.error || "";
   const tournament = tournamentFromLayout;
+
+  const tournamentName = tournament?.tournamentName || "Taekwondo Tournament";
+const tournamentCity = tournament?.venue?.district || "";
+const tournamentState = tournament?.venue?.state || "";
+const tournamentCountry = tournament?.venue?.country || "";
+const tournamentCanonicalUrl = `https://khiladi-khoj.com/tournaments/${id}`;
+const tournamentPosterUrl = tournament?.poster
+  ? getFullImageUrl(tournament.poster)
+  : "https://khiladi-khoj.com/khiladi-logo.png";
 
   // Reset broken image states when tournament changes
   useEffect(() => {
@@ -263,13 +273,94 @@ const sortAgeCategories = (ages = []) => {
   };
 
   return (
+  <>
+    <Helmet>
+      <title>{`${tournamentName} | KHILADI Tournament Manager`}</title>
+
+      <meta
+        name="description"
+        content={`${tournamentName} details, venue, dates, categories, entries, tie-sheets, winners and team championship records on KHILADI.`}
+      />
+
+      <meta
+        name="keywords"
+        content={`${tournamentName}, taekwondo tournament, taekwondo championship, ${tournamentCity}, ${tournamentState}, ${tournamentCountry}, tournament manager, tie sheet maker, bracket maker`}
+      />
+
+      <meta name="robots" content="index, follow" />
+
+      <script type="application/ld+json">
+  {JSON.stringify({
+    "@context": "https://schema.org",
+    "@type": "SportsEvent",
+    name: tournamentName,
+    startDate: tournament?.dateFrom,
+    endDate: tournament?.dateTo,
+    eventAttendanceMode:
+      "https://schema.org/OfflineEventAttendanceMode",
+    eventStatus:
+      "https://schema.org/EventScheduled",
+    location: {
+      "@type": "Place",
+      name: tournament?.venue?.name || "",
+      address: {
+        "@type": "PostalAddress",
+        addressLocality: tournamentCity,
+        addressRegion: tournamentState,
+      },
+    },
+    image: [tournamentPosterUrl],
+    organizer: {
+      "@type": "Organization",
+      name: tournament?.organizer || "KHILADI",
+    },
+  })}
+</script>
+
+      <link rel="canonical" href={tournamentCanonicalUrl} />
+
+      <meta property="og:title" content={`${tournamentName} | KHILADI`} />
+      <meta
+        property="og:description"
+        content={`${tournamentName} tournament details and championship information on KHILADI.`}
+      />
+      <meta property="og:image" content={tournamentPosterUrl} />
+      <meta property="og:url" content={tournamentCanonicalUrl} />
+      <meta property="og:type" content="website" />
+      <meta property="og:site_name" content="KHILADI" />
+
+      <meta
+  name="twitter:card"
+  content="summary_large_image"
+/>
+
+<meta
+  name="twitter:title"
+  content={`${tournamentName} | KHILADI`}
+/>
+
+<meta
+  name="twitter:description"
+  content={`${tournamentName} tournament details and championship management.`}
+/>
+
+<meta
+  name="twitter:image"
+  content={tournamentPosterUrl}
+/>
+<meta
+  name="twitter:url"
+  content={tournamentCanonicalUrl}
+/>
+    </Helmet>
+
     <div className={styles.container}>
       <ErrorBoundary section="Poster Section">
         <div className={styles.posterSection}>
           {tournament.poster && !posterFailed ? (
             <img
               src={getFullImageUrl(tournament.poster)}
-              alt="Tournament Poster"
+              alt={`${tournamentName} poster`}
               className={styles.posterImage}
               onError={() => setPosterFailed(true)}
             />
@@ -744,8 +835,9 @@ const sortAgeCategories = (ages = []) => {
           <p>{tournament.description || "No description provided."}</p>
         </div>
       </ErrorBoundary>
-    </div>
-  );
+       </div>
+  </>
+);
 };
 
 export default TournamentDetails;
