@@ -16,13 +16,15 @@ const Header = () => {
   return (
     <header className={styles.header}>
       <div className={styles.topBar}>
-        <div className={styles.left}>
-          <img
-            src="/khiladi-logo.png"
-            alt="KHILADI Logo"
-            className={styles.logo}
-          />
-        </div>
+    <div className={styles.left}>
+  <Link to="/" aria-label="Go to home">
+    <img
+      src="/khiladi-logo.png"
+      alt="KHILADI Logo"
+      className={styles.logo}
+    />
+  </Link>
+</div>
 
         <nav className={styles.navBar}>
           <ul className={styles.navList}>
