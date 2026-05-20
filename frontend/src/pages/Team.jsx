@@ -6,7 +6,7 @@ import html2canvas from "html2canvas";
 import { FaPrint, FaFilePdf } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
 import { getEntries } from "../api";
-import PremiumAccessGuard from "../components/PremiumAccessGuard";
+import PremiumAccessGuard from "../components/payment/PremiumAccessGuard";
 import styles from "./Team.module.css";
 
 const CONDITIONAL_COLUMNS = {

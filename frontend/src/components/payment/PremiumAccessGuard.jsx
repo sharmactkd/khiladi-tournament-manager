@@ -1,9 +1,7 @@
-// FILE: frontend/src/components/PremiumAccessGuard.jsx
-
 import React from "react";
 import { useOutletContext, useParams } from "react-router-dom";
-import { useAuth } from "../context/AuthContext";
-import PaymentPage from "./payment/PaymentPage";
+import { useAuth } from "../../context/AuthContext";
+import PaymentPage from "./PaymentPage";
 
 const PremiumAccessGuard = ({
   children,
@@ -15,10 +13,15 @@ const PremiumAccessGuard = ({
   const outletContext = useOutletContext() || {};
   const { user } = useAuth();
 
-  const access = outletContext?.access || outletContext?.tournament?.access || {};
+  const access =
+    outletContext?.access ||
+    outletContext?.tournament?.access ||
+    {};
 
   const isAdminUser =
-    access?.isAdmin || user?.role === "admin" || user?.role === "superadmin";
+    access?.isAdmin ||
+    user?.role === "admin" ||
+    user?.role === "superadmin";
 
   const canAccessPremiumPages = Boolean(
     isAdminUser || access?.canAccessPremiumPages

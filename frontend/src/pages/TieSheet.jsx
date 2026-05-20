@@ -24,7 +24,7 @@ import {
 import SignatureSection from '../components/TieSheet/SignatureSection';
 import BracketActions from '../components/TieSheet/BracketActions';
 import BracketFooter from '../components/TieSheet/BracketFooter';
-import PremiumAccessGuard from "../components/PremiumAccessGuard";
+import PremiumAccessGuard from "../components/payment/PremiumAccessGuard";
 import AdminReadOnlyOverlay from "./admin/AdminReadOnlyOverlay";
 import { createPDFDoc, createAndOpenPDFInNewTab, getMultipleBracketsFilename } from '../components/TieSheet/pdfUtils';
 import toast, { Toaster } from 'react-hot-toast';
