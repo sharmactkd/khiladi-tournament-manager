@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useOutletContext } from "react-router-dom";
 import axios from "axios";
 import {
   approveTeamSubmission,
@@ -60,6 +60,16 @@ const TeamSubmissions = () => {
   const { id } = useParams();
   const navigate = useNavigate();
 
+  const outletContext = useOutletContext() || {};
+  const access = outletContext.access || outletContext.tournament?.access || {};
+  const isTournamentReadOnly = access?.isReadOnly === true;
+
+  const canReviewSubmissions = Boolean(
+    !isTournamentReadOnly &&
+      access?.canEdit !== false &&
+      (access?.canAccessTeamSubmissions || access?.isAdmin)
+  );
+
   const [tournament, setTournament] = useState(null);
   const [submissions, setSubmissions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -98,46 +108,53 @@ const TeamSubmissions = () => {
       const latestEntries = Array.isArray(entriesPayload?.entries) ? entriesPayload.entries : [];
       localStorage.setItem(`entryData_${id}`, JSON.stringify(latestEntries));
       window.dispatchEvent(new Event(`entryDataUpdated_${id}`));
-    } catch (error) {
-      console.warn("Failed to sync latest entries to local cache:", error);
+    } catch (syncError) {
+      console.warn("Failed to sync latest entries to local cache:", syncError);
       localStorage.removeItem(`entryData_${id}`);
       window.dispatchEvent(new Event(`entryDataUpdated_${id}`));
     }
   };
 
- const handleApprove = async (submissionId) => {
-  try {
-    setActingId(submissionId);
+  const handleApprove = async (submissionId) => {
+    if (!canReviewSubmissions) {
+      alert("This tournament is archived and read-only. Submission approval is locked.");
+      return;
+    }
 
-    await approveTeamSubmission(submissionId);
-    await syncApprovedEntriesToLocal();
-    await loadPage();
-    window.dispatchEvent(new Event(`teamSubmissionCountUpdated_${id}`));
+    try {
+      setActingId(submissionId);
+      await approveTeamSubmission(submissionId);
+      await syncApprovedEntriesToLocal();
+      await loadPage();
+      window.dispatchEvent(new Event(`teamSubmissionCountUpdated_${id}`));
+      alert("Submission approved and merged into entry data.");
+    } catch (err) {
+      alert(err?.message || "Failed to approve submission.");
+    } finally {
+      setActingId("");
+    }
+  };
 
-    alert("Submission approved and merged into entry data.");
-  } catch (err) {
-    alert(err?.message || "Failed to approve submission.");
-  } finally {
-    setActingId("");
-  }
-};
+  const handleReject = async (submissionId) => {
+    if (!canReviewSubmissions) {
+      alert("This tournament is archived and read-only. Submission rejection is locked.");
+      return;
+    }
 
-const handleReject = async (submissionId) => {
-  const reason = window.prompt("Optional rejection reason:", "") || "";
+    const reason = window.prompt("Optional rejection reason:", "") || "";
 
-  try {
-    setActingId(submissionId);
-    await rejectTeamSubmission(submissionId, { reason });
-    await loadPage();
-    window.dispatchEvent(new Event(`teamSubmissionCountUpdated_${id}`));
-
-    alert("Submission rejected.");
-  } catch (err) {
-    alert(err?.message || "Failed to reject submission.");
-  } finally {
-    setActingId("");
-  }
-};
+    try {
+      setActingId(submissionId);
+      await rejectTeamSubmission(submissionId, { reason });
+      await loadPage();
+      window.dispatchEvent(new Event(`teamSubmissionCountUpdated_${id}`));
+      alert("Submission rejected.");
+    } catch (err) {
+      alert(err?.message || "Failed to reject submission.");
+    } finally {
+      setActingId("");
+    }
+  };
 
   if (loading) {
     return (
@@ -149,6 +166,23 @@ const handleReject = async (submissionId) => {
 
   return (
     <div style={{ padding: "24px", maxWidth: "1400px", margin: "0 auto" }}>
+      {isTournamentReadOnly && (
+        <div
+          style={{
+            background: "#fef3c7",
+            border: "1px solid #f59e0b",
+            color: "#92400e",
+            padding: "12px",
+            borderRadius: "8px",
+            marginBottom: "16px",
+            fontWeight: 700,
+          }}
+        >
+          This tournament is archived and read-only. You can view team submissions,
+          but approve/reject actions are locked.
+        </div>
+      )}
+
       <div
         style={{
           display: "flex",
@@ -206,6 +240,7 @@ const handleReject = async (submissionId) => {
       {submissions.map((submission) => {
         const isPending = submission.status === "submitted";
         const isBusy = actingId === submission._id;
+        const actionDisabled = isBusy || !canReviewSubmissions;
 
         return (
           <div key={submission._id} style={cardStyle}>
@@ -245,7 +280,14 @@ const handleReject = async (submissionId) => {
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "10px",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                }}
+              >
                 <span style={badgeStyle(submission.status)}>{submission.status}</span>
 
                 {isPending ? (
@@ -253,12 +295,13 @@ const handleReject = async (submissionId) => {
                     <button
                       type="button"
                       onClick={() => handleApprove(submission._id)}
-                      disabled={isBusy}
+                      disabled={actionDisabled}
                       style={{
                         ...actionButtonBase,
                         background: "#1f7a38",
                         color: "#fff",
-                        opacity: isBusy ? 0.7 : 1,
+                        opacity: actionDisabled ? 0.7 : 1,
+                        cursor: actionDisabled ? "not-allowed" : "pointer",
                       }}
                     >
                       {isBusy ? "Processing..." : "Approve"}
@@ -267,12 +310,13 @@ const handleReject = async (submissionId) => {
                     <button
                       type="button"
                       onClick={() => handleReject(submission._id)}
-                      disabled={isBusy}
+                      disabled={actionDisabled}
                       style={{
                         ...actionButtonBase,
                         background: "#b42318",
                         color: "#fff",
-                        opacity: isBusy ? 0.7 : 1,
+                        opacity: actionDisabled ? 0.7 : 1,
+                        cursor: actionDisabled ? "not-allowed" : "pointer",
                       }}
                     >
                       {isBusy ? "Processing..." : "Reject"}
@@ -308,7 +352,10 @@ const handleReject = async (submissionId) => {
 
                 <tbody>
                   {(submission.players || []).map((player, index) => (
-                    <tr key={`${submission._id}-${index}`} style={{ borderBottom: "1px solid #eee" }}>
+                    <tr
+                      key={`${submission._id}-${index}`}
+                      style={{ borderBottom: "1px solid #eee" }}
+                    >
                       <td style={{ padding: "10px" }}>{index + 1}</td>
                       <td style={{ padding: "10px" }}>{player.name || "-"}</td>
                       <td style={{ padding: "10px" }}>{player.gender || "-"}</td>

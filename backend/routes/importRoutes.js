@@ -4,6 +4,7 @@ import { analyzeImageImport, confirmImageImport } from "../controllers/importCon
 import { sensitiveRateLimiter } from "../middleware/rateLimiter.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import { requireCsrfToken } from "../middleware/csrfProtection.js";
+import { requireTournamentMutation } from "../middleware/tournamentAccessMiddleware.js";
 
 const router = express.Router();
 
@@ -13,12 +14,14 @@ router.post(
   requireCsrfToken,
   sensitiveRateLimiter,
   uploadImportFile.single("image"),
+  requireTournamentMutation("import"),
   analyzeImageImport
 );
 
 router.post(
   "/image/confirm",
   authMiddleware,
+  requireTournamentMutation("import"),
   requireCsrfToken,
   sensitiveRateLimiter,
   confirmImageImport

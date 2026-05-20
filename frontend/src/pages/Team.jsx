@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import axios from "axios";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
 import { FaPrint, FaFilePdf } from "react-icons/fa";
 import { useAuth } from "../context/AuthContext";
 import { getEntries } from "../api";
-import PremiumAccessGuard from "../components/payment/PremiumAccessGuard";
+import PremiumAccessGuard from "../components/PremiumAccessGuard";
 import styles from "./Team.module.css";
 
 const CONDITIONAL_COLUMNS = {
@@ -37,16 +37,12 @@ const extractEntryRows = (payload) => {
 const filterNonEmptyTeamRows = (rows = []) =>
   rows.filter((row) => String(row?.team || "").trim() !== "");
 
-
-
 const formatDobForDisplay = (value = "") => {
   const raw = String(value || "").trim();
   if (!raw) return "-";
 
-  // Already DD-MM-YYYY
   if (/^\d{2}-\d{2}-\d{4}$/.test(raw)) return raw;
 
-  // ISO datetime from Mongo/Server: convert using India timezone
   if (raw.includes("T")) {
     const date = new Date(raw);
 
@@ -62,7 +58,6 @@ const formatDobForDisplay = (value = "") => {
     }
   }
 
-  // Plain YYYY-MM-DD only
   const isoDateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
   if (isoDateOnly) {
     return `${isoDateOnly[3]}-${isoDateOnly[2]}-${isoDateOnly[1]}`;
@@ -101,6 +96,19 @@ const Team = () => {
   const id = rawId?.trim();
   const navigate = useNavigate();
   const { token } = useAuth();
+
+  const outletContext = useOutletContext() || {};
+  const access = outletContext.access || outletContext.tournament?.access || {};
+  const isTournamentReadOnly = access?.isReadOnly === true;
+
+  const canEditTeamPayments = Boolean(
+    !isTournamentReadOnly &&
+      access?.canEdit !== false &&
+      (access?.hasPremiumAccess || access?.isAdmin)
+  );
+
+  const canPrintTeams = access?.canPrint !== false;
+  const canExportTeams = access?.canExport !== false;
 
   const [entryData, setEntryData] = useState([]);
   const [teamStats, setTeamStats] = useState([]);
@@ -143,6 +151,7 @@ const Team = () => {
   }, [teamStats.length, id, token]);
 
   useEffect(() => {
+    if (!canEditTeamPayments) return;
     if (Object.keys(paymentData).length === 0 || !token || !id) return;
 
     const timeoutId = setTimeout(async () => {
@@ -161,7 +170,7 @@ const Team = () => {
     }, 1000);
 
     return () => clearTimeout(timeoutId);
-  }, [paymentData, id, token]);
+  }, [paymentData, id, token, canEditTeamPayments]);
 
   useEffect(() => {
     const fetchTournament = async () => {
@@ -400,6 +409,8 @@ const Team = () => {
     tournament?.foodAndLodging?.type === "Paid" ? tournament.foodAndLodging.amount || 0 : 0;
 
   const updatePayment = (teamName, field, value) => {
+    if (!canEditTeamPayments) return;
+
     setPaymentData((prev) => ({
       ...prev,
       [teamName]: { ...prev[teamName], [field]: value },
@@ -546,14 +557,39 @@ const Team = () => {
   return (
     <div className={styles.container}>
       <PremiumAccessGuard tournamentId={id}>
+        {isTournamentReadOnly && (
+          <div
+            style={{
+              background: "#fef3c7",
+              border: "1px solid #f59e0b",
+              color: "#92400e",
+              padding: "12px",
+              borderRadius: "8px",
+              marginBottom: "16px",
+              fontWeight: 700,
+            }}
+          >
+            This tournament is archived and read-only. Team payment edits are locked.
+            Print and PDF export remain available.
+          </div>
+        )}
+
         <div className={styles.buttonSection}>
           <div className={styles.buttonGroupLeft}>
-            <button onClick={printPDF} className={styles.actionButton}>
+            <button
+              onClick={printPDF}
+              className={styles.actionButton}
+              disabled={!canPrintTeams}
+            >
               <FaPrint className={styles.buttonIcon} />
               <span>Print</span>
             </button>
 
-            <button onClick={savePDF} className={styles.actionButton}>
+            <button
+              onClick={savePDF}
+              className={styles.actionButton}
+              disabled={!canExportTeams}
+            >
               <FaFilePdf className={styles.buttonIcon} />
               <span>Save PDF</span>
             </button>
@@ -710,6 +746,8 @@ const Team = () => {
                               }
                               onClick={(e) => e.stopPropagation()}
                               className={styles.paymentInput}
+                              disabled={!canEditTeamPayments}
+                              readOnly={!canEditTeamPayments}
                             />
                           </td>
                         ) : null}
@@ -737,6 +775,7 @@ const Team = () => {
                               onChange={(e) => updatePayment(team.name, "mode", e.target.value)}
                               onClick={(e) => e.stopPropagation()}
                               className={styles.paymentInput}
+                              disabled={!canEditTeamPayments}
                             >
                               <option>Cash</option>
                               <option>Online</option>
@@ -755,6 +794,8 @@ const Team = () => {
                                 onClick={(e) => e.stopPropagation()}
                                 placeholder="Cash"
                                 className={styles.paymentInput}
+                                disabled={!canEditTeamPayments}
+                                readOnly={!canEditTeamPayments}
                               />
                             ) : (
                               "-"
@@ -772,6 +813,8 @@ const Team = () => {
                                 onClick={(e) => e.stopPropagation()}
                                 placeholder="Online"
                                 className={styles.paymentInput}
+                                disabled={!canEditTeamPayments}
+                                readOnly={!canEditTeamPayments}
                               />
                             ) : (
                               "-"
@@ -789,6 +832,8 @@ const Team = () => {
                                 onClick={(e) => e.stopPropagation()}
                                 placeholder="Txn ID"
                                 className={styles.paymentInput}
+                                disabled={!canEditTeamPayments}
+                                readOnly={!canEditTeamPayments}
                               />
                             ) : (
                               "-"
@@ -798,7 +843,9 @@ const Team = () => {
 
                         {hasFees ? (
                           <td className={`${styles.colPaymentStatus} ${statusCellClass}`}>
-                            <strong>{isPaid ? "Paid" : isPartial ? "Partial Paid" : "Due"}</strong>
+                            <strong>
+                              {isPaid ? "Paid" : isPartial ? "Partial Paid" : "Due"}
+                            </strong>
                           </td>
                         ) : null}
 
@@ -875,18 +922,14 @@ const Team = () => {
                         <td className={styles.centerCell}>{index + 1}</td>
                         <td>{player.title || "-"}</td>
                         <td>{player.name || "-"}</td>
-                        <td className={styles.centerCell}>
-  {player.gender || "-"}
-</td>
+                        <td className={styles.centerCell}>{player.gender || "-"}</td>
                         <td>{formatDobForDisplay(player.dob)}</td>
                         <td>{player.weight || "-"}</td>
                         <td>{player.event || "-"}</td>
                         <td>{player.subEvent || "-"}</td>
                         <td className={styles.centerCell}>{player.ageCategory || "-"}</td>
                         <td>{formatWeightCategoryForDisplay(player.weightCategory)}</td>
-                        <td className={styles.centerCell}>
-  {player.medal || "-"}
-</td>
+                        <td className={styles.centerCell}>{player.medal || "-"}</td>
                         <td>{player.coach || "-"}</td>
                         <td>{player.coachContact || "-"}</td>
                         <td>{player.manager || "-"}</td>

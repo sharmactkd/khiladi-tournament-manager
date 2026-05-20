@@ -5,6 +5,7 @@ import styles from "./SubNavBar.module.css";
 
 const SubNavBar = ({
   tournament,
+  access = {},
   user,
   isAdminUser: isAdminUserProp = false,
   adminEditMode = false,
@@ -16,45 +17,37 @@ const SubNavBar = ({
 
   const [pendingCount, setPendingCount] = useState(0);
 
-  const normalizeDate = (date) => {
-    if (!date) return null;
-    const d = new Date(date);
-    return new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  };
-
-  const today = normalizeDate(new Date());
-  const start = normalizeDate(tournament?.dateFrom);
-  const end = normalizeDate(tournament?.dateTo);
-
-  const isActive = start && end && today <= end;
-
-  const isOrganizer = user?.role === "organizer";
   const isAdminUser =
-    isAdminUserProp || ["admin", "superadmin"].includes(user?.role);
+    isAdminUserProp || Boolean(access?.isAdmin) || ["admin", "superadmin"].includes(user?.role);
 
-  const canReviewTeamSubmissions = isOrganizer || isAdminUser;
+  const canReviewTeamSubmissions = Boolean(
+    access?.canAccessTeamSubmissions || isAdminUser
+  );
 
- const loadPendingCount = useCallback(async () => {
-  try {
-    if (!id || !canReviewTeamSubmissions) {
+  const shouldShowSubNav = Boolean(user && (access?.isOwner || access?.isAdmin));
+
+  const loadPendingCount = useCallback(async () => {
+    try {
+      if (!id || !canReviewTeamSubmissions) {
+        setPendingCount(0);
+        return;
+      }
+
+      const response = await getPendingTeamSubmissionCount(id);
+      setPendingCount(Number(response?.pendingCount || response?.count || 0));
+    } catch (error) {
+      const status = error?.response?.status || error?.status;
+
+      if (status !== 403) {
+        console.error("Failed to load pending team submission count:", error);
+      }
+
       setPendingCount(0);
-      return;
     }
+  }, [id, canReviewTeamSubmissions]);
 
-    const response = await getPendingTeamSubmissionCount(id);
-    setPendingCount(Number(response?.pendingCount || response?.count || 0));
-  } catch (error) {
-    const status = error?.response?.status || error?.status;
-
-    if (status !== 403) {
-      console.error("Failed to load pending team submission count:", error);
-    }
-
-    setPendingCount(0);
-  }
-}, [id, canReviewTeamSubmissions]);
   useEffect(() => {
-    if (!user || (!isActive && !isAdminUser) || !canReviewTeamSubmissions) return;
+    if (!shouldShowSubNav || !canReviewTeamSubmissions) return;
 
     loadPendingCount();
 
@@ -72,9 +65,9 @@ const SubNavBar = ({
       clearInterval(intervalId);
       window.removeEventListener(`teamSubmissionCountUpdated_${id}`, handleCountRefresh);
     };
-  }, [user, isActive, isAdminUser, canReviewTeamSubmissions, id, loadPendingCount]);
+  }, [shouldShowSubNav, canReviewTeamSubmissions, id, loadPendingCount]);
 
-  if (!user || (!isActive && !isAdminUser)) {
+  if (!shouldShowSubNav) {
     return null;
   }
 

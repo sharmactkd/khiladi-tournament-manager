@@ -1,27 +1,17 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { Outlet, useParams, useNavigate, useLocation, Navigate } from "react-router-dom";
+import {
+  Outlet,
+  useParams,
+  useNavigate,
+  useLocation,
+  Navigate,
+} from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { getTournamentById } from "../api";
 import SubNavBar from "../components/SubNavBar";
 import styles from "./TournamentLayout.module.css";
 
-const getTournamentOwnerId = (tournament) => {
-  if (!tournament) return null;
-
-  const owner =
-    tournament.user ||
-    tournament.userId ||
-    tournament.organizerId ||
-    tournament.createdBy ||
-    null;
-
-  if (!owner) return null;
-
-  if (typeof owner === "string") return owner;
-  if (typeof owner === "object" && owner._id) return owner._id;
-
-  return null;
-};
+const getTournamentAccess = (tournament) => tournament?.access || {};
 
 const TournamentLayout = () => {
   const { id } = useParams();
@@ -46,6 +36,7 @@ const TournamentLayout = () => {
       try {
         setLoading(true);
         setError(null);
+
         const data = await getTournamentById(id);
         setTournament(data);
       } catch (err) {
@@ -67,6 +58,8 @@ const TournamentLayout = () => {
     setAdminEditMode(false);
   }, [id]);
 
+  const access = useMemo(() => getTournamentAccess(tournament), [tournament]);
+
   const isActive = useMemo(() => {
     if (!tournament?.dateTo) return false;
 
@@ -81,47 +74,62 @@ const TournamentLayout = () => {
     return today <= endDate;
   }, [tournament]);
 
-  const isTournamentOwner = useMemo(() => {
-    if (!user || !tournament) return false;
+  const isTournamentOwner = Boolean(access?.isOwner);
+  const isAdminUser = Boolean(access?.isAdmin);
 
-    const ownerId = getTournamentOwnerId(tournament);
-    const currentUserId = user.id || user._id;
-
-    return !!ownerId && !!currentUserId && String(ownerId) === String(currentUserId);
-  }, [user, tournament]);
-
-  const isAdminUser = useMemo(() => {
-    return ["admin", "superadmin"].includes(user?.role);
-  }, [user]);
-
-  const canAccessTournamentManagement = useMemo(() => {
-    return Boolean(user && (isTournamentOwner || isAdminUser));
-  }, [user, isTournamentOwner, isAdminUser]);
+  const canAccessTournamentManagement = Boolean(
+    user && (access?.isOwner || access?.isAdmin)
+  );
 
   const managementOnlyPaths = useMemo(
-  () => [
-    "entry",
-    "tie-sheet",
-    "tie-sheet-record",
-    "winner",
-    "team-championship",
-    "official",
-    "team",
-    "team-submissions",
-  ],
-  []
-);
+    () => [
+      "entry",
+      "tie-sheet",
+      "tie-sheet-record",
+      "winner",
+      "team-championship",
+      "official",
+      "team",
+      "team-submissions",
+    ],
+    []
+  );
 
-const isManagementOnlyPage = useMemo(() => {
-  const currentPath = location.pathname.split("/").filter(Boolean).pop();
-  return managementOnlyPaths.includes(currentPath);
-}, [location.pathname, managementOnlyPaths]);
+  const currentPath = useMemo(() => {
+    return location.pathname.split("/").filter(Boolean).pop();
+  }, [location.pathname]);
+
+  const isManagementOnlyPage = useMemo(() => {
+    return managementOnlyPaths.includes(currentPath);
+  }, [currentPath, managementOnlyPaths]);
 
   const isAdminReadOnly = Boolean(isAdminUser && !adminEditMode);
 
   const requestAdminSaveConfirmation = () => {
     return window.confirm("Are you sure, you want to save these changes?");
   };
+
+  useEffect(() => {
+    if (!user || !access?.shouldShowPlanExpiryReminder) return;
+
+    const rawExpiry = access?.planExpiresAt;
+    if (!rawExpiry) return;
+
+    const expiryDate = new Date(rawExpiry);
+    if (Number.isNaN(expiryDate.getTime())) return;
+
+    const yyyyMmDd = expiryDate.toISOString().slice(0, 10);
+    const userId = user?._id || user?.id || "user";
+    const key = `khiladi_plan_expiry_reminder_${userId}_${yyyyMmDd}`;
+
+    if (localStorage.getItem(key) === "shown") return;
+
+    window.alert(
+      "Your premium plan expires in 10 days. Renew to keep creating premium tournaments."
+    );
+
+    localStorage.setItem(key, "shown");
+  }, [user, access?.shouldShowPlanExpiryReminder, access?.planExpiresAt]);
 
   if (authLoading || loading) {
     return (
@@ -167,14 +175,15 @@ const isManagementOnlyPage = useMemo(() => {
   }
 
   if (isManagementOnlyPage && !canAccessTournamentManagement) {
-  return <Navigate to={`/tournaments/${id}`} replace />;
-}
+    return <Navigate to={`/tournaments/${id}`} replace />;
+  }
 
   return (
     <div className={styles.layoutContainer}>
       {canAccessTournamentManagement && (
         <SubNavBar
           tournament={tournament}
+          access={access}
           user={user}
           isAdminUser={isAdminUser}
           adminEditMode={adminEditMode}
@@ -188,6 +197,7 @@ const isManagementOnlyPage = useMemo(() => {
           context={{
             tournament,
             setTournament,
+            access,
             isActive,
             isTournamentOwner,
             isAdminUser,

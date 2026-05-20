@@ -1,92 +1,55 @@
-// src/components/payment/PremiumAccessGuard.jsx
+// FILE: frontend/src/components/PremiumAccessGuard.jsx
 
-import React, { useEffect, useState, useCallback } from "react";
-import { useParams } from "react-router-dom";
-import { useAuth } from "../../context/AuthContext";
-import { getMyAccessStatus } from "../../api/paymentApi";
-import PaymentPage from "./PaymentPage";
+import React from "react";
+import { useOutletContext, useParams } from "react-router-dom";
+import { useAuth } from "../context/AuthContext";
+import PaymentPage from "./payment/PaymentPage";
 
-const PremiumAccessGuard = ({ children }) => {
+const PremiumAccessGuard = ({
+  children,
+  featureLabel = "Premium feature",
+}) => {
   const { id } = useParams();
   const tournamentId = id?.trim();
+
+  const outletContext = useOutletContext() || {};
   const { user } = useAuth();
 
-  const isAdminUser = ["admin", "superadmin"].includes(user?.role);
+  const access = outletContext?.access || outletContext?.tournament?.access || {};
 
-  const [loading, setLoading] = useState(true);
-  const [hasAccess, setHasAccess] = useState(false);
-  const [accessData, setAccessData] = useState(null);
+  const isAdminUser =
+    access?.isAdmin || user?.role === "admin" || user?.role === "superadmin";
 
-  const checkAccess = useCallback(async () => {
-    try {
-      setLoading(true);
+  const canAccessPremiumPages = Boolean(
+    isAdminUser || access?.canAccessPremiumPages
+  );
 
-      if (isAdminUser) {
-        setHasAccess(true);
-        setAccessData({ hasAccess: true, bypass: "admin" });
-        return;
-      }
-
-      const res = await getMyAccessStatus(tournamentId);
-
-
-      const accessGranted = res?.hasAccess === true;
-
-      setHasAccess(accessGranted);
-      setAccessData(res);
-    } catch (error) {
-      console.error("Access check failed:", error);
-      setHasAccess(false);
-    } finally {
-      setLoading(false);
-    }
-  }, [tournamentId, isAdminUser]);
-
-  useEffect(() => {
-    if (isAdminUser) {
-      setLoading(false);
-      setHasAccess(true);
-      setAccessData({ hasAccess: true, bypass: "admin" });
-      return;
-    }
-
-    if (tournamentId) {
-      checkAccess();
-    }
-  }, [tournamentId, checkAccess, isAdminUser]);
-
-  if (isAdminUser) {
+  if (canAccessPremiumPages) {
     return children;
   }
 
-  if (loading) {
-    return (
+  return (
+    <div>
       <div
         style={{
-          padding: "40px",
-          textAlign: "center",
+          maxWidth: "900px",
+          margin: "20px auto 0",
+          padding: "10px 14px",
+          borderRadius: "999px",
+          background: "#fff7ed",
+          color: "#9a3412",
+          border: "1px solid #fed7aa",
           fontWeight: 700,
-          fontSize: "18px",
+          textAlign: "center",
+          width: "fit-content",
         }}
       >
-        Checking premium access...
+        {featureLabel} requires premium access
       </div>
-    );
-  }
 
-  if (!hasAccess) {
-    return (
-      <div className="premiumAccessPreviewWrapper">
-        <div className="premiumBlurBackground">{children}</div>
-
-        <div className="premiumPaymentOverlay">
-          <PaymentPage tournamentId={tournamentId} onPaymentSuccess={checkAccess} />
-        </div>
-      </div>
-    );
-  }
-
-  return children;
+      <PaymentPage tournamentId={tournamentId} />
+    </div>
+  );
 };
 
 export default PremiumAccessGuard;

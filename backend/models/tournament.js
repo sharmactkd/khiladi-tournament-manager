@@ -16,6 +16,27 @@ const feeSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const premiumSnapshotSchema = new mongoose.Schema(
+  {
+    hasPremiumAccess: { type: Boolean, default: false },
+    sourceEntitlementId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "AccessEntitlement",
+      default: null,
+    },
+    source: { type: String, default: "" },
+    planType: { type: String, default: "" },
+    accessType: { type: String, default: "" },
+    grantedAt: { type: Date, default: null },
+    planExpiresAt: { type: Date, default: null },
+    metadata: {
+      type: mongoose.Schema.Types.Mixed,
+      default: {},
+    },
+  },
+  { _id: false }
+);
+
 const tournamentSchema = new mongoose.Schema(
   {
     organizer: { type: String, required: [true, "Organizer name is required"] },
@@ -139,6 +160,20 @@ const tournamentSchema = new mongoose.Schema(
     logos: [String],
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
 
+    premiumSnapshot: {
+      type: premiumSnapshotSchema,
+      default: () => ({
+        hasPremiumAccess: false,
+        sourceEntitlementId: null,
+        source: "",
+        planType: "",
+        accessType: "",
+        grantedAt: null,
+        planExpiresAt: null,
+        metadata: {},
+      }),
+    },
+
     isDeleted: { type: Boolean, default: false },
     deletedAt: { type: Date, default: null },
     deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
@@ -157,20 +192,22 @@ const tournamentSchema = new mongoose.Schema(
         searchTerm: "",
       }),
     },
-   outcomes: { type: Map, of: Map, of: String, default: {} },
 
-tiesheet: { type: mongoose.Schema.Types.Mixed, default: {} },
+    outcomes: { type: Map, of: Map, of: String, default: {} },
 
-tiesheetOutcomeSeq: {
-  type: Number,
-  default: 0,
-  index: true,
-},
+    tiesheet: { type: mongoose.Schema.Types.Mixed, default: {} },
 
-tiesheetOutcomeSavedAt: {
-  type: Date,
-  default: null,
-},
+    tiesheetOutcomeSeq: {
+      type: Number,
+      default: 0,
+      index: true,
+    },
+
+    tiesheetOutcomeSavedAt: {
+      type: Date,
+      default: null,
+    },
+
     officials: {
       type: [
         {
@@ -220,6 +257,8 @@ tournamentSchema.index({ createdBy: 1, visibility: 1 });
 tournamentSchema.index({ dateFrom: 1, dateTo: 1 });
 tournamentSchema.index({ isDeleted: 1 });
 tournamentSchema.index({ "venue.country": 1, "venue.state": 1, "venue.district": 1 });
+tournamentSchema.index({ "premiumSnapshot.hasPremiumAccess": 1 });
+tournamentSchema.index({ "premiumSnapshot.sourceEntitlementId": 1 });
 
 tournamentSchema.virtual("isUpcoming").get(function () {
   return this.dateFrom > new Date();

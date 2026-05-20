@@ -153,11 +153,15 @@ const Entry = () => {
 
   const navigate = useNavigate();
   const { token, user, loading: authLoading } = useAuth();
-  const outletContext = useOutletContext() || {};
+    const outletContext = useOutletContext() || {};
+  const access = outletContext.access || outletContext.tournament?.access || {};
 
   const contextIsAdminUser = outletContext.isAdminUser === true;
   const adminEditMode = outletContext.adminEditMode === true;
+  const isArchivedReadOnly = access?.isReadOnly === true;
   const isAdminReadOnly = outletContext.isAdminReadOnly === true;
+  const isTournamentReadOnly = isArchivedReadOnly;
+  const isPageReadOnly = isAdminReadOnly || isTournamentReadOnly || access?.canEdit === false;
   const requestAdminSaveConfirmation = outletContext.requestAdminSaveConfirmation;
   const setAdminEditMode = outletContext.setAdminEditMode;
 
@@ -200,10 +204,10 @@ const rowPatchTimersRef = useRef({});
   const [history, setHistory] = useState([]);
   const [redoHistory, setRedoHistory] = useState([]);
 
-  const isOrganizer = user?.role === 'organizer';
+    const isOrganizer = user?.role === 'organizer';
   const isAdminUser = contextIsAdminUser || ['admin', 'superadmin'].includes(user?.role);
-  const canManageTournament = isOrganizer || isAdminUser;
-  const canEditTournament = !isAdminUser || adminEditMode;
+  const canManageTournament = Boolean(access?.canAccessEntry || isAdminUser || isOrganizer);
+  const canEditTournament = Boolean(!isPageReadOnly && (!isAdminUser || adminEditMode));
 
   const columnsDef = useMemo(() => {
     const activeOptional = optionalColumnsDef.filter((col) => visibleColumns[col.id]);
@@ -212,10 +216,21 @@ const rowPatchTimersRef = useRef({});
   }, [visibleColumns]);
 
   const guardAdminReadOnly = useCallback(() => {
+    if (isTournamentReadOnly) {
+      alert("This tournament is archived and read-only. Editing is no longer allowed.");
+      return true;
+    }
+
+    if (access?.canEdit === false) {
+      alert("Editing is not allowed for this tournament lifecycle.");
+      return true;
+    }
+
     if (!isAdminReadOnly) return false;
-    alert('Admin read-only mode is active. Click Edit first to make changes.');
+
+    alert("Admin read-only mode is active. Click Edit first to make changes.");
     return true;
-  }, [isAdminReadOnly]);
+  }, [isAdminReadOnly, isTournamentReadOnly, access?.canEdit]);
 
   const confirmAdminSaveIfNeeded = useCallback(() => {
     if (!isAdminUser) return true;
@@ -1035,6 +1050,22 @@ newData = [emptyRow];
         </div>
       )}
 
+            {isTournamentReadOnly && (
+        <div
+          style={{
+            background: "#fef3c7",
+            border: "1px solid #f59e0b",
+            color: "#92400e",
+            padding: "12px",
+            borderRadius: "8px",
+            marginBottom: "16px",
+            fontWeight: 700,
+          }}
+        >
+          This tournament is archived and read-only. You can view, print, and export records, but editing is blocked.
+        </div>
+      )}
+
       <EntryHeader
         tournamentData={tournamentData}
         isLoading={isLoading}
@@ -1046,8 +1077,8 @@ newData = [emptyRow];
         onShareEntryForm={handleCopyShareLink}
         onViewTeamSubmissions={() => navigate(`/tournaments/${id}/team-submissions`)}
         showOrganizerActions={canManageTournament}
-        actionsDisabled={isAdminReadOnly}
-        readOnly={isAdminReadOnly}
+        actionsDisabled={isPageReadOnly}
+        readOnly={isPageReadOnly}
         onToggleColumn={handleToggleColumn}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
@@ -1079,7 +1110,7 @@ newData = [emptyRow];
         >
           <button
             type="button"
-            disabled={isAdminReadOnly}
+            disabled={isPageReadOnly}
             onClick={() => {
               if (guardAdminReadOnly()) return;
               setShowImageImportModal(true);
@@ -1092,8 +1123,8 @@ newData = [emptyRow];
               padding: '10px 16px',
               fontSize: '14px',
               fontWeight: 600,
-              cursor: isAdminReadOnly ? 'not-allowed' : 'pointer',
-              opacity: isAdminReadOnly ? 0.55 : 1,
+              cursor: isPageReadOnly ? 'not-allowed' : 'pointer',
+              opacity: isPageReadOnly ? 0.55 : 1,
               boxShadow: '0 2px 10px rgba(0,0,0,0.08)',
             }}
           >
@@ -1139,8 +1170,8 @@ newData = [emptyRow];
         data={data}
         tournamentData={tournamentData}
         visibleColumns={visibleColumns}
-        editingCell={isAdminReadOnly ? null : editingCell}
-        setEditingCell={isAdminReadOnly ? () => {} : setEditingCell}
+        editingCell={isPageReadOnly ? null : editingCell}
+        setEditingCell={isPageReadOnly ? () => {} : setEditingCell}
         searchTerm={searchTerm}
         setSearchTerm={setSearchTerm}
         sorting={sorting}
@@ -1159,8 +1190,8 @@ newData = [emptyRow];
        token={token}
         tournamentId={id}
         apiBaseUrl={resolveApiBaseUrl()}
-        readOnly={isAdminReadOnly}
-        disabled={isAdminReadOnly}
+        readOnly={isPageReadOnly}
+        disabled={isPageReadOnly}
       />
 
 {entryPagination.hasMore && (
@@ -1186,7 +1217,7 @@ newData = [emptyRow];
 )}
 
       <AddTeamEntriesModal
-        show={showAddTeamEntriesModal && !isAdminReadOnly}
+        show={showAddTeamEntriesModal && !isPageReadOnly}
         onClose={() => setShowAddTeamEntriesModal(false)}
         onSubmit={handleTeamEntriesSubmit}
         tournamentData={tournamentData}
@@ -1194,7 +1225,7 @@ newData = [emptyRow];
       />
 
       <ImportModal
-        show={showImportModal && !isAdminReadOnly}
+        show={showImportModal && !isPageReadOnly}
         onClose={() => {
           if (isLoading) return;
           setShowImportModal(false);
@@ -1211,7 +1242,7 @@ newData = [emptyRow];
 
       {ENABLE_IMAGE_IMPORT && (
         <ImageImport
-          show={showImageImportModal && !isAdminReadOnly}
+          show={showImageImportModal && !isPageReadOnly}
           onClose={() => setShowImageImportModal(false)}
           onImportSuccess={handleImportedRows}
           columnsDef={columnsDef}

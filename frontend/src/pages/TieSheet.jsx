@@ -24,7 +24,7 @@ import {
 import SignatureSection from '../components/TieSheet/SignatureSection';
 import BracketActions from '../components/TieSheet/BracketActions';
 import BracketFooter from '../components/TieSheet/BracketFooter';
-import PremiumAccessGuard from "../components/payment/PremiumAccessGuard";
+import PremiumAccessGuard from "../components/PremiumAccessGuard";
 import AdminReadOnlyOverlay from "./admin/AdminReadOnlyOverlay";
 import { createPDFDoc, createAndOpenPDFInNewTab, getMultipleBracketsFilename } from '../components/TieSheet/pdfUtils';
 import toast, { Toaster } from 'react-hot-toast';
@@ -64,13 +64,24 @@ const TieSheet = () => {
   const navigate = useNavigate();
   const { token, isAuthenticated } = useAuth();
   const dispatch = useDispatch();
+  const outletContext = useOutletContext() || {};
   const {
-  isAdminUser = false,
-  adminEditMode = false,
-  isAdminReadOnly = false,
-  requestAdminSaveConfirmation,
-  setAdminEditMode,
-} = useOutletContext() || {};
+    isAdminUser = false,
+    adminEditMode = false,
+    isAdminReadOnly = false,
+    requestAdminSaveConfirmation,
+    setAdminEditMode,
+  } = outletContext;
+
+  const access = outletContext.access || outletContext.tournament?.access || {};
+  const isTournamentReadOnly = access?.isReadOnly === true;
+  const canPrintTieSheet = access?.canPrint !== false;
+  const canExportTieSheet = access?.canExport !== false;
+  const canMutateTieSheet = Boolean(
+    !isTournamentReadOnly &&
+      access?.canEdit !== false &&
+      (access?.hasPremiumAccess || access?.isAdmin)
+  );
 
   // Local states with safe initialization
   const [tournament, setTournament] = useState(null);
@@ -732,9 +743,14 @@ const showSavedState = useCallback(() => {
 
 const saveTieSheetOutcomesToServer = useCallback(
   async (outcomes, signal, bracketsSnapshot = [], meta = {}) => {
-    if (isAdminReadOnly || (isAdminUser && !adminEditMode)) {
-      return null;
-    }
+    if (
+  isTournamentReadOnly ||
+  !canMutateTieSheet ||
+  isAdminReadOnly ||
+  (isAdminUser && !adminEditMode)
+) {
+  return null;
+}
 
     const safeBrackets = Array.isArray(bracketsSnapshot) ? bracketsSnapshot : [];
 
@@ -820,6 +836,8 @@ showSavedState();
     collectBracketMedalPayload,
     isAdminReadOnly,
     isAdminUser,
+    isTournamentReadOnly,
+canMutateTieSheet,
     adminEditMode,
   ]
 );
@@ -926,8 +944,9 @@ const shouldRestoreSavedBrackets = useCallback((serverTieSheet, currentEntriesMe
         localStorage.setItem(key, JSON.stringify(existing));
 
         try {
-          
-        await api.post(`/tournament/${id}/tiesheet-record`, newRecord);
+          if (!isTournamentReadOnly) {
+            await api.post(`/tournament/${id}/tiesheet-record`, newRecord);
+          }
         } catch (err) {
           console.error('Failed to save record on server', err);
         }
@@ -939,7 +958,7 @@ const shouldRestoreSavedBrackets = useCallback((serverTieSheet, currentEntriesMe
     return () => {
       delete window.saveTieSheetRecord;
     };
-  }, [id,]);
+  }, [id, isTournamentReadOnly]);
 
   // ✅ Helper: log records for multiple brackets (Print All / Save All)
   const buildBracketInfo = useCallback((br) => {
@@ -1106,6 +1125,7 @@ const shouldRestoreSavedBrackets = useCallback((serverTieSheet, currentEntriesMe
 const debouncedSaveOutcomesToServer = useMemo(() => {
   return debounce(async (outcomesSnapshot, meta) => {
     if (!id) return;
+    if (!canMutateTieSheet) return;
 
     const bracketsSnapshot = Array.isArray(brackets) ? brackets : [];
 
@@ -1198,7 +1218,7 @@ saveStatusTimeoutRef.current = setTimeout(() => {
 
     await flushLatest();
   }, 450);
-}, [id, saveTieSheetOutcomesToServer, brackets]);
+}, [id, saveTieSheetOutcomesToServer, brackets, canMutateTieSheet]);
 
  useEffect(() => {
   return () => {
@@ -1210,7 +1230,7 @@ saveStatusTimeoutRef.current = setTimeout(() => {
       clearTimeout(saveStatusTimeoutRef.current);
     }
   };
-}, [debouncedSaveOutcomesToServer]);
+}, [debouncedSaveOutcomesToServer, canMutateTieSheet,]);
 
   /**
    * ✅ Real-time persistence for outcomes:
@@ -1222,6 +1242,7 @@ saveStatusTimeoutRef.current = setTimeout(() => {
   useEffect(() => {
     if (!id) return;
     if (!outcomesHydratedRef.current) return;
+    if (!canMutateTieSheet) return;
 
     const localKey = `brackets_outcomes_${id}`;
 
@@ -1261,7 +1282,7 @@ saveStatusTimeoutRef.current = setTimeout(() => {
       gameId: lastOutcomeAction?.gameId,
       side: lastOutcomeAction?.side,
     });
-  }, [bracketsOutcomes, id, debouncedSaveOutcomesToServer, lastOutcomeAction]);
+  }, [bracketsOutcomes, id, debouncedSaveOutcomesToServer, canMutateTieSheet, lastOutcomeAction]);
 
   // ✅ MAIN FETCH (StrictMode-safe)
   useEffect(() => {
@@ -1600,7 +1621,12 @@ const handleScrollToBracket = useCallback((bracketKey) => {
   () =>
     debounce(async () => {
       try {
-        if (isAdminReadOnly || (isAdminUser && !adminEditMode)) {
+        if (
+          isTournamentReadOnly ||
+          !canMutateTieSheet ||
+          isAdminReadOnly ||
+          (isAdminUser && !adminEditMode)
+        ) {
           return;
         }
 
@@ -1637,6 +1663,8 @@ const handleScrollToBracket = useCallback((bracketKey) => {
     isAdminReadOnly,
     isAdminUser,
     adminEditMode,
+    isTournamentReadOnly,
+canMutateTieSheet,
   ]
 );
 
@@ -1895,6 +1923,21 @@ const handleScrollToBracket = useCallback((bracketKey) => {
       />
 
       <div className={styles.tieSheetContainer}>
+                {isTournamentReadOnly && (
+          <div
+            style={{
+              background: "#fef3c7",
+              border: "1px solid #f59e0b",
+              color: "#92400e",
+              padding: "12px",
+              borderRadius: "8px",
+              marginBottom: "16px",
+              fontWeight: 700,
+            }}
+          >
+            This tournament is archived and read-only. Winner declaration, shuffle, and tie-sheet changes are locked. Print and export remain available.
+          </div>
+        )}
         {isLoading && (
           <div className={styles.loadingOverlay}>
             <div className={styles.spinner}></div>
@@ -1936,7 +1979,13 @@ const handleScrollToBracket = useCallback((bracketKey) => {
                   <button
                     className={styles.toggleButton}
                     onClick={printAllBrackets}
-                    disabled={!safeFilteredBrackets.length || isLoading || isProcessing || isPdfSaving}
+                    disabled={
+  !canPrintTieSheet ||
+  !safeFilteredBrackets.length ||
+  isLoading ||
+  isProcessing ||
+  isPdfSaving
+}
                   >
                     {isProcessing ? 'Printing...' : 'Print All'}
                   </button>
@@ -1945,7 +1994,13 @@ const handleScrollToBracket = useCallback((bracketKey) => {
                     type="button"
                     className={styles.toggleButton}
                     onClick={saveAllToPDF}
-                    disabled={!safeFilteredBrackets.length || isLoading || isProcessing || isPdfSaving}
+                    disabled={
+  !canExportTieSheet ||
+  !safeFilteredBrackets.length ||
+  isLoading ||
+  isProcessing ||
+  isPdfSaving
+}
                   >
                     Save All to PDF
                   </button>
@@ -2027,8 +2082,12 @@ const handleScrollToBracket = useCallback((bracketKey) => {
               bracketsOutcomes={bracketsOutcomes}
               filteredBrackets={safeFilteredBrackets}
               tournamentId={id}
-              toggleLock={handleToggleLock}
+              toggleLock={canMutateTieSheet ? handleToggleLock : () => {
+                showToast.error("This tournament is read-only. Tie-sheet changes are locked.");
+              }}
               showToast={showToast}
+              readOnly={!canMutateTieSheet}
+              disabled={!canMutateTieSheet}
             />
 
             <div
@@ -2049,12 +2108,14 @@ const handleScrollToBracket = useCallback((bracketKey) => {
                   <div className={styles.singleRoundColumn}>
                     <div className={styles.roundHeaderSingle}></div>
                     <div className={styles.singleRoundFlowFix}>
-                      <BracketTable
-                        bracket={bracket}
-                        bracketsOutcomes={bracketsOutcomes}
-                        className={bracketSizeClass}
-                        lockedBrackets={lockedBrackets}
-                        onColumnsReady={(columns) => {
+                     <BracketTable
+  bracket={bracket}
+  bracketsOutcomes={bracketsOutcomes}
+  className={bracketSizeClass}
+  lockedBrackets={lockedBrackets}
+  readOnly={!canMutateTieSheet}
+  disabled={!canMutateTieSheet}
+  onColumnsReady={(columns) => {
                           setColumnInfo((prev) => ({ ...prev, [bracket.key]: columns }));
                         }}
                       />
@@ -2083,12 +2144,14 @@ const handleScrollToBracket = useCallback((bracketKey) => {
                     ))}
                   </div>
 
-                  <BracketTable
-                    bracket={bracket}
-                    bracketsOutcomes={bracketsOutcomes}
-                    className={bracketSizeClass}
-                    lockedBrackets={lockedBrackets}
-                    onColumnsReady={(columns) => {
+            <BracketTable
+  bracket={bracket}
+  bracketsOutcomes={bracketsOutcomes}
+  className={bracketSizeClass}
+  lockedBrackets={lockedBrackets}
+  readOnly={!canMutateTieSheet}
+  disabled={!canMutateTieSheet}
+  onColumnsReady={(columns) => {
                       setColumnInfo((prev) => ({ ...prev, [bracket.key]: columns }));
                     }}
                   />

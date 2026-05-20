@@ -1,6 +1,6 @@
 // src/pages/Official.jsx
 import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import axios from "axios";
 import { Trash2 } from "lucide-react";
@@ -87,6 +87,19 @@ const Official = () => {
   const navigate = useNavigate();
   const { token, isAuthenticated, loading: authLoading } = useAuth();
 
+  const outletContext = useOutletContext() || {};
+  const access = outletContext.access || outletContext.tournament?.access || {};
+  const isTournamentReadOnly = access?.isReadOnly === true;
+
+  const canEditOfficials = Boolean(
+    !isTournamentReadOnly &&
+      access?.canEdit !== false &&
+      (access?.hasPremiumAccess || access?.isAdmin)
+  );
+
+  const canPrintOfficials = access?.canPrint !== false;
+  const canExportOfficials = access?.canExport !== false;
+
   const [tournament, setTournament] = useState(null);
   const [officials, setOfficials] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -143,7 +156,10 @@ const Official = () => {
       nextWidths.name = Math.max(nextWidths.name, getTextWidth(official?.name || ""));
       nextWidths.rank = Math.max(nextWidths.rank, getTextWidth(official?.rank || ""));
       nextWidths.dan = Math.max(nextWidths.dan, getTextWidth(official?.dan || ""));
-      nextWidths.danNumber = Math.max(nextWidths.danNumber, getTextWidth(official?.danNumber || ""));
+      nextWidths.danNumber = Math.max(
+        nextWidths.danNumber,
+        getTextWidth(official?.danNumber || "")
+      );
       nextWidths.mark = Math.max(nextWidths.mark, getTextWidth(official?.mark || ""));
     });
 
@@ -178,6 +194,10 @@ const Official = () => {
 
   const performSave = useCallback(
     async (rows, reason = "unknown") => {
+      if (!canEditOfficials) {
+        return { ok: false, skipped: true, reason: "read-only" };
+      }
+
       if (!id || !token) {
         return { ok: false, skipped: true, reason: "missing-id-or-token" };
       }
@@ -205,7 +225,6 @@ const Official = () => {
         });
 
         lastSavedHashRef.current = payloadHash;
-
         localStorage.setItem(`officialsData_${id}`, JSON.stringify(rows));
 
         setSaveStatus("saved");
@@ -231,7 +250,7 @@ const Official = () => {
         isSavingRef.current = false;
       }
     },
-    [getApiBase, id, token]
+    [getApiBase, id, token, canEditOfficials]
   );
 
   const flushSaveNow = useCallback(async () => {
@@ -312,6 +331,11 @@ const Official = () => {
   useEffect(() => {
     if (isLoading) return;
 
+    if (!canEditOfficials) {
+      localStorage.setItem(`officialsData_${id}`, JSON.stringify(officials));
+      return;
+    }
+
     if (!mountedRef.current) {
       mountedRef.current = true;
       return;
@@ -332,55 +356,65 @@ const Official = () => {
         clearTimeout(debounceTimerRef.current);
       }
     };
-  }, [officials, id, isLoading, performSave]);
+  }, [officials, id, isLoading, canEditOfficials, performSave]);
 
   useEffect(() => {
     recalculateColumnWidths(officials);
   }, [officials, recalculateColumnWidths]);
 
-  const updateRow = useCallback((index, field, value) => {
-    setOfficials((prev) => {
-      const updated = [...prev];
-      updated[index] = {
-        ...updated[index],
-        [field]: value,
-      };
-      return updated;
-    });
+  const updateRow = useCallback(
+    (index, field, value) => {
+      if (!canEditOfficials) return;
 
-    if (["name", "rank", "dan", "danNumber", "mark"].includes(field)) {
-      setColumnWidths((prev) => {
-        const minMap = {
-          name: 180,
-          rank: 140,
-          dan: 100,
-          danNumber: 160,
-          mark: 120,
+      setOfficials((prev) => {
+        const updated = [...prev];
+        updated[index] = {
+          ...updated[index],
+          [field]: value,
         };
-
-        const maxMap = {
-          name: 320,
-          rank: 260,
-          dan: 160,
-          danNumber: 260,
-          mark: 200,
-        };
-
-        const textWidth = getTextWidth(value || "");
-        return {
-          ...prev,
-          [field]: Math.min(Math.max(textWidth, minMap[field]), maxMap[field]),
-        };
+        return updated;
       });
-    }
-  }, []);
 
-  const deleteRow = useCallback((index) => {
-    setOfficials((prev) => {
-      const next = prev.filter((_, i) => i !== index);
-      return next.length > 0 ? next : [{ ...EMPTY_OFFICIAL }];
-    });
-  }, []);
+      if (["name", "rank", "dan", "danNumber", "mark"].includes(field)) {
+        setColumnWidths((prev) => {
+          const minMap = {
+            name: 180,
+            rank: 140,
+            dan: 100,
+            danNumber: 160,
+            mark: 120,
+          };
+
+          const maxMap = {
+            name: 320,
+            rank: 260,
+            dan: 160,
+            danNumber: 260,
+            mark: 200,
+          };
+
+          const textWidth = getTextWidth(value || "");
+          return {
+            ...prev,
+            [field]: Math.min(Math.max(textWidth, minMap[field]), maxMap[field]),
+          };
+        });
+      }
+    },
+    [canEditOfficials]
+  );
+
+  const deleteRow = useCallback(
+    (index) => {
+      if (!canEditOfficials) return;
+
+      setOfficials((prev) => {
+        const next = prev.filter((_, i) => i !== index);
+        return next.length > 0 ? next : [{ ...EMPTY_OFFICIAL }];
+      });
+    },
+    [canEditOfficials]
+  );
 
   const handleEnterKey = useCallback(
     (e, rowIndex, field) => {
@@ -390,7 +424,7 @@ const Official = () => {
         const fields = ["name", "rank", "dan", "danNumber", "mark"];
         const currentFieldIndex = fields.indexOf(field);
 
-        if (currentFieldIndex === fields.length - 1) {
+        if (canEditOfficials && currentFieldIndex === fields.length - 1) {
           setOfficials((prev) => [...prev, { ...EMPTY_OFFICIAL }]);
 
           setTimeout(() => {
@@ -404,49 +438,61 @@ const Official = () => {
         }
       }
     },
-    [styles.table]
+    [styles.table, canEditOfficials]
   );
 
-  const handleFileUpload = useCallback((e) => {
-    const file = e.target?.files?.[0];
-    if (!file) return;
+  const handleFileUpload = useCallback(
+    (e) => {
+      if (!canEditOfficials) return;
 
-    setSelectedImportFile(file);
-    setShowImportModal(true);
+      const file = e.target?.files?.[0];
+      if (!file) return;
 
-    if (e.target) {
-      e.target.value = "";
-    }
-  }, []);
+      setSelectedImportFile(file);
+      setShowImportModal(true);
 
-  const handleImportedOfficials = useCallback((importedRows) => {
-    const normalizedRows = (Array.isArray(importedRows) ? importedRows : [])
-      .map((row) => ({
-        name: String(row?.name || "").trim(),
-        rank: String(row?.rank || "").trim(),
-        dan: String(row?.dan || "").trim(),
-        danNumber: String(row?.danNumber || "").trim(),
-        mark: String(row?.mark || "").trim(),
-      }))
-      .filter((row) => Object.values(row).some((value) => value !== ""));
+      if (e.target) {
+        e.target.value = "";
+      }
+    },
+    [canEditOfficials]
+  );
 
-    if (normalizedRows.length === 0) return;
+  const handleImportedOfficials = useCallback(
+    (importedRows) => {
+      if (!canEditOfficials) return;
 
-    setOfficials((prev) => {
-      const existingMeaningful = (Array.isArray(prev) ? prev : []).filter((row) =>
-        Object.values(row || {}).some((value) => String(value || "").trim() !== "")
-      );
+      const normalizedRows = (Array.isArray(importedRows) ? importedRows : [])
+        .map((row) => ({
+          name: String(row?.name || "").trim(),
+          rank: String(row?.rank || "").trim(),
+          dan: String(row?.dan || "").trim(),
+          danNumber: String(row?.danNumber || "").trim(),
+          mark: String(row?.mark || "").trim(),
+        }))
+        .filter((row) => Object.values(row).some((value) => value !== ""));
 
-      const merged = [...existingMeaningful, ...normalizedRows];
-      return merged.length > 0 ? merged : [{ ...EMPTY_OFFICIAL }];
-    });
+      if (normalizedRows.length === 0) return;
 
-    setShowImportModal(false);
-    setSelectedImportFile(null);
-  }, []);
+      setOfficials((prev) => {
+        const existingMeaningful = (Array.isArray(prev) ? prev : []).filter((row) =>
+          Object.values(row || {}).some((value) => String(value || "").trim() !== "")
+        );
+
+        const merged = [...existingMeaningful, ...normalizedRows];
+        return merged.length > 0 ? merged : [{ ...EMPTY_OFFICIAL }];
+      });
+
+      setShowImportModal(false);
+      setSelectedImportFile(null);
+    },
+    [canEditOfficials]
+  );
 
   const generatePDFDoc = async () => {
-    await flushSaveNow();
+    if (canEditOfficials) {
+      await flushSaveNow();
+    }
 
     if (!pdfPageRef.current) {
       console.error("PDF page ref not found");
@@ -542,23 +588,44 @@ const Official = () => {
   const logoLeft = tournament?.logos?.[0] ? getFullImageUrl(tournament.logos[0]) : null;
   const logoRight = tournament?.logos?.[1] ? getFullImageUrl(tournament.logos[1]) : logoLeft;
 
-  const hasOfficials = Array.isArray(officials) && officials.some((o) =>
-    (o?.name || "").trim() ||
-    (o?.rank || "").trim() ||
-    (o?.dan || "").trim() ||
-    (o?.danNumber || "").trim() ||
-    (o?.mark || "").trim()
-  );
+  const hasOfficials =
+    Array.isArray(officials) &&
+    officials.some(
+      (o) =>
+        (o?.name || "").trim() ||
+        (o?.rank || "").trim() ||
+        (o?.dan || "").trim() ||
+        (o?.danNumber || "").trim() ||
+        (o?.mark || "").trim()
+    );
 
   return (
     <div className={styles.container}>
+      {isTournamentReadOnly && (
+        <div
+          style={{
+            background: "#fef3c7",
+            border: "1px solid #f59e0b",
+            color: "#92400e",
+            padding: "12px",
+            borderRadius: "8px",
+            marginBottom: "16px",
+            fontWeight: 700,
+          }}
+        >
+          This tournament is archived and read-only. Official edits/import/delete are locked. Print and PDF export remain available.
+        </div>
+      )}
+
       <div className={styles.buttonSection}>
         <div className={styles.pdfButtonWrapper}>
           <label
             htmlFor="officialExcelImport"
             className={styles.pdfButton}
             style={{
-              cursor: "pointer",
+              cursor: canEditOfficials ? "pointer" : "not-allowed",
+              opacity: canEditOfficials ? 1 : 0.55,
+              pointerEvents: canEditOfficials ? "auto" : "none",
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
@@ -573,20 +640,22 @@ const Official = () => {
             type="file"
             accept=".xlsx,.xls,.xlsb,.xlsm"
             onChange={handleFileUpload}
+            disabled={!canEditOfficials}
             style={{ display: "none" }}
           />
 
           <button
             onClick={printAllPDF}
             className={styles.printButton}
-            disabled={!hasOfficials}
+            disabled={!canPrintOfficials || !hasOfficials}
           >
             Print
           </button>
+
           <button
             onClick={saveAllPDF}
             className={styles.pdfButton}
-            disabled={!hasOfficials}
+            disabled={!canExportOfficials || !hasOfficials}
           >
             Save PDF
           </button>
@@ -595,21 +664,15 @@ const Official = () => {
 
       <div ref={pdfPageRef} className={styles.officialPage}>
         <div className={styles.header}>
-          {logoLeft && (
-            <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} />
-          )}
+          {logoLeft && <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} />}
 
           <div className={styles.headerContent}>
-            <h1 className={styles.tournamentName}>
-              {tournament?.name?.toUpperCase()}
-            </h1>
+            <h1 className={styles.tournamentName}>{tournament?.name?.toUpperCase()}</h1>
             <p className={styles.federation}>{tournament?.federation}</p>
             <h2 className={styles.title}>OFFICIALS</h2>
           </div>
 
-          {logoRight && (
-            <img src={logoRight} alt="Logo Right" className={styles.logoRight} />
-          )}
+          {logoRight && <img src={logoRight} alt="Logo Right" className={styles.logoRight} />}
         </div>
 
         <div className={styles.tableWrapper}>
@@ -632,6 +695,7 @@ const Official = () => {
                 <th style={{ width: columnWidths.actions }}>Actions</th>
               </tr>
             </thead>
+
             <tbody>
               {officials.map((official, index) => (
                 <tr key={index}>
@@ -645,6 +709,8 @@ const Official = () => {
                       onKeyDown={(e) => handleEnterKey(e, index, "name")}
                       placeholder="Name"
                       className={styles.input}
+                      disabled={!canEditOfficials}
+                      readOnly={!canEditOfficials}
                     />
                   </td>
 
@@ -656,6 +722,8 @@ const Official = () => {
                       onKeyDown={(e) => handleEnterKey(e, index, "rank")}
                       placeholder="Rank"
                       className={styles.input}
+                      disabled={!canEditOfficials}
+                      readOnly={!canEditOfficials}
                     />
                   </td>
 
@@ -667,6 +735,8 @@ const Official = () => {
                       onKeyDown={(e) => handleEnterKey(e, index, "dan")}
                       placeholder="Dan"
                       className={styles.input}
+                      disabled={!canEditOfficials}
+                      readOnly={!canEditOfficials}
                     />
                   </td>
 
@@ -678,6 +748,8 @@ const Official = () => {
                       onKeyDown={(e) => handleEnterKey(e, index, "danNumber")}
                       placeholder="Dan Number"
                       className={styles.input}
+                      disabled={!canEditOfficials}
+                      readOnly={!canEditOfficials}
                     />
                   </td>
 
@@ -689,6 +761,8 @@ const Official = () => {
                       onKeyDown={(e) => handleEnterKey(e, index, "mark")}
                       placeholder="Mark"
                       className={styles.input}
+                      disabled={!canEditOfficials}
+                      readOnly={!canEditOfficials}
                     />
                   </td>
 
@@ -697,6 +771,11 @@ const Official = () => {
                       onClick={() => deleteRow(index)}
                       className={styles.deleteButton}
                       aria-label="Delete row"
+                      disabled={!canEditOfficials}
+                      style={{
+                        cursor: canEditOfficials ? "pointer" : "not-allowed",
+                        opacity: canEditOfficials ? 1 : 0.55,
+                      }}
                     >
                       <Trash2 size={16} />
                     </button>
@@ -709,7 +788,7 @@ const Official = () => {
       </div>
 
       <OfficialImportModal
-        show={showImportModal}
+        show={showImportModal && canEditOfficials}
         onClose={() => {
           setShowImportModal(false);
           setSelectedImportFile(null);

@@ -6,6 +6,10 @@ import logger from "../utils/logger.js";
 import { logActivitySafe } from "../utils/activityLogger.js";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 import path from "path";
+import {
+  calculateTournamentAccess,
+  buildPremiumSnapshotForTournament,
+} from "../services/tournamentAccessService.js";
 
 // Helper Functions
 const parseNestedFields = (data, fields) => {
@@ -1284,7 +1288,15 @@ export const getTournamentById = async (req, res) => {
       return res.status(404).json({ message: "Tournament not found" });
     }
 
-    return res.status(200).json(buildPublicTournamentResponse(tournament));
+    const access = await calculateTournamentAccess({
+      tournament,
+      user: req.user || null,
+    });
+
+    return res.status(200).json({
+      ...buildPublicTournamentResponse(tournament),
+      access,
+    });
   } catch (error) {
     logger.error("Get tournament by ID failed", {
       error: error.message,
@@ -1292,7 +1304,7 @@ export const getTournamentById = async (req, res) => {
     });
     res.status(500).json({ message: "Failed to load tournament details" });
   }
-};
+}; 
 
 export const getPrivateTournamentById = async (req, res) => {
   try {
@@ -1304,14 +1316,20 @@ export const getPrivateTournamentById = async (req, res) => {
       return res.status(404).json({ message: "Tournament not found" });
     }
 
-    // Do not return deprecated Tournament.entries.
-    // Entry model is the single source of truth for player entries and medals.
+    const access =
+      req.tournamentAccess ||
+      (await calculateTournamentAccess({
+        tournament,
+        user: req.user || null,
+      }));
+
     const { entries, ...safeTournament } = tournament;
 
     return res.status(200).json({
       ...safeTournament,
       poster: normalizePath(tournament.poster),
       logos: tournament.logos?.map(normalizePath) || [],
+      access,
     });
   } catch (error) {
     logger.error("Get private tournament by ID failed", {
@@ -1324,7 +1342,7 @@ export const getPrivateTournamentById = async (req, res) => {
       message: "Failed to load private tournament details",
     });
   }
-};
+}; 
 
 // ================ PROTECTED ENDPOINTS (Require Auth + Ownership) ================
 
@@ -1697,6 +1715,10 @@ export const createTournament = async (req, res) => {
 
     tournamentData = parseNestedFields(tournamentData, nestedFields);
 
+        tournamentData.premiumSnapshot = await buildPremiumSnapshotForTournament({
+      userId: req.user._id,
+    });
+
     if (tournamentData.weightCategories?.selected) {
       if (typeof tournamentData.weightCategories.selected === "string") {
         try {
@@ -1776,7 +1798,19 @@ export const createTournament = async (req, res) => {
       },
     });
 
-    res.status(201).json(saved.toObject());
+        const savedObject = saved.toObject();
+
+    const access = await calculateTournamentAccess({
+      tournament: savedObject,
+      user: req.user,
+    });
+
+    res.status(201).json({
+      ...savedObject,
+      poster: normalizePath(savedObject.poster),
+      logos: savedObject.logos?.map(normalizePath) || [],
+      access,
+    });
   } catch (error) {
     await session.abortTransaction();
 
@@ -1952,7 +1986,19 @@ export const updateTournament = async (req, res) => {
       },
     });
 
-    res.status(200).json(updated.toObject());
+        const updatedObject = updated.toObject();
+
+    const access = await calculateTournamentAccess({
+      tournament: updatedObject,
+      user: req.user,
+    });
+
+    res.status(200).json({
+      ...updatedObject,
+      poster: normalizePath(updatedObject.poster),
+      logos: updatedObject.logos?.map(normalizePath) || [],
+      access,
+    });
   } catch (error) {
     await session.abortTransaction();
 

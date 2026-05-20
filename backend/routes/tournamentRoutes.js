@@ -30,12 +30,16 @@ import {
   sensitiveRateLimiter,
   tieSheetOutcomeRateLimiter,
 } from "../middleware/rateLimiter.js";
-import premiumAccess, { PREMIUM_FEATURES } from "../middleware/premiumAccess.js";
 import optionalAuthMiddleware from "../middleware/optionalAuthMiddleware.js";
 import authMiddleware from "../middleware/authMiddleware.js";
 import { upload } from "../middleware/upload.js";
 import Tournament from "../models/tournament.js";
 import logger from "../utils/logger.js";
+import {
+  requireTournamentOwner,
+  requireTournamentPremiumPage,
+  requireTournamentMutation,
+} from "../middleware/tournamentAccessMiddleware.js";
 
 const router = express.Router();
 
@@ -53,45 +57,11 @@ const multerErrorHandler = (err, req, res, next) => {
   next();
 };
 
-const requireOwnership = async (req, res, next) => {
+const requirePublicOrOwnerView = async (req, res, next) => {
   const { id } = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(400).json({ message: "Invalid tournament ID format" });
-  }
-
-  try {
-    const tournament = await Tournament.findById(id).select("createdBy visibility");
-
-    if (!tournament) {
-      return res.status(404).json({ message: "Tournament not found" });
-    }
-
-    if (tournament.createdBy.toString() !== req.user._id.toString()) {
-      return res.status(403).json({
-        message: "Access denied: You are not the organizer of this tournament",
-      });
-    }
-
-    req.tournament = tournament;
-    next();
-  } catch (error) {
-    logger.error("Tournament ownership check failed", {
-      tournamentId: id,
-      userId: req.user?._id,
-      error: error.message,
-      stack: error.stack,
-    });
-
-    return res.status(500).json({ message: "Server error during authorization" });
-  }
-};
-
-const requireTournamentAccess = async (req, res, next) => {
-  const { id } = req.params;
-
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(400).json({ message: "Invalid tournament ID format" });
+    return res.status(400).json({ message: "Invalid tournament ID" });
   }
 
   try {
@@ -102,48 +72,24 @@ const requireTournamentAccess = async (req, res, next) => {
     }
 
     const isAdminUser = ["admin", "superadmin"].includes(req.user?.role);
-    const isOwner = tournament.createdBy?.toString() === req.user?._id?.toString();
+    const isOwner =
+      req.user && tournament.createdBy.toString() === req.user._id.toString();
 
-    if (!isAdminUser && !isOwner) {
-      return res.status(403).json({
-        message: "Access denied: You do not have access to this tournament",
-      });
+    if (tournament.visibility === false && !isOwner && !isAdminUser) {
+      return res.status(403).json({ message: "This tournament is private" });
     }
 
-    req.tournament = tournament;
-    next();
+    return next();
   } catch (error) {
-    logger.error("Tournament access check failed", {
+    logger.error("Public tournament view error", {
       tournamentId: id,
       userId: req.user?._id,
       error: error.message,
       stack: error.stack,
     });
 
-    return res.status(500).json({ message: "Server error during authorization" });
+    return res.status(500).json({ message: "Server error" });
   }
-};
-
-const premiumAccessUnlessAdmin = (feature) => {
-  return (req, res, next) => {
-    const isAdminUser = ["admin", "superadmin"].includes(req.user?.role);
-
-    if (isAdminUser) {
-      req.premiumAccess = {
-        hasAccess: true,
-        source: "admin-route-bypass",
-        accessType: "admin",
-        planType: "admin",
-        feature,
-        tournamentId: req.params?.id || null,
-        reason: "admin-user",
-      };
-
-      return next();
-    }
-
-    return premiumAccess(feature)(req, res, next);
-  };
 };
 
 // ================ PUBLIC ROUTES ================
@@ -181,41 +127,14 @@ router.get("/my", authMiddleware, async (req, res) => {
 });
 
 // ================ PUBLIC TOURNAMENT VIEW WITH OPTIONAL AUTH ================
-router.get("/:id", optionalAuthMiddleware, async (req, res, next) => {
-  const { id } = req.params;
+router.get("/:id", optionalAuthMiddleware, requirePublicOrOwnerView, getTournamentById);
 
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(400).json({ message: "Invalid tournament ID" });
-  }
-
-  try {
-    const tournament = await Tournament.findById(id).select("createdBy visibility");
-
-    if (!tournament) {
-      return res.status(404).json({ message: "Tournament not found" });
-    }
-
-    if (
-      tournament.visibility === false &&
-      (!req.user || tournament.createdBy.toString() !== req.user._id.toString())
-    ) {
-      return res.status(403).json({ message: "This tournament is private" });
-    }
-
-    return getTournamentById(req, res, next);
-  } catch (error) {
-    logger.error("Public tournament view error", {
-      tournamentId: id,
-      userId: req.user?._id,
-      error: error.message,
-      stack: error.stack,
-    });
-
-    return res.status(500).json({ message: "Server error" });
-  }
-});
-
-router.get("/:id/private", authMiddleware, requireOwnership, getPrivateTournamentById);
+router.get(
+  "/:id/private",
+  authMiddleware,
+  requireTournamentOwner(),
+  getPrivateTournamentById
+);
 
 // ================ CREATE / UPDATE TOURNAMENT ================
 router.post(
@@ -234,7 +153,7 @@ router.post(
 router.put(
   "/:id",
   authMiddleware,
-  requireOwnership,
+  requireTournamentMutation("basicCorrection"),
   requireCsrfToken,
   sensitiveRateLimiter,
   upload.fields([
@@ -245,53 +164,58 @@ router.put(
   updateTournament
 );
 
-// ================ NON-PREMIUM PROTECTED ROUTES ================
-router.get("/:id/outcomes", authMiddleware, requireOwnership, getOutcomes);
+// ================ RESULT / OUTCOME ROUTES ================
+router.get(
+  "/:id/outcomes",
+  authMiddleware,
+  requireTournamentPremiumPage({ feature: "winner" }),
+  getOutcomes
+);
 
 router.put(
   "/:id/outcomes",
   authMiddleware,
-  requireOwnership,
+  requireTournamentMutation("result", { feature: "winner" }),
   requireCsrfToken,
   sensitiveRateLimiter,
   saveOutcomes
 );
 
-router.get("/:id/winners", authMiddleware, requireTournamentAccess, getWinnerAggregation);
+router.get(
+  "/:id/winners",
+  authMiddleware,
+  requireTournamentPremiumPage({ feature: "winner" }),
+  getWinnerAggregation
+);
 
 router.get(
   "/:id/team-championship",
   authMiddleware,
-  requireTournamentAccess,
+  requireTournamentPremiumPage({ feature: "team_championship" }),
   getTeamChampionshipAggregation
 );
 
-// ================ PREMIUM PROTECTED ROUTES ================
-
-// Tie Sheet
+// ================ TIE SHEET ================
 router.get(
   "/:id/tiesheet",
   authMiddleware,
-  requireTournamentAccess,
-  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET),
+  requireTournamentPremiumPage({ feature: "tiesheet" }),
   getTieSheet
 );
 
 router.put(
   "/:id/tiesheet",
   authMiddleware,
-  requireTournamentAccess,
+  requireTournamentMutation("tiesheet", { feature: "tiesheet" }),
   requireCsrfToken,
-  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET),
   saveTieSheet
 );
-// Tie Sheet Outcomes
+
 router.patch(
   "/:id/tiesheet/outcomes",
   authMiddleware,
-  requireTournamentAccess,
+  requireTournamentMutation("tiesheet", { feature: "tiesheet" }),
   requireCsrfToken,
-  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET),
   tieSheetOutcomeRateLimiter,
   saveTieSheetOutcomes
 );
@@ -299,66 +223,59 @@ router.patch(
 router.get(
   "/:id/tiesheet-outcomes",
   authMiddleware,
-  requireTournamentAccess,
-  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET),
+  requireTournamentPremiumPage({ feature: "tiesheet" }),
   getTieSheetOutcomes
 );
 
 router.put(
   "/:id/tiesheet-outcomes",
   authMiddleware,
-  requireTournamentAccess,
+  requireTournamentMutation("tiesheet", { feature: "tiesheet" }),
   requireCsrfToken,
-  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET),
- tieSheetOutcomeRateLimiter,
+  tieSheetOutcomeRateLimiter,
   saveTieSheetOutcomes
 );
 
-// Officials
+// ================ OFFICIALS ================
 router.get(
   "/:id/officials",
   authMiddleware,
-  requireTournamentAccess,
-  premiumAccessUnlessAdmin(PREMIUM_FEATURES.OFFICIALS),
+  requireTournamentPremiumPage({ feature: "officials" }),
   getOfficials
 );
 
 router.put(
   "/:id/officials",
   authMiddleware,
-  requireTournamentAccess,
+  requireTournamentMutation("official", { feature: "officials" }),
   requireCsrfToken,
-  premiumAccessUnlessAdmin(PREMIUM_FEATURES.OFFICIALS),
   sensitiveRateLimiter,
   saveOfficials
 );
 
-// Team Payments
+// ================ TEAM PAYMENTS ================
 router.get(
   "/:id/team-payments",
   authMiddleware,
-  requireTournamentAccess,
-  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TEAM_PAYMENTS),
+  requireTournamentPremiumPage({ feature: "team_payments" }),
   getTeamPayments
 );
 
 router.put(
   "/:id/team-payments",
   authMiddleware,
-  requireTournamentAccess,
+  requireTournamentMutation("payment", { feature: "team_payments" }),
   requireCsrfToken,
-  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TEAM_PAYMENTS),
   sensitiveRateLimiter,
   saveTeamPayments
 );
 
-// TieSheet Record
+// ================ TIE SHEET RECORD ================
 router.post(
   "/:id/tiesheet-record",
   authMiddleware,
-  requireTournamentAccess,
+  requireTournamentMutation("tiesheet", { feature: "tiesheet_record" }),
   requireCsrfToken,
-  premiumAccessUnlessAdmin(PREMIUM_FEATURES.TIESHEET_RECORD),
   sensitiveRateLimiter,
   saveTieSheetRecord
 );
