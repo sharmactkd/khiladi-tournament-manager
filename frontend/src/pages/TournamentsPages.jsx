@@ -25,16 +25,19 @@ const TournamentsPages = () => {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    const controller = new AbortController();
+    let isMounted = true;
 
     const fetchTournaments = async () => {
       setLoading(true);
+      setError(null);
 
       try {
         const [ongoingResponse, previousResponse] = await Promise.all([
           getOngoingTournaments(),
           getPreviousTournaments(),
         ]);
+
+        if (!isMounted) return;
 
         const ongoingTournamentsData = Array.isArray(ongoingResponse)
           ? ongoingResponse
@@ -47,18 +50,22 @@ const TournamentsPages = () => {
         setOngoingTournaments(ongoingTournamentsData);
         setPreviousTournaments(previousTournamentsData);
       } catch (error) {
-        if (!controller.signal.aborted) {
+        if (isMounted) {
           console.error("Fetch error:", error);
           setError(error.message || "Failed to fetch tournaments");
         }
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     fetchTournaments();
 
-    return () => controller.abort();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const getUniqueCountries = useMemo(
@@ -161,14 +168,6 @@ const TournamentsPages = () => {
     displayTitle = `${displayTournaments.length} Ongoing Tournaments`;
   }
 
-  if (loading) {
-    return <div className={styles.loading}>Loading tournaments...</div>;
-  }
-
-  if (error) {
-    return <div className={styles.error}>{error}</div>;
-  }
-
   return (
     <>
       <Helmet>
@@ -259,10 +258,14 @@ const TournamentsPages = () => {
         />
 
         <section className={styles.section}>
-          <h2>{displayTitle}</h2>
+          <h2>{loading ? "Loading tournaments..." : displayTitle}</h2>
 
           <div className={styles.cardsContainer}>
-            {displayTournaments.length > 0 ? (
+            {loading ? (
+              <p>Loading tournaments...</p>
+            ) : error ? (
+              <p className={styles.error}>{error}</p>
+            ) : displayTournaments.length > 0 ? (
               displayTournaments.map((tournament) => (
                 <TournamentPreviewCard
                   key={tournament._id}

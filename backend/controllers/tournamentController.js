@@ -123,6 +123,9 @@ const getPublicVisibilityFilter = () => ({
   $or: [{ visibility: { $exists: false } }, { visibility: true }],
 });
 
+const publicTournamentListSelect =
+  "tournamentName organizer federation email contact dateFrom dateTo venue tournamentLevel tournamentType ageCategories ageGender eventCategories entryFees weightCategories cadetCategoryType foodAndLodging medalPoints description matchSchedule visibility poster logos createdBy createdAt updatedAt";
+
 const buildPublicTournamentResponse = (tournament) => ({
   _id: tournament._id,
   id: tournament._id,
@@ -1220,12 +1223,13 @@ export const getTeamChampionshipAggregation = async (req, res) => {
 
 export const getAllTournaments = async (req, res) => {
   try {
-  const tournaments = await Tournament.find(getPublicVisibilityFilter())
-  .populate("createdBy", "name email")
-  .sort({ createdAt: -1 })
-  .lean();
+    const tournaments = await Tournament.find(getPublicVisibilityFilter())
+      .select(publicTournamentListSelect)
+      .populate("createdBy", "name email phone")
+      .sort({ createdAt: -1 })
+      .lean();
 
-   const normalized = tournaments.map(buildPublicTournamentResponse);
+    const normalized = tournaments.map(buildPublicTournamentResponse);
 
     res.status(200).json({ count: normalized.length, data: normalized });
   } catch (error) {
@@ -1242,11 +1246,12 @@ export const getOngoingTournaments = async (req, res) => {
     const tournaments = await Tournament.find({
       $and: [{ dateTo: { $gte: today } }, getPublicVisibilityFilter()],
     })
-      .populate("createdBy", "name")
+      .select(publicTournamentListSelect)
+      .populate("createdBy", "name email phone")
       .sort({ dateFrom: 1 })
       .lean();
 
-   const normalized = tournaments.map(buildPublicTournamentResponse);
+    const normalized = tournaments.map(buildPublicTournamentResponse);
 
     res.status(200).json({ count: normalized.length, data: normalized });
   } catch (error) {
@@ -1263,11 +1268,13 @@ export const getPreviousTournaments = async (req, res) => {
     const tournaments = await Tournament.find({
       $and: [{ dateTo: { $lt: today } }, getPublicVisibilityFilter()],
     })
-      .populate("createdBy", "name")
+      .select(publicTournamentListSelect)
+      .populate("createdBy", "name email phone")
       .sort({ dateTo: -1 })
+      .limit(50)
       .lean();
 
-const normalized = tournaments.map(buildPublicTournamentResponse);
+    const normalized = tournaments.map(buildPublicTournamentResponse);
 
     res.status(200).json({ count: normalized.length, data: normalized });
   } catch (error) {

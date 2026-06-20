@@ -256,6 +256,12 @@ const tournamentSchema = new mongoose.Schema(
 tournamentSchema.index({ createdBy: 1, visibility: 1 });
 tournamentSchema.index({ dateFrom: 1, dateTo: 1 });
 tournamentSchema.index({ isDeleted: 1 });
+
+tournamentSchema.index({ visibility: 1, dateTo: 1 });
+tournamentSchema.index({ visibility: 1, dateFrom: 1 });
+tournamentSchema.index({ isDeleted: 1, visibility: 1, dateTo: 1 });
+tournamentSchema.index({ isDeleted: 1, visibility: 1, dateFrom: 1 });
+
 tournamentSchema.index({ "venue.country": 1, "venue.state": 1, "venue.district": 1 });
 tournamentSchema.index({ "premiumSnapshot.hasPremiumAccess": 1 });
 tournamentSchema.index({ "premiumSnapshot.sourceEntitlementId": 1 });

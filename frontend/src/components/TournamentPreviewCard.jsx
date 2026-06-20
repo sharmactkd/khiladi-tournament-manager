@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import styles from "./TournamentPreviewCard.module.css";
 
@@ -11,7 +11,9 @@ const getFullImageUrl = (url) => {
   cleanUrl = cleanUrl.replace(/^https?:\/(?!\/)/g, (match) => match + "/");
   cleanUrl = cleanUrl.replace(/^http?:\/(?!\/)/g, (match) => match + "/");
 
-  if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) return cleanUrl;
+  if (cleanUrl.startsWith("http://") || cleanUrl.startsWith("https://")) {
+    return cleanUrl;
+  }
 
   const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
   const uploadsBase = String(baseUrl).replace(/\/api\/?$/, "");
@@ -47,11 +49,14 @@ const TournamentPreviewCard = ({ tournament, onClick }) => {
     ageCategories,
   } = tournament;
 
-  const imageUrl =
-  poster || (logos && logos.length > 0 ? logos[0] : "/EVOLVE.png");
+  const fullImageUrl = useMemo(() => {
+    const imageUrl =
+      poster || (logos && logos.length > 0 ? logos[0] : "/EVOLVE.png");
 
-const fullImageUrl =
-  imageUrl === "/EVOLVE.png" ? imageUrl : getFullImageUrl(imageUrl);
+    if (imageUrl === "/EVOLVE.png") return imageUrl;
+
+    return optimizeImageUrl(getFullImageUrl(imageUrl));
+  }, [poster, logos]);
 
   const formatDate = (dateStr) => {
     if (!dateStr) return "";
@@ -78,18 +83,22 @@ const fullImageUrl =
 
   return (
     <div className={styles.card} onClick={handleCardClick}>
-     {!imageFailed ? (
-       <img
-  src={fullImageUrl}
-  alt={tournamentName}
-  className={styles.image}
-  loading="lazy"
-  decoding="async"
-  onError={(e) => {
-    e.target.onerror = null;
-    e.target.src = "/EVOLVE.png";
-  }}
-/>
+      {!imageFailed ? (
+        <img
+          src={fullImageUrl}
+          alt={tournamentName || "Tournament poster"}
+          className={styles.image}
+          loading="lazy"
+          decoding="async"
+          fetchPriority="low"
+          width="500"
+          height="300"
+          onError={(e) => {
+            e.currentTarget.onerror = null;
+            e.currentTarget.src = "/EVOLVE.png";
+            setImageFailed(false);
+          }}
+        />
       ) : (
         <div className={styles.imagePlaceholder}>
           <p className={styles.error}>Poster not available</p>

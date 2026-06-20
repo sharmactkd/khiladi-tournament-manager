@@ -6,6 +6,7 @@ import cors from "cors";
 import helmet from "helmet";
 import path from "path";
 import { fileURLToPath } from "url";
+import compression from "compression";
 
 import passport from "./config/passport.js";
 import authRoutes from "./routes/authRoutes.js";
@@ -62,6 +63,16 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (reason) => {
   logger.error("Unhandled Rejection - Server may crash", { reason: String(reason) });
 });
+
+app.use(
+  compression({
+    threshold: 1024,
+    filter: (req, res) => {
+      if (req.headers["x-no-compression"]) return false;
+      return compression.filter(req, res);
+    },
+  })
+);
 
 app.use(
   helmet({
@@ -244,11 +255,16 @@ process.on("SIGINT", shutDown);
 
 function shutDown() {
   logger.info("Received shutdown signal. Closing server gracefully...");
- server.close(async () => {
-  logger.info("HTTP server closed.");
-  stopPaymentCleanupScheduler();
-  await mongoose.disconnect();
-  logger.info("MongoDB disconnected.");
-  process.exit(0);
-});
+
+  server.close(async () => {
+    logger.info("HTTP server closed.");
+
+    stopPaymentCleanupScheduler();
+    stopWebhookQueueWorker();
+
+    await mongoose.disconnect();
+
+    logger.info("MongoDB disconnected.");
+    process.exit(0);
+  });
 }

@@ -76,6 +76,10 @@ const isAuthPublicPage = () => {
   const pathname = window.location.pathname || "";
 
   return (
+    pathname === "/" ||
+    pathname === "/tournaments" ||
+    pathname === "/about" ||
+    pathname === "/contact" ||
     pathname === "/login" ||
     pathname === "/register" ||
     pathname === "/forgot-password" ||
@@ -84,10 +88,28 @@ const isAuthPublicPage = () => {
   );
 };
 
+const isPublicApiRequest = (requestUrl = "") => {
+  const url = String(requestUrl || "");
+
+  return (
+    url === "/tournament" ||
+    url === "/tournament/" ||
+    url.includes("/tournament/ongoing") ||
+    url.includes("/tournament/previous") ||
+    /^\/tournament\/[a-f\d]{24}$/i.test(url) ||
+    url.includes("/visitor") ||
+    url.includes("/auth/login") ||
+    url.includes("/auth/register") ||
+    url.includes("/auth/forgot-password") ||
+    url.includes("/auth/reset-password") ||
+    url.includes("/auth/google")
+  );
+};
+
 const api = axios.create({
   baseURL: API_URL,
   withCredentials: true,
-  timeout: 90000,
+  timeout: 30000,
 });
 
 let refreshPromise = null;
@@ -102,10 +124,10 @@ api.interceptors.request.use((config) => {
 
   const csrfHeaders = getCsrfHeaders();
 
-if (Object.keys(csrfHeaders).length > 0) {
-  config.headers = config.headers || {};
-  Object.assign(config.headers, csrfHeaders);
-}
+  if (Object.keys(csrfHeaders).length > 0) {
+    config.headers = config.headers || {};
+    Object.assign(config.headers, csrfHeaders);
+  }
 
   return config;
 });
@@ -114,35 +136,35 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config || {};
+    const requestUrl = String(originalRequest.url || "");
 
-  const requestUrl = String(originalRequest.url || "");
+    const isPublicAuthRequest =
+      requestUrl.includes("/auth/login") ||
+      requestUrl.includes("/auth/register") ||
+      requestUrl.includes("/auth/forgot-password") ||
+      requestUrl.includes("/auth/reset-password") ||
+      requestUrl.includes("/auth/google");
 
-const isPublicAuthRequest =
-  requestUrl.includes("/auth/login") ||
-  requestUrl.includes("/auth/register") ||
-  requestUrl.includes("/auth/forgot-password") ||
-  requestUrl.includes("/auth/reset-password") ||
-  requestUrl.includes("/auth/google");
-
-if (
-  error.response?.status === 401 &&
-  !originalRequest._retry &&
-  !requestUrl.includes("/auth/refresh") &&
-  !isPublicAuthRequest
-) {
+    if (
+      error.response?.status === 401 &&
+      !originalRequest._retry &&
+      !requestUrl.includes("/auth/refresh") &&
+      !isPublicAuthRequest &&
+      !isPublicApiRequest(requestUrl)
+    ) {
       originalRequest._retry = true;
 
       try {
         if (!refreshPromise) {
           refreshPromise = axios
             .post(
-  `${API_URL}/auth/refresh`,
-  {},
-  {
-    withCredentials: true,
- headers: getCsrfHeaders(),
-  }
-)
+              `${API_URL}/auth/refresh`,
+              {},
+              {
+                withCredentials: true,
+                headers: getCsrfHeaders(),
+              }
+            )
             .then((refreshRes) => {
               const { accessToken } = refreshRes.data || {};
 
@@ -165,13 +187,13 @@ if (
 
         return api(originalRequest);
       } catch (refreshError) {
-      if (isDev) {
-  console.error("Token refresh failed:", refreshError);
-}
+        if (isDev) {
+          console.error("Token refresh failed:", refreshError);
+        }
 
         clearAccessToken();
-     
-sessionStorage.removeItem("userSnapshot");
+
+        sessionStorage.removeItem("userSnapshot");
 
         if (typeof window !== "undefined" && !isAuthPublicPage()) {
           window.location.href = "/login";
@@ -182,9 +204,9 @@ sessionStorage.removeItem("userSnapshot");
     }
 
     if (error.response?.status === 429) {
-  if (isDev) {
-  console.warn("Rate limited (429)", error.response.data);
-}
+      if (isDev) {
+        console.warn("Rate limited (429)", error.response.data);
+      }
 
       if (!isImageAnalyzeRequest(originalRequest)) {
         alert("Too many requests. Please slow down and try again in a minute.");
@@ -221,9 +243,12 @@ const apiCall = async (method, url, data = null, config = {}) => {
       String(url || "").includes("/team-submissions/") &&
       String(url || "").includes("/pending-count");
 
-   if (isDev && !shouldSuppressLog) {
-  console.error(`API ${method.toUpperCase()} ${url} error:`, { status, msg });
-}
+    if (isDev && !shouldSuppressLog) {
+      console.error(`API ${method.toUpperCase()} ${url} error:`, {
+        status,
+        msg,
+      });
+    }
 
     const err = new Error(msg);
     err.status = status;
@@ -245,8 +270,10 @@ const toQueryString = (params = {}) => {
   return value ? `?${value}` : "";
 };
 
-export const registerUser = (userData) => apiCall("post", "/auth/register", userData);
-export const loginUser = (credentials) => apiCall("post", "/auth/login", credentials);
+export const registerUser = (userData) =>
+  apiCall("post", "/auth/register", userData);
+export const loginUser = (credentials) =>
+  apiCall("post", "/auth/login", credentials);
 
 export const forgotPassword = (payload) =>
   apiCall("post", "/auth/forgot-password", payload);
@@ -276,7 +303,8 @@ export const getTournamentById = (id) => apiCall("get", `/tournament/${id}`);
 export const saveWeightPreset = (name, data) =>
   apiCall("post", "/weight-presets", { name, data });
 export const getWeightPresets = () => apiCall("get", "/weight-presets");
-export const deleteWeightPreset = (id) => apiCall("delete", `/weight-presets/${id}`);
+export const deleteWeightPreset = (id) =>
+  apiCall("delete", `/weight-presets/${id}`);
 
 export const getEntries = (tournamentId, params = {}) =>
   apiCall("get", `/tournaments/${tournamentId}/entries${toQueryString(params)}`);
@@ -286,9 +314,7 @@ export const saveEntries = (tournamentId, payload) =>
     ...payload,
     isFullSnapshot: payload?.isFullSnapshot === true,
     confirmReplaceAll:
-      payload?.isFullSnapshot === true
-        ? "REPLACE_ALL_ENTRIES"
-        : "",
+      payload?.isFullSnapshot === true ? "REPLACE_ALL_ENTRIES" : "",
   });
 
 export const updateEntryRow = (tournamentId, entryId, updates) =>
@@ -350,7 +376,8 @@ export const getVisitorCount = () => apiCall("get", "/visitor");
 export const getAdminDashboard = () => apiCall("get", "/admin/dashboard");
 export const getAdminUsers = (params = {}) =>
   apiCall("get", `/admin/users${toQueryString(params)}`);
-export const getAdminUserDetails = (userId) => apiCall("get", `/admin/users/${userId}`);
+export const getAdminUserDetails = (userId) =>
+  apiCall("get", `/admin/users/${userId}`);
 export const getAdminTournaments = (params = {}) =>
   apiCall("get", `/admin/tournaments${toQueryString(params)}`);
 export const getAdminTournamentDetails = (tournamentId) =>
@@ -375,8 +402,7 @@ export const deleteAdminTournament = (tournamentId) =>
 export const createEntryRowsBulk = (tournamentId, payload) =>
   apiCall("post", `/tournaments/${tournamentId}/entries/bulk`, payload);
 
-export const logoutAllDevices = () =>
-  apiCall("post", "/auth/logout-all", {});
+export const logoutAllDevices = () => apiCall("post", "/auth/logout-all", {});
 
 export const getPremiumAccessStatus = (tournamentId, feature = "") =>
   apiCall(
@@ -387,7 +413,7 @@ export const getPremiumAccessStatus = (tournamentId, feature = "") =>
     })}`
   );
 
-  export const getPaymentStatus = (params = {}) =>
+export const getPaymentStatus = (params = {}) =>
   apiCall("get", `/payment/status${toQueryString(params)}`);
 
 export default api;
