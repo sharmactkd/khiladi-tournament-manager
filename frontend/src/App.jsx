@@ -10,6 +10,21 @@ import PremiumAccessGuard from "./components/PremiumAccessGuard";
 
 import "./App.css";
 
+const PageLoader = () => (
+  <div
+    className="loading"
+    style={{
+      minHeight: "50vh",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: "1.2rem",
+    }}
+  >
+    Loading...
+  </div>
+);
+
 const TournamentLayout = lazy(() => import("./components/TournamentLayout"));
 
 const Login = lazy(() => import("./pages/Login"));
@@ -17,15 +32,17 @@ const Register = lazy(() => import("./pages/Register"));
 const ForgotPassword = lazy(() => import("./pages/ForgotPassword"));
 const ResetPassword = lazy(() => import("./pages/ResetPassword"));
 const CompleteProfile = lazy(() => import("./pages/CompleteProfile"));
+
+const TournamentsPages = lazy(() => import("./pages/TournamentsPages"));
 const TournamentForm = lazy(() => import("./pages/TournamentForm"));
 const TournamentDetails = lazy(() => import("./pages/TournamentDetails"));
 const SocialLogin = lazy(() => import("./pages/SocialLogin"));
-import TournamentsPages from "./pages/TournamentsPages";
 const TournamentManager = lazy(() => import("./pages/TournamentManager"));
 const BracketMaker = lazy(() => import("./pages/BracketMaker"));
 const TieSheetMaker = lazy(() => import("./pages/TieSheetMaker"));
 const About = lazy(() => import("./pages/About"));
 const Contact = lazy(() => import("./pages/Contact"));
+
 const Entry = lazy(() => import("./pages/Entry"));
 const TieSheet = lazy(() => import("./pages/TieSheet"));
 const TieSheetRecord = lazy(() => import("./pages/TieSheetRecord"));
@@ -54,21 +71,6 @@ const CouponManager = lazy(() => import("./pages/admin/CouponManager"));
 const Transactions = lazy(() => import("./pages/admin/Transactions"));
 const AuditLogs = lazy(() => import("./pages/admin/AuditLogs"));
 
-const PageLoader = () => (
-  <div
-    className="loading"
-    style={{
-      minHeight: "50vh",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      fontSize: "1.2rem",
-    }}
-  >
-    Loading...
-  </div>
-);
-
 function App() {
   const { isAuthenticated, user, loading } = useAuth();
   const location = useLocation();
@@ -89,39 +91,29 @@ function App() {
 
   const requireAuth = (element) => {
     if (loading) return <PageLoader />;
-
     if (!isAuthenticated) return loginRedirect;
-
     if (needsProfileCompletion) {
       return <Navigate to="/complete-profile" replace />;
     }
-
     return element;
   };
 
   const requireAdmin = (element) => {
     if (loading) return <PageLoader />;
-
     if (!isAuthenticated) return loginRedirect;
-
     if (needsProfileCompletion) {
       return <Navigate to="/complete-profile" replace />;
     }
-
     if (!isAdminUser) return <Navigate to="/" replace />;
-
     return element;
   };
 
   const requireTournamentLogin = (element) => {
     if (loading) return <PageLoader />;
-
     if (!isAuthenticated) return loginRedirect;
-
     if (needsProfileCompletion) {
       return <Navigate to="/complete-profile" replace />;
     }
-
     return element;
   };
 
@@ -140,6 +132,7 @@ function App() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             <Route path="/" element={<TournamentsPages />} />
+            <Route path="/tournaments" element={<TournamentsPages />} />
 
             <Route path="/tournament-manager" element={<TournamentManager />} />
             <Route path="/bracket-maker" element={<BracketMaker />} />
@@ -243,8 +236,9 @@ function App() {
               path="/tournament-form"
               element={requireAuth(<TournamentForm />)}
             />
-            <Route path="/tournaments" element={<TournamentsPages />} />
+
             <Route path="/my-plan" element={requireAuth(<MyPlan />)} />
+
             <Route
               path="/team-entry/:id"
               element={requireAuth(<TeamEntryForm />)}
@@ -284,7 +278,6 @@ function App() {
             >
               <Route index element={<TournamentDetails />} />
 
-              {/* Entry page intentionally NOT premium locked */}
               <Route path="entry" element={requireTournamentLogin(<Entry />)} />
 
               <Route
@@ -341,7 +334,6 @@ function App() {
                 )}
               />
 
-              {/* Team Submissions page intentionally NOT premium locked */}
               <Route
                 path="team-submissions"
                 element={requireTournamentLogin(<TeamSubmissions />)}
@@ -350,6 +342,7 @@ function App() {
 
             <Route path="/about" element={<About />} />
             <Route path="/contact" element={<Contact />} />
+
             <Route path="*" element={<h1>404 - Page Not Found</h1>} />
           </Routes>
         </Suspense>

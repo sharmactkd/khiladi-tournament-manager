@@ -16,6 +16,7 @@ import {
   applyCoupon,
   reconcilePaymentOrder,
 } from "../../api/paymentApi";
+import loadRazorpay from "../../utils/loadRazorpay";
 import styles from "./PaymentPage.module.css";
 
 const plans = [
@@ -236,11 +237,9 @@ const PaymentPage = ({ tournamentId, onPaymentSuccess }) => {
         throw new Error("Invalid Razorpay order response");
       }
 
-      if (!window.Razorpay) {
-        throw new Error("Razorpay script not loaded. Add Razorpay script in index.html.");
-      }
+     const Razorpay = await loadRazorpay();
 
-      const razorpay = new window.Razorpay({
+const razorpay = new Razorpay({
         key: orderRes?.keyId,
         amount: order?.amount || orderRes?.amount,
         currency: order?.currency || "INR",
