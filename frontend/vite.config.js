@@ -53,91 +53,12 @@ export default defineConfig({
     sourcemap: false,
     cssCodeSplit: true,
     minify: "esbuild",
-    target: "es2019",
-    chunkSizeWarningLimit: 1000,
-
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (!id.includes("node_modules")) return;
-
-          if (
-            id.includes("react/") ||
-            id.includes("react-dom") ||
-            id.includes("react-router-dom") ||
-            id.includes("scheduler")
-          ) {
-            return "vendor-react";
-          }
-
-          if (
-            id.includes("@reduxjs/toolkit") ||
-            id.includes("react-redux") ||
-            id.includes("redux-persist")
-          ) {
-            return "vendor-redux";
-          }
-
-          if (
-            id.includes("react-select") ||
-            id.includes("@floating-ui") ||
-            id.includes("react-datepicker")
-          ) {
-            return "vendor-ui";
-          }
-
-          if (
-            id.includes("jspdf") ||
-            id.includes("html2canvas") ||
-            id.includes("html-to-image") ||
-            id.includes("xlsx") ||
-            id.includes("d3")
-          ) {
-            return "vendor-heavy-tools";
-          }
-
-          if (
-            id.includes("lucide-react") ||
-            id.includes("react-icons") ||
-            id.includes("@fortawesome")
-          ) {
-            return "vendor-icons";
-          }
-
-          if (
-            id.includes("formik") ||
-            id.includes("yup") ||
-            id.includes("dompurify")
-          ) {
-            return "vendor-forms";
-          }
-
-          if (id.includes("axios")) {
-            return "vendor-api";
-          }
-
-          return "vendor-misc";
-        },
-      },
-    },
+    target: "es2020",
+    chunkSizeWarningLimit: 1200,
   },
 
   optimizeDeps: {
-    include: [
-      "react",
-      "react-dom",
-      "react-router-dom",
-      "axios",
-      "react-select",
-      "lucide-react",
-    ],
-    exclude: [
-      "country-state-city",
-      "jspdf",
-      "html2canvas",
-      "html-to-image",
-      "xlsx",
-      "d3",
-    ],
+    include: ["react", "react-dom", "react-router-dom", "axios"],
+    exclude: ["country-state-city"],
   },
 });
