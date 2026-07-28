@@ -177,6 +177,27 @@ const stableTeamIdentity = (team = {}) =>
     team: String(team?.team || '').trim(),
   });
 
+  const stableOutcomeParticipantIdentity = (team = {}) => {
+  const entryId = String(team?.entryId || '').trim();
+
+  // Modern brackets always use stable entryId.
+  if (entryId) {
+    return `entry:${entryId}`;
+  }
+
+  // Old snapshots may not have entryId. In that case preserve an outcome only
+  // when the legacy participant's visible identity is still exactly the same.
+  const legacyId = String(team?.id || '').trim();
+  const name = String(team?.name || '').trim();
+  const teamName = String(team?.team || '').trim();
+
+  if (!legacyId && !name && !teamName) {
+    return '';
+  }
+
+  return `legacy:${legacyId}|${name}|${teamName}`;
+};
+
 export const getBracketSideSignature = (side, depth = 0) => {
   if (!side || depth > MAX_RECURSION_DEPTH) return '';
   if (side.team) return `team:${stableTeamIdentity(side.team)}`;
@@ -188,12 +209,44 @@ export const getBracketSideSignature = (side, depth = 0) => {
   return '';
 };
 
+const getOutcomeSideSignature = (side, depth = 0) => {
+  if (!side || depth > MAX_RECURSION_DEPTH) {
+    return '';
+  }
+
+  if (side.team) {
+    return `team:${stableOutcomeParticipantIdentity(side.team)}`;
+  }
+
+  if (side.sourceGame) {
+    return [
+      'source',
+      getOutcomeGameSignature(side.sourceGame, depth + 1),
+      String(side.pool || ''),
+    ].join(':');
+  }
+
+  return '';
+};
+
 export const getBracketGameSignature = (game, depth = 0) => {
   if (!game || depth > MAX_RECURSION_DEPTH) return '';
   return JSON.stringify({
     id: String(game.id ?? ''),
     home: getBracketSideSignature(game?.sides?.home, depth + 1),
     away: getBracketSideSignature(game?.sides?.away, depth + 1),
+  });
+};
+
+const getOutcomeGameSignature = (game, depth = 0) => {
+  if (!game || depth > MAX_RECURSION_DEPTH) {
+    return '';
+  }
+
+  return JSON.stringify({
+    id: String(game.id ?? ''),
+    home: getOutcomeSideSignature(game?.sides?.home, depth + 1),
+    away: getOutcomeSideSignature(game?.sides?.away, depth + 1),
   });
 };
 
@@ -271,9 +324,12 @@ export const reconcileBracketOutcomes = ({
       const oldGame = oldGames.get(String(gameId));
       const newGame = newGames.get(String(gameId));
       if (!oldGame || !newGame || !newGame?.sides?.[winnerSide]) continue;
-      if (getBracketGameSignature(oldGame) !== getBracketGameSignature(newGame)) {
-        continue;
-      }
+     if (
+  getOutcomeGameSignature(oldGame) !==
+  getOutcomeGameSignature(newGame)
+) {
+  continue;
+}
       reconciled[bracketKey][gameId] = winnerSide;
     }
   }
