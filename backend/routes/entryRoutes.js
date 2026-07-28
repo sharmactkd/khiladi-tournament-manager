@@ -9,9 +9,13 @@ import {
   updateSingleEntry,
   deleteSingleEntry,
   createBulkEntries,
+  bulkSyncEntries,
 } from "../controllers/entryController.js";
 import { requireCsrfToken } from "../middleware/csrfProtection.js";
-import { sensitiveRateLimiter } from "../middleware/rateLimiter.js";
+import {
+  entrySaveRateLimiter,
+  sensitiveRateLimiter,
+} from "../middleware/rateLimiter.js";
 import {
   requireTournamentOwner,
   requireTournamentMutation,
@@ -24,6 +28,15 @@ router.get(
   authMiddleware,
   requireTournamentOwner(),
   getEntries
+);
+
+router.patch(
+  "/:id/entries/bulk-sync",
+  authMiddleware,
+  requireTournamentMutation("entry"),
+  requireCsrfToken,
+  entrySaveRateLimiter,
+  bulkSyncEntries
 );
 
 router.post(

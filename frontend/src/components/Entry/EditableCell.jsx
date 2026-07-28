@@ -192,6 +192,7 @@ const autofillSuggestion = React.useMemo(() => {
       }
 
       let finalValue = String(commitValue ?? '').trim();
+      const derivedUpdates = {};
       let isValid = true;
       let validationMessage = '';
 
@@ -210,19 +211,19 @@ const autofillSuggestion = React.useMemo(() => {
             finalValue = validation.formatted;
 
             const ageCat = tournamentData ? getAgeCategory(finalValue, tournamentData) : '';
-            updateData?.(row.index, 'ageCategory', ageCat);
+            derivedUpdates.ageCategory = ageCat;
 
             const wtCat =
               tournamentData && row.original?.gender && ageCat && row.original?.weight
                 ? getWeightCategory(row.original.gender, ageCat, row.original.weight, tournamentData)
                 : '';
 
-            updateData?.(row.index, 'weightCategory', formatWeightCategory(wtCat));
+            derivedUpdates.weightCategory = formatWeightCategory(wtCat);
             lastToastKeyRef.current = '';
           }
         } else {
-          updateData?.(row.index, 'ageCategory', '');
-          updateData?.(row.index, 'weightCategory', '');
+          derivedUpdates.ageCategory = '';
+          derivedUpdates.weightCategory = '';
           lastToastKeyRef.current = '';
         }
       } else if (['coachContact', 'managerContact'].includes(column.id)) {
@@ -255,11 +256,11 @@ const autofillSuggestion = React.useMemo(() => {
                 ? getWeightCategory(row.original.gender, row.original.ageCategory, num, tournamentData)
                 : 'Not Eligible';
 
-            updateData?.(row.index, 'weightCategory', formatWeightCategory(wtCat));
+            derivedUpdates.weightCategory = formatWeightCategory(wtCat);
             lastToastKeyRef.current = '';
           }
         } else {
-          updateData?.(row.index, 'weightCategory', '');
+          derivedUpdates.weightCategory = '';
           lastToastKeyRef.current = '';
         }
       } else if (column.id === 'weightCategory') {
@@ -270,7 +271,10 @@ const autofillSuggestion = React.useMemo(() => {
       }
 
       if (isValid) {
-        updateData?.(row.index, column.id, finalValue);
+        updateData?.(row.index, {
+          ...derivedUpdates,
+          [column.id]: finalValue,
+        });
         updateColumnWidth?.(column.getIndex(), finalValue, row.index);
         return true;
       }
@@ -336,12 +340,6 @@ const autofillSuggestion = React.useMemo(() => {
 
         lastCommitKeyRef.current = commitKey;
         setEditingCell?.(null);
-
-        const needsFlush = ['dob', 'weight', 'gender'].includes(column.id);
-
-        if (needsFlush && window.debouncedSaveInstance && typeof window.debouncedSaveInstance.flush === 'function') {
-          window.debouncedSaveInstance.flush();
-        }
       } catch (err) {
         console.error('[OUTSIDE CLICK COMMIT ERROR]', err);
       }

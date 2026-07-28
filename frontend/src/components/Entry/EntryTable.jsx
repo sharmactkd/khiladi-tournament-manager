@@ -138,6 +138,9 @@ const EntryTable = forwardRef(
       tournamentId,
       readOnly = false,
       disabled = false,
+      entrySyncEnabled = false,
+      flushEntrySync,
+      syncStatus = "idle",
     },
     ref
   ) => {
@@ -207,6 +210,11 @@ const EntryTable = forwardRef(
 
     const performSave = useCallback(
       async (rows, reason = "unknown") => {
+        if (entrySyncEnabled) {
+          return typeof flushEntrySync === "function"
+            ? flushEntrySync(reason)
+            : { ok: true, skipped: true, reason: "sync-v2-noop" };
+        }
         if (isReadOnly) {
           if (isDev) console.warn("[EntryTable][SAVE] SKIP: read-only mode");
           return { ok: false, skipped: true, reason: "read-only" };
@@ -272,6 +280,7 @@ const EntryTable = forwardRef(
           const resp = await saveEntriesApi(tid, payload);
 
           lastSavedHashRef.current = hash;
+          window.dispatchEvent(new Event(`entryDataUpdated_${tid}`));
 
           if (isDev) {
             console.log("[EntryTable][SAVE] SUCCESS", {
@@ -323,6 +332,8 @@ const EntryTable = forwardRef(
         computeSaveHash,
         buildProcessedEntries,
         isReadOnly,
+        entrySyncEnabled,
+        flushEntrySync,
       ]
     );
 
@@ -364,9 +375,11 @@ const EntryTable = forwardRef(
         return;
       }
 
+      if (entrySyncEnabled) return;
+
       if (isDev) console.log("[EntryTable] data changed -> schedule save");
       debouncedSaveRef.current?.(data, "data-change");
-    }, [data, isReadOnly]);
+    }, [data, isReadOnly, entrySyncEnabled]);
 
     const columnsDef = useMemo(() => {
       const optional = [
@@ -558,10 +571,11 @@ const EntryTable = forwardRef(
           }, 2200);
         },
         flushSaveNow: (reason = "flush") => flushSaveNow(data, reason),
-        getSaveStatus: () => saveStatus,
-        isSaving: () => !!isSavingRef.current,
+        getSaveStatus: () => (entrySyncEnabled ? syncStatus : saveStatus),
+        isSaving: () =>
+          entrySyncEnabled ? syncStatus === "saving" : !!isSavingRef.current,
       }),
-      [data, flushSaveNow, saveStatus]
+      [data, flushSaveNow, saveStatus, entrySyncEnabled, syncStatus]
     );
 
     return (

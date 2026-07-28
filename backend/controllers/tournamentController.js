@@ -3,6 +3,10 @@ import Tournament from "../models/tournament.js";
 import Entry from "../models/entry.js";
 import EntryRow from "../models/entryRow.js";
 import logger from "../utils/logger.js";
+import {
+  getCurrentIndiaDayStart,
+  toIndiaDayStart,
+} from "../utils/tournamentDates.js";
 import { logActivitySafe } from "../utils/activityLogger.js";
 import { parsePhoneNumberFromString } from "libphonenumber-js";
 import path from "path";
@@ -1240,8 +1244,7 @@ export const getAllTournaments = async (req, res) => {
 
 export const getOngoingTournaments = async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = getCurrentIndiaDayStart();
 
     const tournaments = await Tournament.find({
       $and: [{ dateTo: { $gte: today } }, getPublicVisibilityFilter()],
@@ -1262,8 +1265,7 @@ export const getOngoingTournaments = async (req, res) => {
 
 export const getPreviousTournaments = async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = getCurrentIndiaDayStart();
 
     const tournaments = await Tournament.find({
       $and: [{ dateTo: { $lt: today } }, getPublicVisibilityFilter()],
@@ -1659,10 +1661,10 @@ export const createTournament = async (req, res) => {
     const contact = validatePhoneNumber(req.body.contact);
     const tournamentType = processTournamentType(req.body.tournamentType);
 
-    const dateFrom = new Date(req.body.dateFrom);
-    const dateTo = new Date(req.body.dateTo);
+    const dateFrom = toIndiaDayStart(req.body.dateFrom);
+    const dateTo = toIndiaDayStart(req.body.dateTo);
 
-    if (isNaN(dateFrom) || isNaN(dateTo) || dateFrom > dateTo) {
+    if (!dateFrom || !dateTo || dateFrom > dateTo) {
       await session.abortTransaction();
       return res.status(400).json({ message: "End date must be same day or after start date" });
     }
@@ -1868,11 +1870,19 @@ export const updateTournament = async (req, res) => {
     }
 
     if (updates.dateFrom) {
-      updates.dateFrom = new Date(updates.dateFrom);
+      updates.dateFrom = toIndiaDayStart(updates.dateFrom);
+      if (!updates.dateFrom) {
+        await session.abortTransaction();
+        return res.status(400).json({ message: "Invalid tournament start date" });
+      }
     }
 
     if (updates.dateTo) {
-      updates.dateTo = new Date(updates.dateTo);
+      updates.dateTo = toIndiaDayStart(updates.dateTo);
+      if (!updates.dateTo) {
+        await session.abortTransaction();
+        return res.status(400).json({ message: "Invalid tournament end date" });
+      }
     }
 
     if (updates.playerLimit) {

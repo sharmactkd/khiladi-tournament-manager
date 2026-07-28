@@ -139,6 +139,23 @@ const entryRowSchema = new mongoose.Schema(
       default: null,
       index: true,
     },
+
+    clientVersion: {
+      type: Number,
+      default: 0,
+    },
+
+    lastMutationId: {
+      type: String,
+      trim: true,
+      default: "",
+      index: true,
+    },
+
+    syncUpdatedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

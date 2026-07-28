@@ -45,6 +45,12 @@ const EntryHeader = ({
   onShareEntryForm,
   onViewTeamSubmissions,
   showOrganizerActions = true,
+  syncStatus = "idle",
+  pendingCount = 0,
+  isOnline = true,
+  syncError = "",
+  onSaveNow,
+  onRetrySync,
 }) => {
   const fileInputRef = useRef(null);
 
@@ -53,6 +59,18 @@ const EntryHeader = ({
       fileInputRef.current?.click();
     }
   };
+
+  const syncLabel = !isOnline
+    ? `Offline — ${pendingCount} change${pendingCount === 1 ? "" : "s"} pending`
+    : syncStatus === "saving"
+      ? `Saving ${pendingCount} change${pendingCount === 1 ? "" : "s"}...`
+      : syncStatus === "error"
+        ? "Save paused — retry required"
+        : pendingCount > 0
+          ? `${pendingCount} change${pendingCount === 1 ? "" : "s"} pending`
+          : syncStatus === "saved"
+            ? "All changes saved"
+            : "";
 
   return (
     <div className={styles.headerContainer}>
@@ -109,6 +127,48 @@ const EntryHeader = ({
           </div>
         </div>
       </div>
+
+      {syncLabel && (
+        <div
+          role="status"
+          aria-live="polite"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "10px",
+            flexWrap: "wrap",
+            padding: "8px 12px",
+            marginBottom: "10px",
+            borderRadius: "8px",
+            background:
+              syncStatus === "error"
+                ? "#fff1f2"
+                : !isOnline
+                  ? "#fff7ed"
+                  : "#f0fdf4",
+            color:
+              syncStatus === "error"
+                ? "#be123c"
+                : !isOnline
+                  ? "#9a3412"
+                  : "#166534",
+            fontWeight: 700,
+          }}
+        >
+          <span>{syncLabel}</span>
+          {syncError ? <small>{syncError}</small> : null}
+          {isOnline && pendingCount > 0 && syncStatus !== "error" ? (
+            <button type="button" onClick={onSaveNow}>
+              Save Now
+            </button>
+          ) : null}
+          {syncStatus === "error" ? (
+            <button type="button" onClick={onRetrySync}>
+              Retry
+            </button>
+          ) : null}
+        </div>
+      )}
 
       {/* Controls - Responsive flex-wrap */}
       <div className={styles.controlsWrapper}>

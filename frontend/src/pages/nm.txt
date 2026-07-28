@@ -5,3 +5,318 @@ ek strong prompt genrate krke do jo mujhe ek hi prompt me in sabhi files k poore
 
 
 
+
+*,
+*:before,
+*:after {
+  box-sizing: border-box;
+}
+
+/* Main Container */
+.container {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+  background: rgb(252, 250, 250);
+}
+
+/* Left Section */
+.leftSection {
+  flex: 3;
+  max-width: 60%;
+  background: rgb(252, 250, 250);
+  padding: 2.5rem 3rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+}
+
+.loginContainer {
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+  justify-content: center;
+  align-items: center;
+}
+
+.loginTitle {
+  font-size: 1.8rem;
+  font-family: Arial, Helvetica, sans-serif;
+  color: #CF0006;
+  margin-bottom: 1rem;
+}
+
+/* Social Login */
+.socialAccountsText {
+  font-family: Arial, Helvetica, sans-serif;
+  color: #CF0006;
+  font-size: 1rem;
+  margin-bottom: 1rem;
+}
+
+.socialButtons {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.socialBtn {
+  border: 1px solid #ddd;
+  border-radius: 50%;
+  background: white;
+  cursor: pointer;
+  transition: background 0.3s ease;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.socialBtn:hover {
+  background: #f5f5f5;
+}
+
+.socialIcon {
+  font-size: 1.5rem;
+}
+
+/* Divider */
+.divider {
+  margin: 1rem 0;
+  position: relative;
+  text-align: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: #999;
+  margin: 0 10px;
+}
+
+.dividerText {
+  color: #CF0006;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Form */
+.loginForm {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+  align-items: center;
+}
+
+.inputGroup {
+  position: relative;
+  width: 100%;
+  max-width: 350px;
+  background-color: #f5f0f0;
+  border-radius: 10px;
+  margin-bottom: 1rem;
+}
+
+.icon {
+  position: absolute;
+  left: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+  font-size: 1.2rem;
+}
+
+.inputGroup input {
+  width: 100%;
+  padding: 0.8rem 1rem 0.8rem 2.5rem !important;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: white;
+  font-size: 1rem;
+  box-sizing: border-box;
+}
+
+.inputError {
+  border-color: red;
+}
+
+.error {
+  color: red;
+  font-size: 0.8rem;
+  margin-top: 0.25rem;
+}
+
+/* Eye Icon */
+.eyeIcon {
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #666;
+  cursor: pointer;
+  font-size: 1.2rem;
+}
+
+/* Login Button */
+.loginBtn {
+  background: #CF0006;
+  color: white;
+  padding: 0.8rem;
+  border-radius: 10px;
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: bold;
+  font-size: 1rem;
+  cursor: pointer;
+  width: 100%;
+  max-width: 350px;
+  border: none;
+}
+
+/* Right Section */
+.rightSection {
+  flex: 2;
+  background-image: linear-gradient(#CF0006, rgb(100, 6, 6));
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  padding: 2rem;
+  font-family: Arial, Helvetica, sans-serif;
+  border-top-left-radius: 20rem;
+  /* Remove incorrect border-bottom-left-radius if present */
+}
+
+.signupText {
+  font-size: 2.5rem;
+  font-family: Arial, Helvetica, sans-serif;
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.signupBtn {
+  background: white;
+  color: #CF0006;
+  padding: 0.8rem;
+  border-radius: 10px;
+  font-size: 1rem;
+  font-family: Arial, Helvetica, sans-serif;
+  font-weight: bold;
+  cursor: pointer;
+  text-decoration: none;
+  margin-bottom: 0.5rem;
+}
+
+.featureText {
+  font-size: 1rem;
+  font-family:"Outfit", sans-serif;
+  text-align: center;
+}
+
+.heroContent {
+  width: 100%;
+  max-width: 760px;
+  margin-bottom: 2.2rem;
+  text-align: center;
+ 
+}
+
+.heroTitle {
+  margin: 0;
+  font-family: "Montserrat", sans-serif;
+  font-size: 2.5rem;
+  font-weight: 900;
+  line-height: 1.08;
+  letter-spacing: 0.8px;
+  color: #8f8484;
+  text-transform: uppercase;
+}
+
+.heroTitle span {
+  display: inline-block;
+  margin-top: 0.35rem;
+  background: linear-gradient(90deg, #cf0006 0%, #8f0004 55%, #ffd700 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
+
+.heroSubtitle {
+  max-width: 760px;
+  margin: 1rem auto 0;
+  font-size: 1.1rem;
+  line-height: 1.7;
+  color: #444;
+  font-weight: 500;
+}
+
+.heroTagline {
+  max-width: 700px;
+  margin: 0.85rem auto 0;
+  font-size: 1rem;
+  line-height: 1.8;
+  color: #6a6a6a;
+  font-style: italic;
+  font-weight: 500;
+}
+
+.googleLoginBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 220px;
+  height: 42px;
+  border: 1px solid #d8d8d8;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #333;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.googleLoginBtn:hover {
+  border-color: #cf0006;
+  box-shadow: 0 4px 12px rgba(207, 0, 6, 0.12);
+  transform: translateY(-1px);
+}
+
+.googleIcon {
+  font-size: 22px;
+}
+
+@media (max-width: 992px) {
+  .leftSection {
+    padding: 2rem 1.5rem;
+  }
+
+  .heroContent {
+    margin-bottom: 1.8rem;
+  }
+
+  .heroTitle {
+    font-size: 2.35rem;
+  }
+
+  .heroSubtitle {
+    font-size: 1rem;
+    line-height: 1.65;
+  }
+
+  .heroTagline {
+    font-size: 0.95rem;
+    line-height: 1.7;
+  }
+}

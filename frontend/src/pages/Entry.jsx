@@ -5,7 +5,6 @@ import {
   getTournamentById,
   getEntries as getEntriesApi,
   saveEntries,
-  updateEntryRow,
   deleteEntryRow,
   createEntryRowsBulk,
 } from "../api";
@@ -19,6 +18,7 @@ import ExceededPlayers from '../components/Entry/ExceededPlayers';
 import ImportModal from '../components/Entry/ImportModal';
 import ImageImport from '../components/import/ImageImport';
 import AddTeamEntriesModal from '../components/Team/AddTeamEntriesModal';
+import useEntrySync from '../hooks/useEntrySync';
 
 import { baseColumnsDef, optionalColumnsDef } from '../components/Entry/constants';
 
@@ -27,6 +27,8 @@ import styles from './Entry.module.css';
 const isDev = typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV;
 
 const ENABLE_IMAGE_IMPORT = false;
+const ENTRY_SYNC_V2_ENABLED =
+  import.meta.env.VITE_ENABLE_ENTRY_SYNC_V2 !== "false";
 
 const resolveApiBaseUrl = () => {
   const envUrl =
@@ -191,9 +193,8 @@ const [entryPagination, setEntryPagination] = useState({
 const [isLoadingMoreEntries, setIsLoadingMoreEntries] = useState(false);
 
 
- const entryTableRef = useRef(null);
+const entryTableRef = useRef(null);
 const dataRef = useRef(data);
-const rowPatchTimersRef = useRef({});
 
   const [showImportModal, setShowImportModal] = useState(false);
   const [showImageImportModal, setShowImageImportModal] = useState(false);
@@ -208,6 +209,27 @@ const rowPatchTimersRef = useRef({});
   const isAdminUser = contextIsAdminUser || ['admin', 'superadmin'].includes(user?.role);
   const canManageTournament = Boolean(access?.canAccessEntry || isAdminUser || isOrganizer);
   const canEditTournament = Boolean(!isPageReadOnly && (!isAdminUser || adminEditMode));
+  const {
+    queueUpsert,
+    queueUpserts,
+    queueDelete,
+    flush: flushEntrySync,
+    retry: retryEntrySync,
+    hydratePendingChanges,
+    restoreLocalSnapshot,
+    persistSnapshot,
+    syncStatus,
+    pendingCount,
+    isOnline,
+    lastError: entrySyncError,
+  } = useEntrySync({
+    tournamentId: id,
+    userId: user?._id || user?.id || "",
+    enabled:
+      ENTRY_SYNC_V2_ENABLED &&
+      Boolean(token && (user?._id || user?.id)) &&
+      !isPageReadOnly,
+  });
 
   const columnsDef = useMemo(() => {
     const activeOptional = optionalColumnsDef.filter((col) => visibleColumns[col.id]);
@@ -295,9 +317,9 @@ const rowPatchTimersRef = useRef({});
 
       if (token && id) {
         try {
-          const payload = await getEntriesApi(id, {
+const payload = await getEntriesApi(id, {
   page: 1,
-  limit: 500,
+  limit: 1000,
 });
 
 setEntryPage(1);
@@ -354,6 +376,23 @@ setEntryPagination(
         finalEntries = localEntries;
       }
 
+      if (ENTRY_SYNC_V2_ENABLED) {
+        try {
+          if (usedSource !== "server") {
+            const snapshot = await restoreLocalSnapshot();
+            if (Array.isArray(snapshot?.entries) && snapshot.entries.length > 0) {
+              finalEntries = snapshot.entries;
+            }
+          }
+          finalEntries = await hydratePendingChanges(finalEntries);
+        } catch (error) {
+          console.error("[Entry Sync V2] Local recovery failed:", error);
+          setLoadError(
+            "Local pending-entry recovery failed. Do not close this page until the issue is resolved."
+          );
+        }
+      }
+
      let hasServerRows = usedSource === "server" && finalEntries.length > 0;
 
 if (!finalEntries || finalEntries.length === 0) {
@@ -387,12 +426,28 @@ finalEntries = regenerateSrNumbers(
     };
 
     loadEntries();
-  }, [id, token, authLoading, columnsDef, regenerateSrNumbers]);
+  }, [
+    id,
+    token,
+    authLoading,
+    columnsDef,
+    regenerateSrNumbers,
+    hydratePendingChanges,
+    restoreLocalSnapshot,
+  ]);
 
   
   useEffect(() => {
     dataRef.current = data;
-  }, [data]);
+    if (ENTRY_SYNC_V2_ENABLED && data.length > 0) {
+      persistSnapshot(data).catch((error) => {
+        console.error("[Entry Sync V2] Snapshot persistence failed:", error);
+        setLoadError(
+          "Local safety backup failed. Keep this page open and retry before continuing."
+        );
+      });
+    }
+  }, [data, persistSnapshot]);
 
   useEffect(() => {
   if (!id || authLoading) return;
@@ -400,15 +455,10 @@ finalEntries = regenerateSrNumbers(
   const refreshAfterTieSheetMedals = async () => {
     if (!token || !id) return;
 
-    Object.values(rowPatchTimersRef.current || {}).forEach((timer) => {
-      clearTimeout(timer);
-    });
-    rowPatchTimersRef.current = {};
-
     try {
       const payload = await getEntriesApi(id, {
         page: 1,
-        limit: 500,
+        limit: 1000,
         ts: Date.now(),
       });
 
@@ -453,43 +503,6 @@ finalEntries = regenerateSrNumbers(
   };
 }, [id, token, authLoading, regenerateSrNumbers]);
 
-  const patchEntryRowDebounced = useCallback(
-  (row, columnId, value) => {
-   if (!token || !id || !row?.entryId) return;
-
-if (row.entrySource !== "server") {
-  return;
-}
-
-if (
-  row.medalSource === "tiesheet" &&
-  ["medal", "medalSource", "medalUpdatedAt"].includes(columnId)
-) {
-  return;
-}
-    const timerKey = `${row.entryId}:${columnId}`;
-
-    if (rowPatchTimersRef.current[timerKey]) {
-      clearTimeout(rowPatchTimersRef.current[timerKey]);
-    }
-
-    rowPatchTimersRef.current[timerKey] = setTimeout(async () => {
-      try {
-        await updateEntryRow(id, row.entryId, {
-          [columnId]: value,
-        });
-
-        window.dispatchEvent(new Event(`entryDataUpdated_${id}`));
-      } catch (error) {
-        console.error("Entry row PATCH failed:", error);
-      } finally {
-        delete rowPatchTimersRef.current[timerKey];
-      }
-    }, 500);
-  },
-  [id, token]
-);
-
   useEffect(() => {
     localStorage.setItem(`entryData_${id}`, JSON.stringify(dataRef.current));
     localStorage.setItem(`visibleColumns_${id}`, JSON.stringify(visibleColumns));
@@ -518,15 +531,42 @@ if (
     setRedoHistory([]);
   }, [data, isAdminReadOnly]);
 
+  const queueStateTransition = useCallback(
+    async (previousRows, nextRows) => {
+      if (!ENTRY_SYNC_V2_ENABLED || !token) return;
+
+      const previousById = new Map(
+        (previousRows || []).filter((row) => row?.entryId).map((row) => [row.entryId, row])
+      );
+      const nextById = new Map(
+        (nextRows || []).filter((row) => row?.entryId).map((row) => [row.entryId, row])
+      );
+
+      const deletedIds = [...previousById.keys()].filter((entryId) => !nextById.has(entryId));
+      const changedRows = [...nextById.values()].filter((row) => {
+        const previous = previousById.get(row.entryId);
+        return !previous || JSON.stringify(previous) !== JSON.stringify(row);
+      });
+
+      await Promise.all(deletedIds.map((entryId) => queueDelete(entryId)));
+      if (changedRows.length > 0) await queueUpserts(changedRows);
+    },
+    [token, queueDelete, queueUpserts]
+  );
+
   const undo = useCallback(() => {
     if (guardAdminReadOnly()) return;
     if (history.length === 0) return;
     setRedoHistory((prev) => [...prev, structuredClone(data)]);
     const previous = history[history.length - 1];
     setData(previous);
+    queueStateTransition(dataRef.current, previous).catch((error) => {
+      console.error("[Entry Sync V2] Failed to queue undo:", error);
+      setLoadError("Undo was applied locally but could not be stored in the sync queue.");
+    });
     setHistory((prev) => prev.slice(0, -1));
     debouncedRecalculate();
-  }, [history, data, debouncedRecalculate, guardAdminReadOnly]);
+  }, [history, data, debouncedRecalculate, guardAdminReadOnly, queueStateTransition]);
 
   const redo = useCallback(() => {
     if (guardAdminReadOnly()) return;
@@ -534,48 +574,75 @@ if (
     setHistory((prev) => [...prev, structuredClone(data)]);
     const next = redoHistory[redoHistory.length - 1];
     setData(next);
+    queueStateTransition(dataRef.current, next).catch((error) => {
+      console.error("[Entry Sync V2] Failed to queue redo:", error);
+      setLoadError("Redo was applied locally but could not be stored in the sync queue.");
+    });
     setRedoHistory((prev) => prev.slice(0, -1));
     debouncedRecalculate();
-  }, [redoHistory, data, debouncedRecalculate, guardAdminReadOnly]);
+  }, [redoHistory, data, debouncedRecalculate, guardAdminReadOnly, queueStateTransition]);
 
   const updateData = useCallback(
     (rowIndex, columnId, value) => {
       if (guardAdminReadOnly()) return;
 
       let finalValue = value;
+      const committedUpdates =
+        columnId && typeof columnId === "object" ? { ...columnId } : null;
 
-      if (columnId === 'gender') {
+      if (!committedUpdates && columnId === 'gender') {
         const v = String(value || '').trim().toLowerCase();
         if (['m', 'male'].includes(v)) finalValue = 'Male';
         else if (['f', 'female'].includes(v)) finalValue = 'Female';
       }
 
-    if (columnId === 'weight') {
+    if (!committedUpdates && columnId === 'weight') {
   finalValue = String(value || '').replace(/[^0-9.]/g, '');
 }
 
-if (["event", "subEvent", "ageCategory", "weightCategory"].includes(columnId)) {
+if (!committedUpdates && ["event", "subEvent", "ageCategory", "weightCategory"].includes(columnId)) {
   finalValue = normalizeEntryCategoryValue(finalValue, columnId);
 }
 
 saveToHistory();
 
-setData((prev) => {
-  const newData = [...prev];
-  const currentRow = ensureEntryId(newData[rowIndex] || {});
+const newData = [...dataRef.current];
+const currentRow = ensureEntryId(newData[rowIndex] || {});
+const nextRow = {
+  ...currentRow,
+  ...(committedUpdates || { [columnId]: finalValue }),
+};
+newData[rowIndex] = nextRow;
+dataRef.current = newData;
+setData(newData);
 
-  newData[rowIndex] = {
-    ...currentRow,
-    [columnId]: finalValue,
-  };
-
-  patchEntryRowDebounced(currentRow, columnId, finalValue);
-
-  return newData;
-});
+if (ENTRY_SYNC_V2_ENABLED) {
+  queueUpsert(currentRow.entryId, {
+    ...(committedUpdates || { [columnId]: finalValue }),
+    srNo: rowIndex + 1,
+    entrySource:
+      currentRow.entrySource === "import"
+        ? "import"
+        : currentRow.entrySource === "teamSubmission"
+          ? "teamSubmission"
+          : "manual",
+  }).catch((error) => {
+    console.error("[Entry Sync V2] Failed to queue row update:", error);
+    setLoadError(
+      "This change could not be stored locally. Keep the page open and retry."
+    );
+  });
+}
     },
-  [saveToHistory, guardAdminReadOnly, patchEntryRowDebounced]
+  [saveToHistory, guardAdminReadOnly, queueUpsert]
   );
+
+  const handleSearchChange = useCallback((value) => {
+    // Filtering changes TanStack's visible row indexes. Keeping an old
+    // row-index based editing cell makes the matching result receive focus.
+    setEditingCell(null);
+    setSearchTerm(value);
+  }, []);
 
   const addNewRow = useCallback(() => {
     if (guardAdminReadOnly()) return;
@@ -612,9 +679,16 @@ setData((prev) => {
       const rowToDelete = dataRef.current?.[index];
 
 if (token && rowToDelete?.entryId) {
-  deleteEntryRow(id, rowToDelete.entryId).catch((error) => {
-    console.error("Entry row DELETE failed:", error);
-  });
+  if (ENTRY_SYNC_V2_ENABLED) {
+    queueDelete(rowToDelete.entryId).catch((error) => {
+      console.error("[Entry Sync V2] Failed to queue delete:", error);
+      setLoadError("Row deletion could not be stored locally.");
+    });
+  } else {
+    deleteEntryRow(id, rowToDelete.entryId).catch((error) => {
+      console.error("Entry row DELETE failed:", error);
+    });
+  }
 }
 
       setData((prev) => {
@@ -628,7 +702,7 @@ if (token && rowToDelete?.entryId) {
         return regenerateSrNumbers(newData);
       });
     },
-    [saveToHistory, columnsDef, regenerateSrNumbers, guardAdminReadOnly, token, id]
+    [saveToHistory, columnsDef, regenerateSrNumbers, guardAdminReadOnly, token, id, queueDelete]
   );
 
   const updateColumnWidth = useCallback((colIndex, value) => {
@@ -686,7 +760,14 @@ const handleClearAll = useCallback(async () => {
   );
 
   try {
-    if (token && id) {
+    if (token && id && ENTRY_SYNC_V2_ENABLED) {
+      await Promise.all(
+        dataRef.current
+          .filter((row) => row?.entryId)
+          .map((row) => queueDelete(row.entryId))
+      );
+      await flushEntrySync();
+    } else if (token && id) {
       await saveEntries(id, {
         entries: [],
         userState: createEmptyEntryState(),
@@ -721,6 +802,8 @@ setData(finalRows);
   isAdminUser,
   confirmAdminSaveIfNeeded,
   exitAdminEditModeIfNeeded,
+  queueDelete,
+  flushEntrySync,
 ]);
 
 const handleCleanEmptyRows = useCallback(() => {
@@ -728,53 +811,41 @@ const handleCleanEmptyRows = useCallback(() => {
 
   saveToHistory();
 
-  setData((prev) => {
-    const ignoredKeys = new Set([
-      "sr",
-      "actions",
-      "entryId",
-      "entrySource",
-      "sourceSubmissionId",
-      "sourcePlayerId",
-      "_id",
-      "__v",
-    ]);
-
-    const filtered = prev.filter((row) =>
-      Object.entries(row || {}).some(([key, value]) => {
-        if (ignoredKeys.has(key)) {
-          return false;
-        }
-
-        if (typeof value === "string") {
-          return value.trim() !== "";
-        }
-
-        return value !== null && value !== undefined;
-      })
-    );
-
-    const final =
-      filtered.length > 0
-        ? filtered
-        : [
-            ensureEntryId(
-              Object.fromEntries(
-                columnsDef.map((col) => [
-                  col.id,
-                  col.id === "actions" ? "" : "",
-                ])
-              )
-            ),
-          ];
-
-    return regenerateSrNumbers(final);
+  const previousRows = dataRef.current;
+  const ignoredKeys = new Set([
+    "sr",
+    "actions",
+    "entryId",
+    "entrySource",
+    "sourceSubmissionId",
+    "sourcePlayerId",
+    "_id",
+    "__v",
+  ]);
+  const filtered = previousRows.filter((row) =>
+    Object.entries(row || {}).some(([key, value]) => {
+      if (ignoredKeys.has(key)) return false;
+      return typeof value === "string"
+        ? value.trim() !== ""
+        : value !== null && value !== undefined;
+    })
+  );
+  const final = regenerateSrNumbers(
+    filtered.length > 0
+      ? filtered
+      : [ensureEntryId(Object.fromEntries(columnsDef.map((col) => [col.id, ""])))]
+  );
+  setData(final);
+  queueStateTransition(previousRows, final).catch((error) => {
+    console.error("[Entry Sync V2] Failed to queue empty-row cleanup:", error);
+    setLoadError("Rows were cleaned locally but the deletions were not persisted.");
   });
 }, [
   columnsDef,
   saveToHistory,
   regenerateSrNumbers,
   guardAdminReadOnly,
+  queueStateTransition,
 ]);
 
   const handleFileUpload = useCallback((e) => {
@@ -865,10 +936,16 @@ newData = [emptyRow];
       }
 
       setData(regenerateSrNumbers(newData));
+      if (ENTRY_SYNC_V2_ENABLED) {
+        queueUpserts(numberedRows).catch((error) => {
+          console.error("[Entry Sync V2] Failed to queue imported rows:", error);
+          setLoadError("Imported rows could not be stored in the local sync queue.");
+        });
+      }
       debouncedRecalculate();
       setSelectedImportFile(null);
     },
-    [data, columnsDef, saveToHistory, regenerateSrNumbers, debouncedRecalculate, guardAdminReadOnly]
+    [data, columnsDef, saveToHistory, regenerateSrNumbers, debouncedRecalculate, guardAdminReadOnly, queueUpserts]
   );
 
   const handleCopyShareLink = async () => {
@@ -897,8 +974,9 @@ newData = [emptyRow];
               value !== undefined
           )
         )
-        .map((row) => ({
+        .map((row, index) => ({
           ...ensureEntryId(row),
+          srNo: Number(row.srNo || row.sr || index + 1),
           entrySource: row.entrySource || "manual",
         }))
     : [];
@@ -911,7 +989,13 @@ newData = [emptyRow];
     return;
   }
 
-  if (token) {
+  if (token && ENTRY_SYNC_V2_ENABLED) {
+    await queueUpserts(cleanRows);
+    setData((prev) =>
+      regenerateSrNumbers([...prev.map(ensureEntryId), ...cleanRows])
+    );
+    await flushEntrySync();
+  } else if (token) {
     const response = await createEntryRowsBulk(id, {
       entries: cleanRows,
     });
@@ -1005,10 +1089,15 @@ newData = [emptyRow];
 
   const handleGenerateTieSheets = useCallback(async () => {
     try {
-      const flush = entryTableRef.current?.flushSaveNow;
+      const flush = ENTRY_SYNC_V2_ENABLED
+        ? flushEntrySync
+        : entryTableRef.current?.flushSaveNow;
       if (typeof flush === 'function' && !isAdminReadOnly) {
         if (isDev) console.log('[Entry.jsx] Flushing save before TieSheet navigation...');
-        await flush('generate-tiesheets');
+        const result = await flush('generate-tiesheets');
+        if (result?.ok === false && !result?.persistedLocally) {
+          throw result.error || new Error("Pending entry changes could not be saved");
+        }
       }
     } catch (err) {
       console.error('[Entry.jsx] Flush save before navigation failed:', err);
@@ -1016,7 +1105,7 @@ newData = [emptyRow];
 
     localStorage.setItem(`entryData_${id}`, JSON.stringify(data));
     navigate(`/tournaments/${id}/tie-sheet`, { state: { players: data } });
-  }, [data, id, navigate, isAdminReadOnly]);
+  }, [data, id, navigate, isAdminReadOnly, flushEntrySync]);
 
   return (
     <div className={styles.entryContainer}>
@@ -1081,7 +1170,7 @@ newData = [emptyRow];
         readOnly={isPageReadOnly}
         onToggleColumn={handleToggleColumn}
         searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
+        onSearchChange={handleSearchChange}
         onClearAll={handleClearAll}
         onCleanEmptyRows={handleCleanEmptyRows}
         onUndo={undo}
@@ -1096,6 +1185,12 @@ newData = [emptyRow];
         onExport={handleExport}
         onGenerateTieSheets={handleGenerateTieSheets}
         showImportModal={showImportModal}
+        syncStatus={syncStatus}
+        pendingCount={pendingCount}
+        isOnline={isOnline}
+        syncError={entrySyncError}
+        onSaveNow={flushEntrySync}
+        onRetrySync={retryEntrySync}
       />
 
       {copyMessage ? <p className={styles.copyMessage}>{copyMessage}</p> : null}
@@ -1173,7 +1268,7 @@ newData = [emptyRow];
         editingCell={isPageReadOnly ? null : editingCell}
         setEditingCell={isPageReadOnly ? () => {} : setEditingCell}
         searchTerm={searchTerm}
-        setSearchTerm={setSearchTerm}
+        setSearchTerm={handleSearchChange}
         sorting={sorting}
         setSorting={setSorting}
         filterColumn={filterColumn}
@@ -1192,6 +1287,9 @@ newData = [emptyRow];
         apiBaseUrl={resolveApiBaseUrl()}
         readOnly={isPageReadOnly}
         disabled={isPageReadOnly}
+        entrySyncEnabled={ENTRY_SYNC_V2_ENABLED}
+        flushEntrySync={flushEntrySync}
+        syncStatus={syncStatus}
       />
 
 {entryPagination.hasMore && (

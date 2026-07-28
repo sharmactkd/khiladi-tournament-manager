@@ -181,6 +181,16 @@ const entrySchema = new mongoose.Schema(
       ref: "User",
       required: true,
     },
+
+    syncVersion: {
+      type: Number,
+      default: 0,
+    },
+
+    lastSyncedAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: true,

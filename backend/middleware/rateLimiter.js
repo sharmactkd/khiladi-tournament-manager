@@ -8,14 +8,24 @@ const createRateLimiter = (options) =>
     ...options,
     standardHeaders: true,    // Return rate limit headers (RateLimit-*)
     legacyHeaders: false,     // Disable old X-RateLimit-* headers
-    keyGenerator: (req) => {
-      // Prioritize authenticated user ID (most accurate & fair)
-      // Fallback to IP for unauthenticated users
-      return req.user?._id?.toString() || req.ip;
-    },
+    keyGenerator:
+      options.keyGenerator ||
+      ((req) => {
+        // Prioritize authenticated user ID (most accurate & fair)
+        // Fallback to IP for unauthenticated users
+        return req.user?._id?.toString() || req.ip;
+      }),
     handler: (req, res) => {
+      const resetTime = req.rateLimit?.resetTime;
+      const retryAfterSeconds = resetTime
+        ? Math.max(1, Math.ceil((resetTime.getTime() - Date.now()) / 1000))
+        : Math.ceil((options.windowMs || 60000) / 1000);
+      res.setHeader("Retry-After", String(retryAfterSeconds));
       res.status(429).json({
+        success: false,
+        retryable: true,
         error: options.message || "Too many requests. Please try again later.",
+        retryAfterSeconds,
       });
     },
   });
@@ -49,4 +59,15 @@ export const tieSheetOutcomeRateLimiter = createRateLimiter({
   windowMs: 15 * 60 * 1000,
   max: 500,
   message: "Too many TieSheet updates. Please wait a few minutes before trying again.",
+});
+
+export const entrySaveRateLimiter = createRateLimiter({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  keyGenerator: (req) => {
+    const userId = req.user?._id?.toString() || req.ip;
+    const tournamentId = String(req.params?.id || "unknown");
+    return `${userId}:${tournamentId}`;
+  },
+  message: "Too many entry save batches. Please wait a few minutes before trying again.",
 });

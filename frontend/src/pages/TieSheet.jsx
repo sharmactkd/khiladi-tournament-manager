@@ -110,6 +110,7 @@ const saveStatusTimeoutRef = useRef(null);
     count: 0,
     lastUpdated: null,
     shape: 'unknown',
+    signature: '',
   });
   const entriesMetaRef = useRef(entriesMeta);
   useEffect(() => {
@@ -390,6 +391,30 @@ const getCanonicalWeightCategoryKey = (value = "") => {
 
   return text.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 };
+
+const buildEntriesSignature = useCallback((rows = []) => {
+  const normalized = (Array.isArray(rows) ? rows : [])
+    .map((row) => ({
+      entryId: String(row?.entryId || "").trim(),
+      name: String(row?.name || "").trim(),
+      team: String(row?.team || "").trim(),
+      gender: String(row?.gender || "").trim(),
+      ageCategory: normalizeAgeCategoryForCompare(row?.ageCategory),
+      weightCategory: getCanonicalWeightCategoryKey(row?.weightCategory),
+      event: String(row?.event || "").trim().toLowerCase(),
+      subEvent: String(row?.subEvent || "").trim().toLowerCase(),
+    }))
+    .sort((a, b) =>
+      `${a.entryId}|${a.name}`.localeCompare(`${b.entryId}|${b.name}`)
+    );
+
+  const input = JSON.stringify(normalized);
+  let hash = 5381;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = ((hash << 5) + hash) ^ input.charCodeAt(index);
+  }
+  return (hash >>> 0).toString(16);
+}, []);
 
 const getUniqueAgeCategories = (rows = []) => {
   return [
@@ -862,12 +887,14 @@ const shouldRestoreSavedBrackets = useCallback((serverTieSheet, currentEntriesMe
         ? currentEntriesMeta.count
         : null;
 
-    // ✅ Important:
-    // Do NOT compare entriesLastUpdated here.
-    // TieSheet medal sync updates EntryRow.updatedAt, but player/bracket structure
-    // may still be exactly same. Comparing timestamps causes saved brackets to be
-    // rejected after winner declaration, so refresh regenerates brackets and UI
-    // loses declared winners.
+    const savedSignature = String(serverTieSheet.entriesSignature || "");
+    const currentSignature = String(currentEntriesMeta?.signature || "");
+
+    // Old snapshots did not record entry content, so their safety cannot be
+    // established. Regenerate them once and save the new signature.
+    if (!savedSignature || !currentSignature) return false;
+    if (savedSignature !== currentSignature) return false;
+
     if (savedCount !== null && currentCount !== null) {
       return Number(savedCount) === Number(currentCount);
     }
@@ -1313,6 +1340,7 @@ saveStatusTimeoutRef.current = setTimeout(() => {
         if (controller.signal.aborted) return;
 
         const mappedPlayers = normalizePlayers(rows, tournamentData);
+        const entriesSignature = buildEntriesSignature(mappedPlayers);
 
         if (!mappedPlayers || mappedPlayers.length === 0) {
         throw {
@@ -1321,7 +1349,15 @@ saveStatusTimeoutRef.current = setTimeout(() => {
 };
         }
 
-        if (mountedRef.current && !controller.signal.aborted) setPlayers(mappedPlayers);
+        if (mountedRef.current && !controller.signal.aborted) {
+          setPlayers(mappedPlayers);
+          setEntriesMeta((previous) => ({
+            ...previous,
+            count,
+            lastUpdated,
+            signature: entriesSignature,
+          }));
+        }
 
         if (initialLoadRef.current) {
           initialLoadRef.current = false;
@@ -1332,7 +1368,11 @@ saveStatusTimeoutRef.current = setTimeout(() => {
             const saved = await fetchLatestTieSheetFromServer(controller.signal);
             if (controller.signal.aborted) return;
 
-            const canRestore = shouldRestoreSavedBrackets(saved, { count, lastUpdated });
+            const canRestore = shouldRestoreSavedBrackets(saved, {
+              count,
+              lastUpdated,
+              signature: entriesSignature,
+            });
 
             if (canRestore) {
               if (isDev) console.log('🧩 [TieSheet] Snapshot match -> restoring brackets from server');
@@ -1421,6 +1461,7 @@ dispatch(
   fetchLatestTieSheetFromServer,
   fetchTieSheetOutcomesFromServer,
   normalizePlayers,
+  buildEntriesSignature,
   shouldRestoreSavedBrackets,
 ]);
 
@@ -1437,6 +1478,11 @@ dispatch(
 
         if (mappedPlayers && mappedPlayers.length > 0) {
           setPlayers(mappedPlayers);
+          setEntriesMeta((previous) => ({
+            ...previous,
+            count: mappedPlayers.length,
+            signature: buildEntriesSignature(mappedPlayers),
+          }));
 
           // ✅ Do NOT wipe outcomes on entry refresh; only brackets regenerate.
           dispatch(setInitialBrackets({ brackets: [] }));
@@ -1448,7 +1494,7 @@ dispatch(
 
     window.addEventListener(`entryDataUpdated_${id}`, handleEntryUpdate);
     return () => window.removeEventListener(`entryDataUpdated_${id}`, handleEntryUpdate);
-  }, [id, tournament, fetchTournamentFromServer, fetchEntriesFromServer, normalizePlayers, dispatch]);
+  }, [id, tournament, fetchTournamentFromServer, fetchEntriesFromServer, normalizePlayers, buildEntriesSignature, dispatch]);
 
   // Filtered brackets
 const filteredBrackets = useMemo(() => {
@@ -1641,6 +1687,7 @@ const handleScrollToBracket = useCallback((bracketKey) => {
             filters: { selectedGenders, selectedAgeCategories },
             entriesCount: typeof meta.count === "number" ? meta.count : undefined,
             entriesLastUpdated: meta.lastUpdated || null,
+            entriesSignature: buildEntriesSignature(players),
           },
         };
 
@@ -1665,6 +1712,8 @@ const handleScrollToBracket = useCallback((bracketKey) => {
     adminEditMode,
     isTournamentReadOnly,
 canMutateTieSheet,
+    players,
+    buildEntriesSignature,
   ]
 );
 
@@ -1692,12 +1741,19 @@ canMutateTieSheet,
     const tournamentData = tournament || (await fetchTournamentFromServer(controller.signal));
     const { rows, count, lastUpdated } = await fetchEntriesFromServer(4, 700, controller.signal);
     const mappedPlayers = normalizePlayers(rows, tournamentData);
+    const entriesSignature = buildEntriesSignature(mappedPlayers);
 
     if (!mappedPlayers || mappedPlayers.length === 0) {
       throw new Error('No valid players found on server. Please add players in Entry page.');
     }
 
     setPlayers(mappedPlayers);
+    setEntriesMeta({
+      count,
+      lastUpdated,
+      shape: "entries",
+      signature: entriesSignature,
+    });
 
     const outcomesData = await fetchTieSheetOutcomesFromServer(controller.signal);
     const serverOutcomes =
@@ -1716,7 +1772,11 @@ canMutateTieSheet,
       }
     }
 
-    const canRestore = shouldRestoreSavedBrackets(serverTieSheet, { count, lastUpdated });
+    const canRestore = shouldRestoreSavedBrackets(serverTieSheet, {
+      count,
+      lastUpdated,
+      signature: entriesSignature,
+    });
 
     if (serverTieSheet?.brackets?.length > 0 && canRestore) {
       dispatch(
@@ -1765,6 +1825,7 @@ canMutateTieSheet,
   fetchLatestTieSheetFromServer,
   fetchTieSheetOutcomesFromServer,
   shouldRestoreSavedBrackets,
+  buildEntriesSignature,
   dispatch,
   id,
 ]); 

@@ -4,6 +4,10 @@ import Tournament from "../models/tournament.js";
 import logger from "../utils/logger.js";
 import { logActivitySafe } from "../utils/activityLogger.js";
 import mongoose from "mongoose";
+import {
+  ENTRY_SYNC_BATCH_LIMIT,
+  processEntrySyncBatch,
+} from "../services/entrySyncService.js";
 
 const isProd = process.env.NODE_ENV === "production";
 
@@ -753,6 +757,92 @@ pagination: {
     ? "Failed to load entries"
     : error.message,
 });
+  }
+};
+
+export const bulkSyncEntries = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { clientMutationId, clientSeq, operations } = req.body || {};
+
+    if (process.env.ENTRY_SYNC_V2_ENABLED === "false") {
+      return res.status(503).json({
+        success: false,
+        retryable: false,
+        message: "Entry Sync V2 is disabled",
+      });
+    }
+    if (!req.user?._id) {
+      return res.status(401).json({ success: false, message: "Unauthorized" });
+    }
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: "Invalid tournament ID" });
+    }
+    if (!String(clientMutationId || "").trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "clientMutationId is required",
+      });
+    }
+    if (!Number.isSafeInteger(Number(clientSeq)) || Number(clientSeq) < 0) {
+      return res.status(400).json({
+        success: false,
+        message: "clientSeq must be a non-negative integer",
+      });
+    }
+    if (
+      !Array.isArray(operations) ||
+      operations.length === 0 ||
+      operations.length > ENTRY_SYNC_BATCH_LIMIT
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: `operations must contain 1-${ENTRY_SYNC_BATCH_LIMIT} items`,
+      });
+    }
+
+    const result = await processEntrySyncBatch({
+      tournamentId: id,
+      userId: req.user._id.toString(),
+      clientMutationId: String(clientMutationId).trim(),
+      clientSeq: Number(clientSeq),
+      operations,
+    });
+
+    logActivitySafe({
+      req,
+      user: req.user._id,
+      actor: req.user._id,
+      tournament: id,
+      action: "ENTRY_SYNC_BATCH",
+      module: "entry",
+      title: "Entry changes synchronized",
+      description: `${result.confirmedOperationIds.length} entry operations synchronized.`,
+      metadata: {
+        tournamentId: id,
+        operationsCount: operations.length,
+        serverVersion: result.serverVersion,
+        bracketDataChanged: result.bracketDataChanged,
+        source: "entry-sync-v2",
+      },
+    });
+
+    return res.status(200).json(result);
+  } catch (error) {
+    logger.error("Entry Sync V2 batch failed", {
+      error: error.message,
+      stack: error.stack,
+      tournamentId: req.params.id,
+      userId: req.user?._id,
+    });
+
+    const status = Number(error.statusCode) || 500;
+    return res.status(status).json({
+      success: false,
+      retryable:
+        error.retryable === true || status === 409 || status === 429 || status >= 500,
+      message: isProd && status >= 500 ? "Failed to synchronize entries" : error.message,
+    });
   }
 };
 

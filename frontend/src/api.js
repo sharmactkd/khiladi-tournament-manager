@@ -70,6 +70,12 @@ const isImageAnalyzeRequest = (configOrUrl) => {
   return String(value).includes("/import/image/analyze");
 };
 
+const isEntrySyncRequest = (configOrUrl) => {
+  const value =
+    typeof configOrUrl === "string" ? configOrUrl : configOrUrl?.url || "";
+  return String(value).includes("/entries/bulk-sync");
+};
+
 const isAuthPublicPage = () => {
   if (typeof window === "undefined") return false;
 
@@ -208,7 +214,10 @@ api.interceptors.response.use(
         console.warn("Rate limited (429)", error.response.data);
       }
 
-      if (!isImageAnalyzeRequest(originalRequest)) {
+      if (
+        !isImageAnalyzeRequest(originalRequest) &&
+        !isEntrySyncRequest(originalRequest)
+      ) {
         alert("Too many requests. Please slow down and try again in a minute.");
       }
     }
@@ -323,6 +332,40 @@ export const updateEntryRow = (tournamentId, entryId, updates) =>
     `/tournaments/${tournamentId}/entries/${encodeURIComponent(entryId)}`,
     updates
   );
+
+export const bulkSyncEntryChanges = async (tournamentId, payload, config = {}) => {
+  try {
+    const response = await api.patch(
+      `/tournaments/${tournamentId}/entries/bulk-sync`,
+      payload,
+      config
+    );
+    return response.data;
+  } catch (error) {
+    const status = error.response?.status;
+    const retryAfterHeader = error.response?.headers?.["retry-after"];
+    const retryAfterSeconds =
+      Number(retryAfterHeader) ||
+      Number(error.response?.data?.retryAfterSeconds) ||
+      0;
+    const syncError = new Error(
+      error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Entry synchronization failed"
+    );
+    syncError.status = status;
+    syncError.retryable =
+      error.response?.data?.retryable === true ||
+      !error.response ||
+      status === 409 ||
+      status === 429 ||
+      status >= 500;
+    syncError.retryAfterMs = retryAfterSeconds * 1000;
+    syncError.raw = error;
+    throw syncError;
+  }
+};
 
 export const deleteEntryRow = (tournamentId, entryId) =>
   apiCall(

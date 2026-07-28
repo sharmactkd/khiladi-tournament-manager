@@ -8,6 +8,11 @@ import {
   buildAccessResultFromEntitlement,
 } from "./accessEntitlementService.js";
 import logger from "../utils/logger.js";
+import {
+  addIndiaCalendarDays,
+  getTournamentDayEnd,
+  toIndiaDayStart,
+} from "../utils/tournamentDates.js";
 
 export const TOURNAMENT_LIFECYCLE = Object.freeze({
   UPCOMING: "upcoming",
@@ -51,12 +56,6 @@ const asDate = (value) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const addDays = (date, days) => {
-  const d = new Date(date);
-  d.setDate(d.getDate() + Number(days));
-  return d;
-};
-
 const isAdminUser = (user) => ["admin", "superadmin"].includes(user?.role);
 
 const isSameId = (a, b) => {
@@ -68,8 +67,8 @@ const isSameId = (a, b) => {
 const getUserId = (user) => normalizeId(user?._id || user?.id || user?.userId);
 
 export const calculateTournamentLifecycle = (tournament, now = new Date()) => {
-  const dateFrom = asDate(tournament?.dateFrom);
-  const dateTo = asDate(tournament?.dateTo);
+  const dateFrom = toIndiaDayStart(tournament?.dateFrom);
+  const dateTo = getTournamentDayEnd(tournament?.dateTo);
 
   if (!dateFrom || !dateTo) {
     return {
@@ -82,7 +81,10 @@ export const calculateTournamentLifecycle = (tournament, now = new Date()) => {
     };
   }
 
-  const graceEndsAt = addDays(dateTo, GRACE_DAYS);
+  const dayAfterGrace = addIndiaCalendarDays(tournament?.dateTo, GRACE_DAYS + 1);
+  const graceEndsAt = dayAfterGrace
+    ? new Date(dayAfterGrace.getTime() - 1)
+    : null;
 
   const isUpcoming = now < dateFrom;
   const isOngoing = now >= dateFrom && now <= dateTo;
