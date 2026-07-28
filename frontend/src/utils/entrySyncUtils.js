@@ -124,3 +124,35 @@ export const buildBracketEntrySignature = (entries = []) => {
   }
   return (hash >>> 0).toString(16);
 };
+
+export const buildBracketCategoryKey = (entry = {}) =>
+  [
+    entry?.gender,
+    entry?.ageCategory,
+    entry?.weightCategory,
+    entry?.event,
+    entry?.subEvent,
+  ]
+    .map((value) =>
+      String(value || "")
+        .normalize("NFKC")
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+    )
+    .join("|");
+
+export const buildBracketGroupSignatures = (entries = []) => {
+  const groups = new Map();
+  for (const entry of Array.isArray(entries) ? entries : []) {
+    const key = buildBracketCategoryKey(entry);
+    const group = groups.get(key) || [];
+    group.push(entry);
+    groups.set(key, group);
+  }
+  return Object.fromEntries(
+    [...groups.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, rows]) => [key, buildBracketEntrySignature(rows)])
+  );
+};

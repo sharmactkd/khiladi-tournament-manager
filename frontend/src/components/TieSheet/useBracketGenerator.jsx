@@ -2,6 +2,11 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import debounce from 'lodash/debounce';
 import { buildMedalsByCategory } from './medalUtils';
+import {
+  buildBracketStructureSignature,
+  reconcileBracketOutcomes,
+} from './bracketUtils';
+import { buildBracketEntrySignature } from '../../utils/entrySyncUtils';
 
 // ── Config (easy to extend in future) ───────────────────────────────────────
 const GENDER_ORDER = ['Male', 'Female'];
@@ -392,6 +397,7 @@ export default function useBracketGenerator({
   bracketsOutcomes = {},
   setBrackets,
   setBracketsOutcomes,
+  setBracketsAndOutcomes,
   setMedalsByCategory,
 }) {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -400,7 +406,7 @@ export default function useBracketGenerator({
 
   const skipGenerationRef = useRef(false);
   const lastPlayerCountRef = useRef(0);
-  const lastPlayerCategorySignatureRef = useRef('');
+  const lastPlayerContentSignatureRef = useRef('');
 
   const safeLockedBrackets = useMemo(() => {
     if (lockedBrackets instanceof Set) return lockedBrackets;
@@ -408,22 +414,10 @@ export default function useBracketGenerator({
     return new Set();
   }, [lockedBrackets]);
 
-  const buildPlayerCategorySignature = useCallback((playersList = []) => {
-    return JSON.stringify(
-      playersList
-        .map((player) => ({
-          entryId: String(player?.entryId || '').trim(),
-          gender: normalizeCategoryText(player?.gender),
-          ageCategory: getCanonicalAgeCategoryKey(player?.ageCategory),
-          weightCategory: getCanonicalWeightCategoryKey(player?.weightCategory),
-        }))
-        .sort((a, b) =>
-          `${a.entryId}_${a.gender}_${a.ageCategory}_${a.weightCategory}`.localeCompare(
-            `${b.entryId}_${b.gender}_${b.ageCategory}_${b.weightCategory}`
-          )
-        )
-    );
-  }, []);
+  const playerContentSignature = useMemo(
+    () => buildBracketEntrySignature(players),
+    [players]
+  );
 
   const sortBrackets = useCallback((items = []) => {
     return [...items].sort((a, b) => {
@@ -460,14 +454,13 @@ export default function useBracketGenerator({
       }
 
       const playerCountChanged = players.length !== lastPlayerCountRef.current;
-      const currentCategorySignature = buildPlayerCategorySignature(players);
-      const categorySignatureChanged =
-        currentCategorySignature !== lastPlayerCategorySignatureRef.current;
+      const contentSignatureChanged =
+        playerContentSignature !== lastPlayerContentSignatureRef.current;
 
       lastPlayerCountRef.current = players.length;
-      lastPlayerCategorySignatureRef.current = currentCategorySignature;
+      lastPlayerContentSignatureRef.current = playerContentSignature;
 
-      if (brackets.length > 0 && !playerCountChanged && !categorySignatureChanged) {
+      if (brackets.length > 0 && !playerCountChanged && !contentSignatureChanged) {
         const currentMedals = buildMedalsByCategory({
           bracketsSnapshot: brackets,
           outcomesSnapshot: bracketsOutcomes,
@@ -486,23 +479,6 @@ export default function useBracketGenerator({
       setGenerationError(null);
 
       try {
-        const preservedLocked = brackets.filter((bracket) => {
-          return safeLockedBrackets.has(bracket.key);
-        });
-
-        console.log(
-          '🔒 Preserved Locked:',
-          preservedLocked.map((bracket) => bracket.key)
-        );
-
-        let preservedOutcomes = {};
-
-        preservedLocked.forEach((bracket) => {
-          preservedOutcomes[bracket.key] = {
-            ...(bracketsOutcomes[bracket.key] || {}),
-          };
-        });
-
         const grouped = players.reduce((acc, player) => {
           const genderDisplay = String(player?.gender || '').trim();
           const ageDisplay = normalizeAgeCategoryForDisplay(player?.ageCategory);
@@ -737,45 +713,23 @@ export default function useBracketGenerator({
         const sortedGeneratedBrackets = sortBrackets(generatedBrackets);
 
         // ── Merge preserved locked brackets ────────────────────────────────────
-        const finalBrackets = [...preservedLocked];
+        const finalBrackets = [];
 
         sortedGeneratedBrackets.forEach((newBracket) => {
-          if (safeLockedBrackets.has(newBracket.key)) {
-            console.log(`⏸️ Skipping locked bracket in generation: ${newBracket.key}`);
-            return;
-          }
-
-          const existingIndex = finalBrackets.findIndex(
+          const existingIndex = brackets.findIndex(
             (bracket) => bracket.key === newBracket.key
           );
 
           if (existingIndex !== -1) {
-            const existingBracket = finalBrackets[existingIndex];
+            const existingBracket = brackets[existingIndex];
+            const sameStructure =
+              buildBracketStructureSignature([existingBracket]) ===
+              buildBracketStructureSignature([newBracket]);
 
-            const getPlayerIdentity = (player) =>
-              String(player?.entryId || player?.name || '').trim();
-
-            const existingPlayerIds = existingBracket.shuffledPlayers
-              ?.map(getPlayerIdentity)
-              .filter(Boolean)
-              .sort();
-
-            const newPlayerIds = newBracket.shuffledPlayers
-              ?.map(getPlayerIdentity)
-              .filter(Boolean)
-              .sort();
-
-            const playersChanged =
-              JSON.stringify(existingPlayerIds) !== JSON.stringify(newPlayerIds);
-
-            if (!playersChanged) {
-              console.log(`🔁 Preserving existing bracket (players same): ${newBracket.key}`);
+            if (safeLockedBrackets.has(newBracket.key) && sameStructure) {
+              finalBrackets.push(existingBracket);
               return;
             }
-
-            console.log(`🔄 Updating bracket with new players: ${newBracket.key}`);
-            finalBrackets[existingIndex] = newBracket;
-            return;
           }
 
           finalBrackets.push(newBracket);
@@ -785,34 +739,30 @@ export default function useBracketGenerator({
 
         // ── Update state only if changed ──────────────────────────────────────
         const bracketsChanged =
-          JSON.stringify(sortedFinalBrackets.map((bracket) => bracket.key)) !==
-          JSON.stringify(brackets.map((bracket) => bracket.key));
+          buildBracketStructureSignature(sortedFinalBrackets) !==
+          buildBracketStructureSignature(brackets);
 
-        if (bracketsChanged) {
-          console.log('✅ Updating brackets (changed detected)');
-          setBrackets(sortedFinalBrackets);
-        } else {
-          console.log('⏸️ Skipping brackets update (no change)');
-        }
-
-        let newOutcomes = { ...bracketsOutcomes };
-
-        sortedFinalBrackets.forEach((bracket) => {
-          if (!newOutcomes[bracket.key]) {
-            newOutcomes[bracket.key] = {};
-          }
+        const newOutcomes = reconcileBracketOutcomes({
+          previousBrackets: brackets,
+          nextBrackets: sortedFinalBrackets,
+          previousOutcomes: bracketsOutcomes,
         });
-
-        newOutcomes = {
-          ...newOutcomes,
-          ...preservedOutcomes,
-        };
 
         const outcomesChanged =
           JSON.stringify(newOutcomes) !== JSON.stringify(bracketsOutcomes);
 
-        if (outcomesChanged) {
-          setBracketsOutcomes(newOutcomes);
+        if (bracketsChanged || outcomesChanged) {
+          if (typeof setBracketsAndOutcomes === 'function') {
+            setBracketsAndOutcomes({
+              brackets: sortedFinalBrackets,
+              outcomes: newOutcomes,
+            });
+          } else {
+            if (bracketsChanged) setBrackets(sortedFinalBrackets);
+            if (outcomesChanged) setBracketsOutcomes(newOutcomes);
+          }
+        } else {
+          console.log('⏸️ Skipping bracket/outcome update (no change)');
         }
 
         // ── Compute & Update Medals through centralized medalUtils ─────────────
@@ -844,8 +794,9 @@ export default function useBracketGenerator({
       bracketsOutcomes,
       setBrackets,
       setBracketsOutcomes,
+      setBracketsAndOutcomes,
       setMedalsByCategory,
-      buildPlayerCategorySignature,
+      playerContentSignature,
       sortBrackets,
     ]
   );
@@ -895,7 +846,7 @@ useEffect(() => {
     generateBrackets();
 
     return () => generateBrackets.cancel();
-  }, [generateBrackets, players.length, brackets.length]);
+  }, [generateBrackets, playerContentSignature, players.length, brackets.length]);
 
   const skipNextGeneration = useCallback(() => {
     console.log('⏸️ Setting skip generation flag');

@@ -11,7 +11,12 @@ import {
   sanitizeId,
   getFullImageUrl,
   normalizeString,
+  reconcileBracketOutcomes,
 } from '../components/TieSheet/bracketUtils';
+import {
+  buildBracketEntrySignature,
+  buildBracketGroupSignatures,
+} from '../utils/entrySyncUtils';
 import useBracketGenerator from '../components/TieSheet/useBracketGenerator.jsx';
 import BracketFilters from '../components/TieSheet/BracketFilters';
 import BracketHeader from '../components/TieSheet/BracketHeader';
@@ -28,7 +33,12 @@ import PremiumAccessGuard from "../components/payment/PremiumAccessGuard";
 import AdminReadOnlyOverlay from "./admin/AdminReadOnlyOverlay";
 import { createPDFDoc, createAndOpenPDFInNewTab, getMultipleBracketsFilename } from '../components/TieSheet/pdfUtils';
 import toast, { Toaster } from 'react-hot-toast';
-import { setInitialBrackets, setOutcomes, toggleLock } from '../store/bracketsSlice';
+import {
+  replaceBracketsAndOutcomes,
+  setInitialBrackets,
+  setOutcomes,
+  toggleLock,
+} from '../store/bracketsSlice';
 import styles from './TieSheet.module.css';
 import * as d3 from 'd3';
 
@@ -263,6 +273,11 @@ const latestServerAppliedSeqRef = useRef(0);
     [dispatch]
   );
 
+  const setBracketsAndOutcomesSafe = useCallback(
+    (payload) => dispatch(replaceBracketsAndOutcomes(payload)),
+    [dispatch]
+  );
+
   const showToast = {
     loading: (message) => toast.loading(message, { duration: 0 }),
     update: (toastId, message, type = 'loading') => {
@@ -287,6 +302,7 @@ const latestServerAppliedSeqRef = useRef(0);
     bracketsOutcomes,
     setBrackets: setBracketsSafe,
     setBracketsOutcomes: setBracketsOutcomesSafe,
+    setBracketsAndOutcomes: setBracketsAndOutcomesSafe,
     setMedalsByCategory: undefined,
   });
 
@@ -392,29 +408,10 @@ const getCanonicalWeightCategoryKey = (value = "") => {
   return text.replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 };
 
-const buildEntriesSignature = useCallback((rows = []) => {
-  const normalized = (Array.isArray(rows) ? rows : [])
-    .map((row) => ({
-      entryId: String(row?.entryId || "").trim(),
-      name: String(row?.name || "").trim(),
-      team: String(row?.team || "").trim(),
-      gender: String(row?.gender || "").trim(),
-      ageCategory: normalizeAgeCategoryForCompare(row?.ageCategory),
-      weightCategory: getCanonicalWeightCategoryKey(row?.weightCategory),
-      event: String(row?.event || "").trim().toLowerCase(),
-      subEvent: String(row?.subEvent || "").trim().toLowerCase(),
-    }))
-    .sort((a, b) =>
-      `${a.entryId}|${a.name}`.localeCompare(`${b.entryId}|${b.name}`)
-    );
-
-  const input = JSON.stringify(normalized);
-  let hash = 5381;
-  for (let index = 0; index < input.length; index += 1) {
-    hash = ((hash << 5) + hash) ^ input.charCodeAt(index);
-  }
-  return (hash >>> 0).toString(16);
-}, []);
+const buildEntriesSignature = useCallback(
+  (rows = []) => buildBracketEntrySignature(rows),
+  []
+);
 
 const getUniqueAgeCategories = (rows = []) => {
   return [
@@ -1385,11 +1382,16 @@ const serverOutcomes =
   !Array.isArray(outcomesData.outcomes)
     ? outcomesData.outcomes
     : {};
+const reconciledOutcomes = reconcileBracketOutcomes({
+  previousBrackets: saved.brackets,
+  nextBrackets: saved.brackets,
+  previousOutcomes: serverOutcomes,
+});
 
 dispatch(
   setInitialBrackets({
     brackets: saved.brackets,
-    outcomes: serverOutcomes,
+    outcomes: reconciledOutcomes,
   })
 );
 
@@ -1408,8 +1410,14 @@ const serverOutcomes =
 
 dispatch(
   setInitialBrackets({
-    brackets: [],
-    outcomes: serverOutcomes,
+    // Keep the old structure only as reconciliation input. The generator sees
+    // the changed player signature and replaces affected bracket contents.
+    brackets: Array.isArray(saved?.brackets) ? saved.brackets : [],
+    outcomes: reconcileBracketOutcomes({
+      previousBrackets: saved?.brackets || [],
+      nextBrackets: saved?.brackets || [],
+      previousOutcomes: serverOutcomes,
+    }),
   })
 );
 
@@ -1688,6 +1696,8 @@ const handleScrollToBracket = useCallback((bracketKey) => {
             entriesCount: typeof meta.count === "number" ? meta.count : undefined,
             entriesLastUpdated: meta.lastUpdated || null,
             entriesSignature: buildEntriesSignature(players),
+            bracketGroupSignatures: buildBracketGroupSignatures(players),
+            snapshotVersion: 2,
           },
         };
 
@@ -1790,8 +1800,14 @@ canMutateTieSheet,
     } else {
       dispatch(
         setInitialBrackets({
-          brackets: [],
-          outcomes: serverOutcomes,
+          brackets: Array.isArray(serverTieSheet?.brackets)
+            ? serverTieSheet.brackets
+            : [],
+          outcomes: reconcileBracketOutcomes({
+            previousBrackets: serverTieSheet?.brackets || [],
+            nextBrackets: serverTieSheet?.brackets || [],
+            previousOutcomes: serverOutcomes,
+          }),
         })
       );
 

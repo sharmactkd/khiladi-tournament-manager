@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBracketEntrySignature,
+  buildBracketGroupSignatures,
   chunkEntryOperations,
   reconcileEntriesWithPending,
 } from "../entrySyncUtils";
@@ -49,5 +50,27 @@ describe("entrySyncUtils", () => {
     expect(buildBracketEntrySignature(base)).not.toBe(
       buildBracketEntrySignature([{ ...base[0], team: "TWO" }])
     );
+  });
+
+  it("ignores row order, serial number and non-bracket contact changes", () => {
+    const rows = [
+      { entryId: "a", name: "A", srNo: 1, coachContact: "111" },
+      { entryId: "b", name: "B", srNo: 2, coachContact: "222" },
+    ];
+    const reordered = [
+      { ...rows[1], srNo: 1, coachContact: "999" },
+      { ...rows[0], srNo: 2, coachContact: "888" },
+    ];
+    expect(buildBracketEntrySignature(rows)).toBe(
+      buildBracketEntrySignature(reordered)
+    );
+  });
+
+  it("builds stable per-category signatures", () => {
+    const rows = [
+      { entryId: "a", gender: "Male", ageCategory: "Cadet", name: "A" },
+      { entryId: "b", gender: "Female", ageCategory: "Cadet", name: "B" },
+    ];
+    expect(Object.keys(buildBracketGroupSignatures(rows))).toHaveLength(2);
   });
 });

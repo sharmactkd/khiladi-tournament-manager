@@ -5,6 +5,7 @@ import logger from "../utils/logger.js";
 import Entry from "../models/entry.js";
 import EntryRow from "../models/entryRow.js";
 import { logActivitySafe } from "../utils/activityLogger.js";
+import { markTieSheetEntriesChanged } from "../services/entrySyncService.js";
 
 const createEmptyEntryState = () => ({
   sorting: [],
@@ -522,6 +523,26 @@ const existingEntryIds = new Set(
 
 if (entryRowBulkOps.length > 0) {
   await EntryRow.bulkWrite(entryRowBulkOps, { ordered: false });
+}
+
+if (uniqueApprovedPlayers.length > 0) {
+  await markTieSheetEntriesChanged({
+    tournamentId: submission.tournamentId,
+    userId: req.user._id,
+    displayChanged: true,
+    structureChanged: true,
+    changedEntryIds: uniqueApprovedPlayers.map((player) => player.entryId),
+    changedFields: [
+      "create",
+      "name",
+      "team",
+      "gender",
+      "ageCategory",
+      "weightCategory",
+      "event",
+      "subEvent",
+    ],
+  });
 }
 
     submission.status = "approved";

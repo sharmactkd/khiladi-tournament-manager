@@ -1425,6 +1425,48 @@ export const saveTieSheet = async (req, res) => {
     if (!tiesheet || typeof tiesheet !== "object" || !Array.isArray(tiesheet.brackets)) {
       return res.status(400).json({ message: "Invalid bracket data" });
     }
+    if (
+      tiesheet.entriesSignature !== undefined &&
+      (typeof tiesheet.entriesSignature !== "string" ||
+        tiesheet.entriesSignature.length > 256)
+    ) {
+      return res.status(400).json({ message: "Invalid Entry signature" });
+    }
+    if (
+      tiesheet.entriesCount !== undefined &&
+      (!Number.isSafeInteger(Number(tiesheet.entriesCount)) ||
+        Number(tiesheet.entriesCount) < 0 ||
+        Number(tiesheet.entriesCount) > 100000)
+    ) {
+      return res.status(400).json({ message: "Invalid Entry count" });
+    }
+    if (
+      tiesheet.snapshotVersion !== undefined &&
+      (!Number.isSafeInteger(Number(tiesheet.snapshotVersion)) ||
+        Number(tiesheet.snapshotVersion) < 1 ||
+        Number(tiesheet.snapshotVersion) > 10)
+    ) {
+      return res.status(400).json({ message: "Invalid TieSheet snapshot version" });
+    }
+    if (tiesheet.bracketGroupSignatures !== undefined) {
+      const signatures = tiesheet.bracketGroupSignatures;
+      if (
+        !signatures ||
+        typeof signatures !== "object" ||
+        Array.isArray(signatures) ||
+        Object.keys(signatures).length > 1000 ||
+        Object.entries(signatures).some(
+          ([key, value]) =>
+            key.length > 500 ||
+            typeof value !== "string" ||
+            value.length > 256
+        )
+      ) {
+        return res.status(400).json({
+          message: "Invalid bracket group signatures",
+        });
+      }
+    }
 
     const updated = await Tournament.findByIdAndUpdate(
       req.params.id,

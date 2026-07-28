@@ -117,6 +117,21 @@ const bracketsSlice = createSlice({
       }
     },
 
+    replaceBracketsAndOutcomes(state, action) {
+      const nextBrackets = action.payload?.brackets;
+      const nextOutcomes = action.payload?.outcomes;
+      if (!Array.isArray(nextBrackets)) {
+        console.warn('Invalid brackets payload for replaceBracketsAndOutcomes');
+        return;
+      }
+      state.brackets = nextBrackets;
+      state.bracketsOutcomes =
+        nextOutcomes && typeof nextOutcomes === 'object' && !Array.isArray(nextOutcomes)
+          ? nextOutcomes
+          : {};
+      state.shuffleVersion = 0;
+    },
+
     setOutcomes(state, action) {
       const next = action.payload;
       if (next && typeof next === 'object' && !Array.isArray(next)) {
@@ -517,6 +532,7 @@ const findDirectCrossBracketDependents = (sourceBracketKey, sourceGameId) => {
 
 export const {
   setInitialBrackets,
+  replaceBracketsAndOutcomes,
   setOutcomes,
   setBracketsOnly,
   toggleLock,

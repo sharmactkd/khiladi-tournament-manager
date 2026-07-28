@@ -170,6 +170,117 @@ export const findDependentGames = (gameId, gamesByRound, found = new Set(), dept
   return Array.from(found);
 };
 
+const stableTeamIdentity = (team = {}) =>
+  JSON.stringify({
+    entryId: String(team?.entryId || team?.id || '').trim(),
+    name: String(team?.name || '').trim(),
+    team: String(team?.team || '').trim(),
+  });
+
+export const getBracketSideSignature = (side, depth = 0) => {
+  if (!side || depth > MAX_RECURSION_DEPTH) return '';
+  if (side.team) return `team:${stableTeamIdentity(side.team)}`;
+  if (side.sourceGame) {
+    return `source:${getBracketGameSignature(side.sourceGame, depth + 1)}:${String(
+      side.pool || ''
+    )}`;
+  }
+  return '';
+};
+
+export const getBracketGameSignature = (game, depth = 0) => {
+  if (!game || depth > MAX_RECURSION_DEPTH) return '';
+  return JSON.stringify({
+    id: String(game.id ?? ''),
+    home: getBracketSideSignature(game?.sides?.home, depth + 1),
+    away: getBracketSideSignature(game?.sides?.away, depth + 1),
+  });
+};
+
+const flattenBracketGames = (bracket = {}) => {
+  const games = new Map();
+  for (const round of Array.isArray(bracket.gamesByRound)
+    ? bracket.gamesByRound
+    : []) {
+    for (const game of Array.isArray(round) ? round : []) {
+      if (game?.id !== undefined && game?.id !== null) {
+        games.set(String(game.id), game);
+      }
+    }
+  }
+  return games;
+};
+
+export const buildBracketStructureSignature = (brackets = []) =>
+  JSON.stringify(
+    (Array.isArray(brackets) ? brackets : [])
+      .map((bracket) => ({
+        key: String(bracket?.key || ''),
+        players: (Array.isArray(bracket?.shuffledPlayers)
+          ? bracket.shuffledPlayers
+          : []
+        ).map((player) => ({
+          entryId: String(player?.entryId || '').trim(),
+          name: String(player?.name || '').trim(),
+          team: String(player?.team || '').trim(),
+          gender: String(player?.gender || '').trim(),
+          ageCategory: String(player?.ageCategory || '').trim(),
+          weightCategory: String(player?.weightCategory || '').trim(),
+          event: String(player?.event || '').trim(),
+          subEvent: String(player?.subEvent || '').trim(),
+        })),
+        games: [...flattenBracketGames(bracket).values()].map((game) =>
+          getBracketGameSignature(game)
+        ),
+      }))
+      .sort((left, right) => left.key.localeCompare(right.key))
+  );
+
+export const reconcileBracketOutcomes = ({
+  previousBrackets = [],
+  nextBrackets = [],
+  previousOutcomes = {},
+}) => {
+  const previousByKey = new Map(
+    (Array.isArray(previousBrackets) ? previousBrackets : []).map((bracket) => [
+      String(bracket?.key || ''),
+      bracket,
+    ])
+  );
+  const reconciled = {};
+
+  for (const nextBracket of Array.isArray(nextBrackets) ? nextBrackets : []) {
+    const bracketKey = String(nextBracket?.key || '');
+    if (!bracketKey) continue;
+    reconciled[bracketKey] = {};
+
+    const previousBracket = previousByKey.get(bracketKey);
+    const previousForBracket = previousOutcomes?.[bracketKey];
+    if (
+      !previousBracket ||
+      !previousForBracket ||
+      typeof previousForBracket !== 'object'
+    ) {
+      continue;
+    }
+
+    const oldGames = flattenBracketGames(previousBracket);
+    const newGames = flattenBracketGames(nextBracket);
+    for (const [gameId, winnerSide] of Object.entries(previousForBracket)) {
+      if (!['home', 'away'].includes(winnerSide)) continue;
+      const oldGame = oldGames.get(String(gameId));
+      const newGame = newGames.get(String(gameId));
+      if (!oldGame || !newGame || !newGame?.sides?.[winnerSide]) continue;
+      if (getBracketGameSignature(oldGame) !== getBracketGameSignature(newGame)) {
+        continue;
+      }
+      reconciled[bracketKey][gameId] = winnerSide;
+    }
+  }
+
+  return reconciled;
+};
+
 /**
  * Generate Single Elimination Bracket Structure
  * @param {Array} players - Array of player objects

@@ -6,6 +6,7 @@ import { logActivitySafe } from "../utils/activityLogger.js";
 import mongoose from "mongoose";
 import {
   ENTRY_SYNC_BATCH_LIMIT,
+  markTieSheetEntriesChanged,
   processEntrySyncBatch,
 } from "../services/entrySyncService.js";
 
@@ -16,6 +17,14 @@ const MAX_ENTRY_SAVE_BYTES = 10 * 1024 * 1024;
 const allowedMedals = ["Gold", "Silver", "Bronze", "X-X-X-X", ""];
 const allowedMedalSources = ["", "manual", "tiesheet"];
 const allowedEntrySources = ["", "manual", "teamSubmission", "import"];
+const bracketDisplayFields = new Set(["name", "team"]);
+const bracketStructureFields = new Set([
+  "gender",
+  "ageCategory",
+  "weightCategory",
+  "event",
+  "subEvent",
+]);
 
 const createEntryId = () => new mongoose.Types.ObjectId().toString();
 
@@ -630,32 +639,17 @@ const updateLegacySingleEntryMirror = async ({ tournamentId, userId }) => {
 };
 
 const resetTieSheetAfterEntryReset = async ({ tournamentId, userId }) => {
-  await Tournament.findByIdAndUpdate(
+  const existingEntryIds = await EntryRow.distinct("entryId", {
+    tournamentId: new mongoose.Types.ObjectId(tournamentId),
+  });
+  await markTieSheetEntriesChanged({
     tournamentId,
-    {
-      $set: {
-        "tiesheet.brackets": [],
-        "tiesheet.outcomes": {},
-        "tiesheet.outcomesUpdatedAt": new Date(),
-        tiesheetOutcomeSeq: Date.now(),
-        tiesheetOutcomeSavedAt: new Date(),
-        updatedBy: userId || null,
-      },
-    },
-    { new: true }
-  );
-
-  await EntryRow.updateMany(
-    { tournamentId: new mongoose.Types.ObjectId(tournamentId), medalSource: "tiesheet" },
-    {
-      $set: {
-        medal: "",
-        medalSource: "",
-        medalUpdatedAt: null,
-        updatedBy: userId || null,
-      },
-    }
-  );
+    userId,
+    displayChanged: true,
+    structureChanged: true,
+    changedEntryIds: existingEntryIds,
+    changedFields: ["fullSnapshot"],
+  });
 };
 
 export const getEntries = async (req, res) => {
@@ -1032,11 +1026,19 @@ export const createSingleEntry = async (req, res) => {
     const mappedEntries = rows.map(mapEntryRowForResponse);
 
     const legacyMeta = await getLegacyUserState(id);
-   await mirrorEntryRowsToLegacyEntry({
+    await mirrorEntryRowsToLegacyEntry({
   tournamentId: id,
   userState: legacyMeta.userState,
   userId: req.user._id,
 });
+    await markTieSheetEntriesChanged({
+      tournamentId: id,
+      userId: req.user._id,
+      displayChanged: true,
+      structureChanged: true,
+      changedEntryIds: [entryId],
+      changedFields: ["create"],
+    });
 
     return res.status(201).json({
       success: true,
@@ -1097,6 +1099,15 @@ if (!existingRow) {
 const rawSetObj = buildEntryRowSetFromUpdates(updates);
 
 const setObj = stripProtectedTieSheetMedalFields(rawSetObj, existingRow);
+const changedFields = Object.keys(setObj).filter(
+  (field) => String(existingRow?.[field] ?? "") !== String(setObj[field] ?? "")
+);
+const displayChanged = changedFields.some((field) =>
+  bracketDisplayFields.has(field)
+);
+const structureChanged = changedFields.some((field) =>
+  bracketStructureFields.has(field)
+);
 
     if (Object.keys(setObj).length === 0) {
       return res.status(400).json({
@@ -1124,6 +1135,14 @@ const setObj = stripProtectedTieSheetMedalFields(rawSetObj, existingRow);
   tournamentId: id,
   userId: req.user._id,
 });
+    await markTieSheetEntriesChanged({
+      tournamentId: id,
+      userId: req.user._id,
+      displayChanged,
+      structureChanged,
+      changedEntryIds: [entryId],
+      changedFields,
+    });
 
     logger.info("Entry row updated", {
       entryId,
@@ -1194,6 +1213,14 @@ export const deleteSingleEntry = async (req, res) => {
   },
   { new: true }
 ).lean();
+    await markTieSheetEntriesChanged({
+      tournamentId: id,
+      userId: req.user._id,
+      displayChanged: true,
+      structureChanged: true,
+      changedEntryIds: [entryId],
+      changedFields: ["delete"],
+    });
 
     logger.info("Entry row deleted", {
       entryId,

@@ -168,49 +168,68 @@ const validateOperation = (operation, index) => {
 const detectBracketChanges = (operations, existingByEntryId) => {
   let displayChanged = false;
   let structureChanged = false;
+  const changedEntryIds = new Set();
+  const changedFields = new Set();
 
   for (const operation of operations) {
     if (operation.type === "delete") {
       structureChanged = true;
+      changedEntryIds.add(operation.entryId);
+      changedFields.add("delete");
       continue;
     }
     const existing = existingByEntryId.get(operation.entryId) || {};
     for (const [field, value] of Object.entries(operation.updates)) {
       if (comparable(existing[field]) === comparable(value)) continue;
-      if (DISPLAY_BRACKET_FIELDS.has(field)) displayChanged = true;
-      if (STRUCTURAL_BRACKET_FIELDS.has(field)) structureChanged = true;
+      if (DISPLAY_BRACKET_FIELDS.has(field)) {
+        displayChanged = true;
+        changedEntryIds.add(operation.entryId);
+        changedFields.add(field);
+      }
+      if (STRUCTURAL_BRACKET_FIELDS.has(field)) {
+        structureChanged = true;
+        changedEntryIds.add(operation.entryId);
+        changedFields.add(field);
+      }
     }
   }
-  return { displayChanged, structureChanged };
+  return {
+    displayChanged,
+    structureChanged,
+    changedEntryIds: [...changedEntryIds],
+    changedFields: [...changedFields],
+  };
 };
 
-const invalidateTieSheet = async ({
+export const markTieSheetEntriesChanged = async ({
   tournamentId,
   userId,
   displayChanged,
   structureChanged,
+  changedEntryIds = [],
+  changedFields = [],
 }) => {
   if (!displayChanged && !structureChanged) return;
 
-  const update = {
+  const now = new Date();
+  await Tournament.findByIdAndUpdate(tournamentId, {
     $set: {
-      "tiesheet.brackets": [],
+      "tiesheet.invalidatedAt": now,
+      "tiesheet.invalidationType": structureChanged ? "structure" : "display",
+      "tiesheet.invalidatedEntryIds": changedEntryIds.map(String),
+      "tiesheet.invalidatedFields": changedFields.map(String),
       updatedBy: userId,
     },
-  };
+    $inc: { "tiesheet.entryRevision": 1 },
+  });
 
-  if (structureChanged) {
-    update.$set["tiesheet.outcomes"] = {};
-    update.$set["tiesheet.outcomesUpdatedAt"] = new Date();
-    update.$set.tiesheetOutcomeSeq = Date.now();
-    update.$set.tiesheetOutcomeSavedAt = new Date();
-  }
-
-  await Tournament.findByIdAndUpdate(tournamentId, update);
-
-  if (structureChanged) {
+  if (structureChanged && changedEntryIds.length > 0) {
     await EntryRow.updateMany(
-      { tournamentId, medalSource: "tiesheet" },
+      {
+        tournamentId,
+        entryId: { $in: changedEntryIds.map(String) },
+        medalSource: "tiesheet",
+      },
       {
         $set: {
           medal: "",
@@ -354,7 +373,7 @@ export const processEntrySyncBatch = async ({
       await EntryRow.bulkWrite(bulkOperations, { ordered: true });
     }
 
-    await invalidateTieSheet({
+    await markTieSheetEntriesChanged({
       tournamentId: tournamentObjectId,
       userId: userObjectId,
       ...bracketChanges,
@@ -386,6 +405,13 @@ export const processEntrySyncBatch = async ({
       bracketDataChanged:
         bracketChanges.displayChanged || bracketChanges.structureChanged,
       bracketStructureChanged: bracketChanges.structureChanged,
+      bracketChangeType: bracketChanges.structureChanged
+        ? "structure"
+        : bracketChanges.displayChanged
+          ? "display"
+          : "none",
+      changedEntryIds: bracketChanges.changedEntryIds,
+      changedBracketFields: bracketChanges.changedFields,
     };
 
     await EntrySyncBatch.findByIdAndUpdate(receipt._id, {
