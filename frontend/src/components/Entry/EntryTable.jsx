@@ -585,7 +585,7 @@ const EntryTable = forwardRef(
         <div
           ref={parentRef}
           className={styles.scrollableWrapper}
-          style={{ overflow: "auto", height: "100%" }}
+          
         >
           <div className={styles.headerWrapper}>
             <table

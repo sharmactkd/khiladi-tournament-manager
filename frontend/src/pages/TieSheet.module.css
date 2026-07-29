@@ -3,7 +3,7 @@
 /* ============================================================= */
 .stickyWrapper {
   position: sticky;
-  top: 1px;
+  
   background: #ffffff;
   z-index: 1100;
   margin: 0;
@@ -1602,8 +1602,15 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+
+  width: 100%;
+  min-width: 0;
   max-height: calc(75vh - 80px);
+
+  overflow-x: hidden;
   overflow-y: auto;
+
+  box-sizing: border-box;
   padding-right: 4px;
 }
 
@@ -1623,12 +1630,19 @@
 
 .categoryNavigatorItem {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+
   border: 1px solid rgba(207, 0, 6, 0.12);
   background: linear-gradient(180deg, #ffffff 0%, #fffafa 100%);
   border-radius: 14px;
   padding: 10px 11px;
+
   cursor: pointer;
   text-align: left;
+  overflow: hidden;
+
   transition: all 0.22s ease;
   box-shadow: 0 4px 12px rgba(17, 24, 39, 0.04);
 }
@@ -1784,12 +1798,19 @@
 }
 
 .categoryNavigatorWeightButton {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+
   border: none;
   background: transparent;
   padding: 0;
+
   text-align: left;
   cursor: pointer;
+  overflow: hidden;
 }
 
 .categoryNavigatorPoolList {

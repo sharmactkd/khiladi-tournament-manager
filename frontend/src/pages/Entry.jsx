@@ -19,6 +19,7 @@ import ImportModal from '../components/Entry/ImportModal';
 import ImageImport from '../components/import/ImageImport';
 import AddTeamEntriesModal from '../components/Team/AddTeamEntriesModal';
 import useEntrySync from '../hooks/useEntrySync';
+import toast, { Toaster } from "react-hot-toast";
 
 import { baseColumnsDef, optionalColumnsDef } from '../components/Entry/constants';
 
@@ -230,6 +231,82 @@ const dataRef = useRef(data);
       Boolean(token && (user?._id || user?.id)) &&
       !isPageReadOnly,
   });
+
+  useEffect(() => {
+  const toastId = `entry-sync-${id}`;
+
+  if (!isOnline) {
+    toast(
+      `Offline — ${pendingCount} change${
+        pendingCount === 1 ? "" : "s"
+      } pending`,
+      {
+        id: toastId,
+        duration: Infinity,
+        icon: "⚠️",
+      }
+    );
+
+    return;
+  }
+
+  if (syncStatus === "saving") {
+    toast.loading(
+      `Saving ${pendingCount} change${
+        pendingCount === 1 ? "" : "s"
+      }...`,
+      {
+        id: toastId,
+        duration: Infinity,
+      }
+    );
+
+    return;
+  }
+
+  if (syncStatus === "error") {
+    toast.error(
+      entrySyncError || "Save failed — retry required",
+      {
+        id: toastId,
+        duration: 6000,
+      }
+    );
+
+    return;
+  }
+
+  if (pendingCount > 0) {
+    toast.loading(
+      `${pendingCount} change${
+        pendingCount === 1 ? "" : "s"
+      } pending...`,
+      {
+        id: toastId,
+        duration: Infinity,
+      }
+    );
+
+    return;
+  }
+
+  if (syncStatus === "saved") {
+    toast.success("All changes saved", {
+      id: toastId,
+      duration: 2500,
+    });
+
+    return;
+  }
+
+  toast.dismiss(toastId);
+}, [
+  id,
+  syncStatus,
+  pendingCount,
+  isOnline,
+  entrySyncError,
+]);
 
   const columnsDef = useMemo(() => {
     const activeOptional = optionalColumnsDef.filter((col) => visibleColumns[col.id]);
@@ -1108,6 +1185,48 @@ newData = [emptyRow];
   }, [data, id, navigate, isAdminReadOnly, flushEntrySync]);
 
   return (
+     <>
+    <Toaster
+      position="bottom-right"
+      reverseOrder={false}
+      gutter={12}
+      containerStyle={{
+        right: 20,
+        bottom: 20,
+        zIndex: 9999,
+      }}
+      toastOptions={{
+        duration: 2500,
+        style: {
+          borderRadius: "10px",
+          background: "#333",
+          color: "#fff",
+          padding: "12px 18px",
+          fontSize: "14px",
+          fontWeight: 600,
+          maxWidth: "380px",
+        },
+        success: {
+          style: {
+            background: "#15803d",
+            color: "#fff",
+          },
+        },
+        error: {
+          style: {
+            background: "#dc2626",
+            color: "#fff",
+          },
+        },
+        loading: {
+          style: {
+            background: "#2563eb",
+            color: "#fff",
+          },
+        },
+      }}
+    />
+
     <div className={styles.entryContainer}>
       {loadError && (
         <div
@@ -1185,12 +1304,7 @@ newData = [emptyRow];
         onExport={handleExport}
         onGenerateTieSheets={handleGenerateTieSheets}
         showImportModal={showImportModal}
-        syncStatus={syncStatus}
-        pendingCount={pendingCount}
-        isOnline={isOnline}
-        syncError={entrySyncError}
-        onSaveNow={flushEntrySync}
-        onRetrySync={retryEntrySync}
+       
       />
 
       {copyMessage ? <p className={styles.copyMessage}>{copyMessage}</p> : null}
@@ -1354,6 +1468,7 @@ newData = [emptyRow];
         </div>
       )}
     </div>
+     </>
   );
 };
 

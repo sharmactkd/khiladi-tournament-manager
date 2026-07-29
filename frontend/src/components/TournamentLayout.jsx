@@ -181,16 +181,18 @@ const TournamentLayout = () => {
   return (
     <div className={styles.layoutContainer}>
       {canAccessTournamentManagement && (
-        <SubNavBar
-          tournament={tournament}
-          access={access}
-          user={user}
-          isAdminUser={isAdminUser}
-          adminEditMode={adminEditMode}
-          setAdminEditMode={setAdminEditMode}
-          isAdminReadOnly={isAdminReadOnly}
-        />
-      )}
+  <div className={styles.subNavSlot}>
+    <SubNavBar
+      tournament={tournament}
+      access={access}
+      user={user}
+      isAdminUser={isAdminUser}
+      adminEditMode={adminEditMode}
+      setAdminEditMode={setAdminEditMode}
+      isAdminReadOnly={isAdminReadOnly}
+    />
+  </div>
+)}
 
       <div className={styles.content}>
         <Outlet
