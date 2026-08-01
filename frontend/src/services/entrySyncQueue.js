@@ -13,6 +13,7 @@ import {
   getEntrySyncScope,
   getRetryDelayMs,
   isRetryableEntrySyncError,
+  sanitizeEntryUpdates,
 } from "../utils/entrySyncUtils";
 
 const MAX_AUTOMATIC_RETRIES = 5;
@@ -164,7 +165,10 @@ export class EntrySyncQueue {
             operationId: operation.operationId,
             entryId: operation.entryId,
             type: operation.type,
-            updates: operation.updates,
+            updates:
+              operation.type === "upsert"
+                ? sanitizeEntryUpdates(operation.updates)
+                : {},
           })),
         });
 

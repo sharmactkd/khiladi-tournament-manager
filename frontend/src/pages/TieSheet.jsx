@@ -2038,61 +2038,65 @@ canMutateTieSheet,
 
         {!isLoading && !error && (
           <>
-            <div className={styles.stickyWrapper}>
-              <div className={styles.pdfbtn}>
-                <h2 className={`${styles.text2xl} ${styles.fontBold} ${styles.textCenter}`}>
-                  Tie Sheet for {tournamentName}
-                </h2>
+           <div className={styles.stickyWrapper}>
+  <div className={styles.pdfbtn}>
+    <h2
+      className={`${styles.text2xl} ${styles.fontBold} ${styles.textCenter}`}
+    >
+      Tie Sheet for {tournamentName}
+    </h2>
+  </div>
 
-                <div className={styles.actionButtons}>
-                  <button
-                    className={styles.toggleButton}
-                    onClick={handleRefresh}
-                    disabled={isLoading || isProcessing || isPdfSaving}
-                  >
-                    Refresh
-                  </button>
+  <div className={styles.filterActionRow}>
+    <BracketFilters
+      availableGenders={availableGenders}
+      selectedGenders={selectedGenders}
+      setSelectedGenders={setSelectedGenders}
+      availableAgeCategories={availableAgeCategories}
+      selectedAgeCategories={selectedAgeCategories}
+      setSelectedAgeCategories={setSelectedAgeCategories}
+    />
 
-                  <button
-                    className={styles.toggleButton}
-                    onClick={printAllBrackets}
-                    disabled={
-  !canPrintTieSheet ||
-  !safeFilteredBrackets.length ||
-  isLoading ||
-  isProcessing ||
-  isPdfSaving
-}
-                  >
-                    {isProcessing ? 'Printing...' : 'Print All'}
-                  </button>
+    <div className={styles.actionButtons}>
+      <button
+        className={styles.toggleButton}
+        onClick={handleRefresh}
+        disabled={isLoading || isProcessing || isPdfSaving}
+      >
+        Refresh
+      </button>
 
-                  <button
-                    type="button"
-                    className={styles.toggleButton}
-                    onClick={saveAllToPDF}
-                    disabled={
-  !canExportTieSheet ||
-  !safeFilteredBrackets.length ||
-  isLoading ||
-  isProcessing ||
-  isPdfSaving
-}
-                  >
-                    Save All to PDF
-                  </button>
-                </div>
-              </div>
+      <button
+        className={styles.toggleButton}
+        onClick={printAllBrackets}
+        disabled={
+          !canPrintTieSheet ||
+          !safeFilteredBrackets.length ||
+          isLoading ||
+          isProcessing ||
+          isPdfSaving
+        }
+      >
+        {isProcessing ? "Printing..." : "Print All"}
+      </button>
 
-              <BracketFilters
-                availableGenders={availableGenders}
-                selectedGenders={selectedGenders}
-                setSelectedGenders={setSelectedGenders}
-                availableAgeCategories={availableAgeCategories}
-                selectedAgeCategories={selectedAgeCategories}
-                setSelectedAgeCategories={setSelectedAgeCategories}
-              />
-            </div>
+      <button
+        type="button"
+        className={styles.toggleButton}
+        onClick={saveAllToPDF}
+        disabled={
+          !canExportTieSheet ||
+          !safeFilteredBrackets.length ||
+          isLoading ||
+          isProcessing ||
+          isPdfSaving
+        }
+      >
+        Save All to PDF
+      </button>
+    </div>
+  </div>
+</div>
 
          {!safeFilteredBrackets || safeFilteredBrackets.length === 0 ? (
   <p className={styles.noData}>No brackets available for the selected categories.</p>

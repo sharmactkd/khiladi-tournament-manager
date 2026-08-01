@@ -1,488 +1,844 @@
 // src/pages/TeamChampionship.jsx
-import React, { useEffect, useState, useMemo, useRef, useCallback } from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useNavigate, useParams } from "react-router-dom";
+import {
+  ChevronDown,
+  FileDown,
+  Mars,
+  Medal,
+  Printer,
+  RefreshCw,
+  Trophy,
+  UserRound,
+  Users,
+  Venus,
+} from "lucide-react";
+import html2canvas from "html2canvas";
+import jsPDF from "jspdf";
 import { useAuth } from "../context/AuthContext";
 import api from "../api";
-import { Trophy } from "lucide-react";
-import jsPDF from "jspdf";
-import html2canvas from "html2canvas";
 import PremiumAccessGuard from "../components/payment/PremiumAccessGuard";
 import styles from "./TeamChampionship.module.css";
 
 const EVENT_FILTERS = ["OVERALL", "KYORUGI", "POOMSAE", "FRESHER", "TAG TEAM"];
+const PDF_EXPORT_WIDTH = 1400;
 
-const getFullImageUrl = (filename) => {
-  if (!filename) return "";
-  if (filename.startsWith("http")) return filename;
-
-  const cleanFilename = filename.replace(/^.*[\\/]/, "");
-  const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000";
-  const uploadsUrl = baseUrl.replace(/\/api$/, "");
-
-  return `${uploadsUrl}/uploads/${cleanFilename}?t=${Date.now()}`;
-};
-
-const normalizeBaseUrl = () => {
-  const rawBase = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-  return rawBase.replace(/\/+$/, "");
-};
-
-const normalizeMedal = (value) => {
-  const medal = String(value || "").trim();
-  return ["Gold", "Silver", "Bronze"].includes(medal) ? medal : "";
-};
-
-const normalizeEventType = (event, subEvent) => {
-  const e = String(event || "").trim().toLowerCase();
-  const s = String(subEvent || "").trim().toLowerCase();
-
-  if (s.includes("fresher") || s.includes("fresh")) return "FRESHER";
-  if (s.includes("tag")) return "TAG TEAM";
-  if (e.includes("poomsae") || s.includes("poomsae")) return "POOMSAE";
-  if (e.includes("kyorugi") || s.includes("kyorugi")) return "KYORUGI";
-
-  return "OTHER";
-};
-
-const normalizeGender = (value) => {
-  const v = String(value || "").trim().toLowerCase();
-
-  if (["male", "m", "boy", "boys"].includes(v)) return "Male";
-  if (["female", "f", "girl", "girls"].includes(v)) return "Female";
-
-  return String(value || "").trim();
-};
-
-const normalizeAgeCategory = (value) => {
-  const v = String(value || "").trim();
-  const lower = v.toLowerCase();
-
-  if (lower === "sub-junior" || lower === "sub junior") return "Sub-Junior";
-  if (lower === "cadet") return "Cadet";
-  if (lower === "junior") return "Junior";
-  if (lower === "senior") return "Senior";
-  if (lower === "under-14" || lower === "under - 14" || lower === "under 14") return "Under - 14";
-  if (lower === "under-17" || lower === "under - 17" || lower === "under 17") return "Under - 17";
-  if (lower === "under-19" || lower === "under - 19" || lower === "under 19") return "Under - 19";
-
-  return v;
-};
-
-const TeamChampionship = () => {
-  const { id: rawId } = useParams();
-  const id = rawId?.trim();
-  const navigate = useNavigate();
- const { isAuthenticated } = useAuth();
-
-  const [tournament, setTournament] = useState(null);
-  const [players, setPlayers] = useState([]);
-  const [medalPoints, setMedalPoints] = useState({
-    gold: 5,
-    silver: 3,
-    bronze: 1,
-  });
-
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [selectedEvent, setSelectedEvent] = useState("KYORUGI");
-  const [selectedAge, setSelectedAge] = useState("OVERALL");
-  const [selectedGender, setSelectedGender] = useState("OVERALL");
-  const [availableAges, setAvailableAges] = useState(["OVERALL"]);
-  const [availableGenders, setAvailableGenders] = useState(["OVERALL"]);
-const [filteredTeamsFromServer, setFilteredTeamsFromServer] = useState([]);
-const [availableEventsFromServer, setAvailableEventsFromServer] = useState(["OVERALL"]);
-const [serverStats, setServerStats] = useState({
+const EMPTY_STATS = {
   totalTeams: 0,
   totalPlayers: 0,
   totalMale: 0,
   totalFemale: 0,
   medalWinners: 0,
-});
+};
+
+const PODIUM_CONFIG = [
+  { rank: 1, label: "Champion", variant: "gold" },
+  { rank: 2, label: "Runner-up", variant: "silver" },
+  { rank: 3, label: "Third place", variant: "bronze" },
+];
+
+const getFullImageUrl = (filename) => {
+  if (!filename) return "";
+  if (/^https?:\/\//i.test(filename)) return filename;
+
+  const cleanFilename = String(filename).replace(/^.*[\\/]/, "");
+  const baseUrl =
+    import.meta.env.VITE_API_URL ||
+    import.meta.env.VITE_API_BASE_URL ||
+    "http://localhost:5000";
+  const uploadsUrl = baseUrl.replace(/\/api\/?$/, "").replace(/\/+$/, "");
+
+  return `${uploadsUrl}/uploads/${cleanFilename}`;
+};
+
+const safeFilePart = (value, fallback) => {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/[^a-z0-9]+/gi, "_")
+    .replace(/^_+|_+$/g, "");
+
+  return normalized || fallback;
+};
+
+const waitForImages = async (root) => {
+  const images = Array.from(root?.querySelectorAll?.("img") || []);
+
+  await Promise.all(
+    images.map((image) => {
+      if (image.complete) return Promise.resolve();
+
+      return new Promise((resolve) => {
+        image.addEventListener("load", resolve, { once: true });
+        image.addEventListener("error", resolve, { once: true });
+      });
+    }),
+  );
+};
+
+const nextAnimationFrame = () =>
+  new Promise((resolve) => requestAnimationFrame(() => resolve()));
+
+const openPDFPrintPreview = (pdfBlob) =>
+  new Promise((resolve, reject) => {
+    const blobUrl = URL.createObjectURL(pdfBlob);
+    const printFrame = document.createElement("iframe");
+    let settled = false;
+
+    const cleanup = () => {
+      window.setTimeout(() => {
+        printFrame.remove();
+        URL.revokeObjectURL(blobUrl);
+      }, 60_000);
+    };
+
+    const finish = (callback) => {
+      if (settled) return;
+      settled = true;
+      callback();
+    };
+
+    Object.assign(printFrame.style, {
+      position: "fixed",
+      right: "0",
+      bottom: "0",
+      width: "1px",
+      height: "1px",
+      border: "0",
+      opacity: "0",
+      pointerEvents: "none",
+    });
+
+    printFrame.setAttribute("title", "Team Championship print document");
+    printFrame.setAttribute("aria-hidden", "true");
+
+    printFrame.onload = () => {
+      window.setTimeout(() => {
+        try {
+          const frameWindow = printFrame.contentWindow;
+
+          if (!frameWindow) {
+            throw new Error("The browser could not open the print preview.");
+          }
+
+          frameWindow.focus();
+          frameWindow.print();
+          window.focus();
+          finish(resolve);
+          cleanup();
+        } catch (printError) {
+          finish(() => reject(printError));
+          cleanup();
+        }
+      }, 250);
+    };
+
+    printFrame.onerror = () => {
+      finish(() => reject(new Error("The PDF could not be loaded for printing.")));
+      cleanup();
+    };
+
+    document.body.appendChild(printFrame);
+    printFrame.src = blobUrl;
+  });
+
+const PodiumTrophy = ({ rank }) => (
+  <svg
+    className={styles.premiumTrophy}
+    viewBox="0 0 64 64"
+    role="img"
+    aria-label={`Rank ${rank}`}
+  >
+    <path
+      className={styles.trophyHandle}
+      d="M18 15H9v5c0 8 4.6 13 12.2 13M46 15h9v5c0 8-4.6 13-12.2 13"
+    />
+    <path
+      className={styles.trophyBody}
+      d="M17 9h30v11c0 13.2-6.6 22-15 22S17 33.2 17 20V9Z"
+    />
+    <path
+      className={styles.trophyShine}
+      d="M22 13h5v8.5c0 7.1 2.4 12.1 6.2 15.7C26.8 36.2 22 29.6 22 20.5V13Z"
+    />
+    <path className={styles.trophyStem} d="M29 40h6v9h-6z" />
+    <path
+      className={styles.trophyBase}
+      d="M23 48h18a3 3 0 0 1 3 3v4H20v-4a3 3 0 0 1 3-3Z"
+    />
+    <path className={styles.trophyBaseLine} d="M18 56h28" />
+    <text className={styles.trophyRank} x="32" y="29">
+      {rank}
+    </text>
+  </svg>
+);
+
+const PodiumCard = ({ team, config }) => {
+  if (!team || !config) return null;
+
+  return (
+    <article
+      className={`${styles.podiumCard} ${styles[config.variant]}`}
+      aria-label={`${config.label}: ${team.team || "Unknown team"}`}
+    >
+      <div className={styles.rankMedallion} aria-hidden="true">
+        <PodiumTrophy rank={config.rank} />
+      </div>
+
+      <div className={styles.podiumContent}>
+        <div className={styles.podiumHeading}>
+          <div>
+            <span className={styles.podiumEyebrow}>{config.label}</span>
+            <h3 title={team.team || ""}>{team.team || "Unknown Team"}</h3>
+          </div>
+
+          <div className={styles.pointsPill}>
+            <strong>{Number(team.total || 0)}</strong>
+            <span>PTS</span>
+          </div>
+        </div>
+
+        <div className={styles.podiumMedals}>
+          <div>
+            <span className={`${styles.smallMedal} ${styles.smallGold}`}>
+              <Medal size={14} aria-hidden="true" />
+            </span>
+            <strong>{Number(team.gold || 0)}</strong>
+            <small>Gold</small>
+          </div>
+
+          <div>
+            <span className={`${styles.smallMedal} ${styles.smallSilver}`}>
+              <Medal size={14} aria-hidden="true" />
+            </span>
+            <strong>{Number(team.silver || 0)}</strong>
+            <small>Silver</small>
+          </div>
+
+          <div>
+            <span className={`${styles.smallMedal} ${styles.smallBronze}`}>
+              <Medal size={14} aria-hidden="true" />
+            </span>
+            <strong>{Number(team.bronze || 0)}</strong>
+            <small>Bronze</small>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+};
+
+const StatCard = ({ icon: Icon, label, value }) => (
+  <article className={styles.statCard}>
+    <div className={styles.statIcon} aria-hidden="true">
+      <Icon size={25} strokeWidth={2.1} />
+    </div>
+
+    <div>
+      <span>{label}</span>
+      <strong>{Number(value || 0)}</strong>
+    </div>
+  </article>
+);
+
+const TeamChampionship = () => {
+  const { id: rawId } = useParams();
+  const id = rawId?.trim();
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
+
+  const [tournament, setTournament] = useState(null);
+  const [filteredTeams, setFilteredTeams] = useState([]);
+  const [availableEvents, setAvailableEvents] = useState(["OVERALL"]);
+  const [availableAges, setAvailableAges] = useState(["OVERALL"]);
+  const [availableGenders, setAvailableGenders] = useState(["OVERALL"]);
+  const [stats, setStats] = useState(EMPTY_STATS);
+
+  const [selectedEvent, setSelectedEvent] = useState("KYORUGI");
+  const [selectedAge, setSelectedAge] = useState("OVERALL");
+  const [selectedGender, setSelectedGender] = useState("OVERALL");
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [error, setError] = useState("");
 
   const pdfPageRef = useRef(null);
 
-  const ageCategoryOrder = useMemo(
-    () => [
-      "Sub-Junior",
-      "Cadet",
-      "Junior",
-      "Senior",
-      "Under - 14",
-      "Under - 17",
-      "Under - 19",
-    ],
-    []
-  );
+  useEffect(() => {
+    if (!isAuthenticated) navigate("/login");
+  }, [isAuthenticated, navigate]);
 
-  const genderOrder = useMemo(() => ["Male", "Female"], []);
+  const applyChampionshipResponse = useCallback((championshipData = {}) => {
+    const nextEvents = Array.isArray(championshipData.availableEvents)
+      ? championshipData.availableEvents
+          .filter((eventName) => EVENT_FILTERS.includes(eventName))
+          .sort(
+            (left, right) =>
+              EVENT_FILTERS.indexOf(left) - EVENT_FILTERS.indexOf(right),
+          )
+      : ["OVERALL"];
 
-  const normalizeEntryRows = useCallback((rows = []) => {
-    return rows
-      .map((p) => ({
-        ...p,
-        name: String(p?.name || "").trim(),
-        team: String(p?.team || "").trim() || "Independent",
-        gender: normalizeGender(p?.gender),
-        ageCategory: normalizeAgeCategory(p?.ageCategory),
-        weightCategory: String(p?.weightCategory || "").trim(),
-        event: String(p?.event || "").trim(),
-        subEvent: String(p?.subEvent || "").trim(),
-        eventType: normalizeEventType(p?.event, p?.subEvent),
-        medal: normalizeMedal(p?.medal),
-      }))
-      .filter((p) => p.name && p.gender && p.ageCategory && p.weightCategory && p.team);
+    setFilteredTeams(
+      Array.isArray(championshipData.teams) ? championshipData.teams : [],
+    );
+    setAvailableEvents(nextEvents.length ? nextEvents : ["OVERALL"]);
+    setAvailableAges(
+      Array.isArray(championshipData.availableAges) &&
+        championshipData.availableAges.length
+        ? championshipData.availableAges
+        : ["OVERALL"],
+    );
+    setAvailableGenders(
+      Array.isArray(championshipData.availableGenders) &&
+        championshipData.availableGenders.length
+        ? championshipData.availableGenders
+        : ["OVERALL"],
+    );
+    setStats({
+      ...EMPTY_STATS,
+      ...(championshipData.stats || {}),
+    });
   }, []);
 
-  const updateAvailableFilters = useCallback(
-    (rows) => {
-      const uniqueAges = [...new Set(rows.map((p) => p.ageCategory).filter(Boolean))].sort((a, b) => {
-        const ai = ageCategoryOrder.indexOf(a);
-        const bi = ageCategoryOrder.indexOf(b);
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-      });
+  const fetchChampionship = useCallback(async () => {
+    const response = await api.get(
+      `/tournament/${id}/team-championship?event=${encodeURIComponent(
+        selectedEvent,
+      )}&age=${encodeURIComponent(selectedAge)}&gender=${encodeURIComponent(
+        selectedGender,
+      )}&ts=${Date.now()}`,
+    );
 
-      const uniqueGenders = [...new Set(rows.map((p) => p.gender).filter(Boolean))].sort((a, b) => {
-        const ai = genderOrder.indexOf(a);
-        const bi = genderOrder.indexOf(b);
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-      });
+    applyChampionshipResponse(response.data || {});
+  }, [
+    applyChampionshipResponse,
+    id,
+    selectedAge,
+    selectedEvent,
+    selectedGender,
+  ]);
 
-      setAvailableAges(["OVERALL", ...uniqueAges]);
-      setAvailableGenders(["OVERALL", ...uniqueGenders]);
-    },
-    [ageCategoryOrder, genderOrder]
-  );
+  useEffect(() => {
+    if (!id || !isAuthenticated) return undefined;
 
-const availableEvents = useMemo(() => {
-  return (availableEventsFromServer || ["OVERALL"])
-    .filter((eventName) => EVENT_FILTERS.includes(eventName))
-    .sort((a, b) => EVENT_FILTERS.indexOf(a) - EVENT_FILTERS.indexOf(b));
-}, [availableEventsFromServer]);
+    let active = true;
+
+    const loadPage = async () => {
+      try {
+        setIsLoading(true);
+        setError("");
+
+        const [tournamentResponse, championshipResponse] = await Promise.all([
+          api.get(`/tournament/${id}`),
+          api.get(
+            `/tournament/${id}/team-championship?event=${encodeURIComponent(
+              selectedEvent,
+            )}&age=${encodeURIComponent(
+              selectedAge,
+            )}&gender=${encodeURIComponent(selectedGender)}&ts=${Date.now()}`,
+          ),
+        ]);
+
+        if (!active) return;
+
+        const tournamentData = tournamentResponse.data || {};
+        setTournament({
+          name: tournamentData.tournamentName || "Unnamed Tournament",
+          federation: tournamentData.federation || "N/A",
+          logos: Array.isArray(tournamentData.logos)
+            ? tournamentData.logos
+            : [],
+        });
+
+        applyChampionshipResponse(championshipResponse.data || {});
+      } catch (requestError) {
+        if (!active) return;
+        setError(
+          requestError?.response?.data?.message ||
+            requestError?.message ||
+            "Failed to load Team Championship.",
+        );
+      } finally {
+        if (active) setIsLoading(false);
+      }
+    };
+
+    loadPage();
+
+    return () => {
+      active = false;
+    };
+  }, [
+    applyChampionshipResponse,
+    id,
+    isAuthenticated,
+    selectedAge,
+    selectedEvent,
+    selectedGender,
+  ]);
 
   useEffect(() => {
     if (!availableEvents.includes(selectedEvent)) {
-      setSelectedEvent("KYORUGI");
+      setSelectedEvent(
+        availableEvents.includes("KYORUGI")
+          ? "KYORUGI"
+          : availableEvents[0] || "OVERALL",
+      );
     }
   }, [availableEvents, selectedEvent]);
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      navigate("/login");
-    }
-  }, [isAuthenticated, navigate]);
+    if (!availableAges.includes(selectedAge)) setSelectedAge("OVERALL");
+  }, [availableAges, selectedAge]);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setIsLoading(true);
-        setError(null);
+    if (!availableGenders.includes(selectedGender)) {
+      setSelectedGender("OVERALL");
+    }
+  }, [availableGenders, selectedGender]);
 
-       const [tournamentRes, championshipRes] = await Promise.all([
-  api.get(`/tournament/${id}`),
-  api.get(
-    `/tournament/${id}/team-championship?event=${encodeURIComponent(selectedEvent)}&age=${encodeURIComponent(selectedAge)}&gender=${encodeURIComponent(selectedGender)}&ts=${Date.now()}`
-  ),
-]);
+  const podiumTeams = useMemo(
+    () =>
+      filteredTeams
+        .slice(0, 3)
+        .map((team, index) => ({ team, config: PODIUM_CONFIG[index] })),
+    [filteredTeams],
+  );
 
-        const tournamentData = tournamentRes.data;
+  const logoLeft = tournament?.logos?.[0]
+    ? getFullImageUrl(tournament.logos[0])
+    : "";
+  const logoRight = tournament?.logos?.[1]
+    ? getFullImageUrl(tournament.logos[1])
+    : "";
 
-        setTournament({
-          name: tournamentData.tournamentName || "Unnamed Tournament",
-          federation: tournamentData.federation || "N/A",
-          logos: tournamentData.logos || [],
-        });
-
-        setMedalPoints({
-          gold: Number(tournamentData?.medalPoints?.gold) || 5,
-          silver: Number(tournamentData?.medalPoints?.silver) || 3,
-          bronze: Number(tournamentData?.medalPoints?.bronze) || 1,
-        });
-
-      const championshipData = championshipRes.data || {};
-
-setPlayers([]);
-setFilteredTeamsFromServer(championshipData.teams || []);
-setAvailableAges(championshipData.availableAges || ["OVERALL"]);
-setAvailableGenders(championshipData.availableGenders || ["OVERALL"]);
-setAvailableEventsFromServer(championshipData.availableEvents || ["OVERALL"]);
-setServerStats(
-  championshipData.stats || {
-    totalTeams: 0,
-    totalPlayers: 0,
-    totalMale: 0,
-    totalFemale: 0,
-    medalWinners: 0,
-  }
-);
-      } catch (err) {
-        setError(err?.message || "Failed to load data");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    if (id && isAuthenticated) fetchData();
-  }, [id, isAuthenticated, selectedEvent, selectedAge, selectedGender]);
-
- const filteredPlayers = [];
-
-const filteredTeams = filteredTeamsFromServer;
- 
   const refreshData = async () => {
-  setIsLoading(true);
-
-  try {
-    const championshipRes = await api.get(
-      `/tournament/${id}/team-championship?event=${encodeURIComponent(selectedEvent)}&age=${encodeURIComponent(selectedAge)}&gender=${encodeURIComponent(selectedGender)}&ts=${Date.now()}`
-    );
-
-    const championshipData = championshipRes.data || {};
-
-    setFilteredTeamsFromServer(championshipData.teams || []);
-    setAvailableAges(championshipData.availableAges || ["OVERALL"]);
-    setAvailableGenders(championshipData.availableGenders || ["OVERALL"]);
-    setAvailableEventsFromServer(championshipData.availableEvents || ["OVERALL"]);
-    setServerStats(
-      championshipData.stats || {
-        totalTeams: 0,
-        totalPlayers: 0,
-        totalMale: 0,
-        totalFemale: 0,
-        medalWinners: 0,
-      }
-    );
-  } finally {
-    setIsLoading(false);
-  }
-};
-
-  const totalTeams = serverStats.totalTeams || 0;
-const totalPlayers = serverStats.totalPlayers || 0;
-const totalMale = serverStats.totalMale || 0;
-const totalFemale = serverStats.totalFemale || 0;
-const bracketsWithWinners = serverStats.medalWinners || 0;
+    try {
+      setIsRefreshing(true);
+      setError("");
+      await fetchChampionship();
+    } catch (requestError) {
+      setError(
+        requestError?.response?.data?.message ||
+          requestError?.message ||
+          "Failed to refresh Team Championship.",
+      );
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const generatePDFDoc = async () => {
     if (!pdfPageRef.current) {
-      alert("Page not ready for PDF generation");
-      return null;
+      throw new Error("Championship page is not ready for export.");
     }
 
-    const page = pdfPageRef.current;
-    const doc = new jsPDF("l", "mm", "a4");
+    const source = pdfPageRef.current;
+    const exportWidth = PDF_EXPORT_WIDTH;
+    const clone = source.cloneNode(true);
+    const exportHost = document.createElement("div");
 
-    const clone = page.cloneNode(true);
-    const container = document.createElement("div");
+    clone.classList.add(styles.pdfExport);
+    clone.style.width = `${PDF_EXPORT_WIDTH}px`;
+    clone.style.maxWidth = "none";
+    clone
+      .querySelectorAll('[data-screen-only="true"]')
+      .forEach((element) => element.remove());
 
-    Object.assign(container.style, {
-      position: "absolute",
-      left: "-9999px",
-      top: "-9999px",
-      width: "297mm",
-      height: "210mm",
-      background: "#ffffff",
-      padding: "15mm",
-      boxSizing: "border-box",
+    clone.querySelectorAll("select").forEach((select) => {
+      const selectedOption = select.options?.[select.selectedIndex];
+      const value = document.createElement("span");
+      const isEventSelect = Boolean(
+        select.closest(`.${styles.eventSelectWrapper}`),
+      );
+
+      value.className = isEventSelect
+        ? `${styles.exportSelectValue} ${styles.exportEventSelectValue}`
+        : styles.exportSelectValue;
+      value.textContent = selectedOption?.textContent || select.value || "OVERALL";
+
+      const wrapper = select.parentElement;
+      select.replaceWith(value);
+      wrapper?.querySelector("svg")?.remove();
+
+      if (isEventSelect) {
+        wrapper
+          ?.querySelector(`.${styles.eventPrintValue}`)
+          ?.remove();
+      }
     });
 
-    container.appendChild(clone);
-    document.body.appendChild(container);
+    Object.assign(exportHost.style, {
+      position: "fixed",
+      left: "-12000px",
+      top: "0",
+      width: `${exportWidth}px`,
+      background: "#ffffff",
+      padding: "0",
+      margin: "0",
+      zIndex: "-1",
+    });
+
+    exportHost.appendChild(clone);
+    document.body.appendChild(exportHost);
 
     try {
+      if (document.fonts?.ready) await document.fonts.ready;
+      await waitForImages(clone);
+      await nextAnimationFrame();
+      await nextAnimationFrame();
+
       const canvas = await html2canvas(clone, {
-        scale: 2.2,
+        scale: 2,
         useCORS: true,
+        allowTaint: false,
         backgroundColor: "#ffffff",
         logging: false,
+        windowWidth: exportWidth,
+        windowHeight: Math.ceil(clone.scrollHeight),
+        scrollX: 0,
+        scrollY: 0,
+        onclone: (clonedDocument) => {
+          clonedDocument.documentElement.style.backgroundColor = "#ffffff";
+          clonedDocument.body.style.backgroundColor = "#ffffff";
+        },
       });
 
-      const imgData = canvas.toDataURL("image/png");
-
+      const doc = new jsPDF("l", "mm", "a4");
       const pdfWidth = 297;
       const pdfHeight = 210;
-      const ratio = Math.min((pdfWidth - 30) / canvas.width, (pdfHeight - 30) / canvas.height);
-      const imgWidth = canvas.width * ratio;
-      const imgHeight = canvas.height * ratio;
-      const x = (pdfWidth - imgWidth) / 2;
-      const y = (pdfHeight - imgHeight) / 2;
+      const safeMargin = 6;
+      const usableWidth = pdfWidth - safeMargin * 2;
+      const usableHeight = pdfHeight - safeMargin * 2;
+      const ratio = Math.min(
+        usableWidth / canvas.width,
+        usableHeight / canvas.height,
+      );
+      const imageWidth = canvas.width * ratio;
+      const imageHeight = canvas.height * ratio;
 
-      doc.addImage(imgData, "PNG", x, y, imgWidth, imgHeight);
+      doc.addImage(
+        canvas.toDataURL("image/png"),
+        "PNG",
+        (pdfWidth - imageWidth) / 2,
+        (pdfHeight - imageHeight) / 2,
+        imageWidth,
+        imageHeight,
+        undefined,
+        "NONE",
+      );
+
       return doc;
-    } catch (err) {
-      console.error("PDF generation failed:", err);
-      alert("Failed to generate PDF");
-      return null;
     } finally {
-      document.body.removeChild(container);
+      exportHost.remove();
     }
   };
 
   const saveAllPDF = async () => {
-    const doc = await generatePDFDoc();
-
-    if (doc) {
+    try {
+      setIsExporting(true);
+      const doc = await generatePDFDoc();
       doc.save(
-        `Team_Championship_${selectedEvent}_${tournament?.name?.replace(/[^a-z0-9]/gi, "_") || "Tournament"}_${id}.pdf`
+        `Team_Championship_${safeFilePart(
+          selectedEvent,
+          "Overall",
+        )}_${safeFilePart(tournament?.name, "Tournament")}_${id}.pdf`,
       );
+    } catch (exportError) {
+      console.error("Team Championship PDF export failed:", exportError);
+      setError(exportError?.message || "Failed to save Team Championship PDF.");
+    } finally {
+      setIsExporting(false);
     }
   };
 
   const printAllPDF = async () => {
-    const doc = await generatePDFDoc();
-
-    if (doc) {
-      const blob = doc.output("blob");
-      const url = URL.createObjectURL(blob);
-      const printWin = window.open(url, "_blank");
-      if (printWin) printWin.focus();
+    try {
+      setIsExporting(true);
+      const doc = await generatePDFDoc();
+      await openPDFPrintPreview(doc.output("blob"));
+    } catch (exportError) {
+      console.error("Team Championship print export failed:", exportError);
+      setError(
+        exportError?.message || "Failed to prepare Team Championship print.",
+      );
+    } finally {
+      setIsExporting(false);
     }
   };
 
   if (!isAuthenticated) return null;
 
-  if (isLoading) return <div className={styles.loading}>Loading Team Championship...</div>;
-
-  if (error) {
+  if (isLoading) {
     return (
-      <div className={styles.container}>
-        <h2>Error: {error}</h2>
+      <div className={styles.loadingState} role="status" aria-live="polite">
+        <span className={styles.loadingSpinner} />
+        <strong>Loading Team Championship...</strong>
       </div>
     );
   }
 
-  const logoLeft = tournament?.logos?.[0] ? getFullImageUrl(tournament.logos[0]) : null;
-  const logoRight = tournament?.logos?.[1] ? getFullImageUrl(tournament.logos[1]) : logoLeft;
-
   return (
-    <div className={styles.container}>
-      <PremiumAccessGuard tournamentId={id}>
-      <div className={styles.buttonSection}>
-        <div className={styles.pdfButtonWrapper}>
-          <button onClick={refreshData} className={styles.printButton}>
-            Refresh
-          </button>
-
-          <button onClick={printAllPDF} className={styles.printButton} disabled={!filteredTeams.length}>
-            Print
-          </button>
-
-          <button onClick={saveAllPDF} className={styles.pdfButton} disabled={!filteredTeams.length}>
-            Save PDF
-          </button>
-        </div>
-      </div>
-
-      <div className={styles.eventTabs}>
-        {availableEvents.map((eventName) => (
-          <button
-            key={eventName}
-            type="button"
-            className={`${styles.eventTab} ${selectedEvent === eventName ? styles.activeEventTab : ""}`}
-            onClick={() => setSelectedEvent(eventName)}
-          >
-            {eventName}
-          </button>
-        ))}
-      </div>
-
-      <div ref={pdfPageRef} className={styles.championshipPage}>
-        <div className={styles.header}>
-          {logoLeft && <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} />}
-
-          <div className={styles.headerContent}>
-            <h1 className={styles.tournamentName}>{tournament?.name?.toUpperCase()}</h1>
-            <p className={styles.federation}>{tournament?.federation}</p>
-
-            <h2 className={styles.title}>
-              <Trophy className={styles.trophyIcon} />
-              TEAM CHAMPIONSHIP
-            </h2>
-
-            <h3 className={styles.subTitle}>{selectedEvent}</h3>
+    <PremiumAccessGuard tournamentId={id}>
+      <main className={styles.container}>
+        {error ? (
+          <div className={styles.errorBanner} role="alert">
+            <span>{error}</span>
+            <button type="button" onClick={refreshData}>
+              Try again
+            </button>
           </div>
+        ) : null}
 
-          {logoRight && <img src={logoRight} alt="Logo Right" className={styles.logoRight} />}
-        </div>
+        <section ref={pdfPageRef} className={styles.championshipPage}>
+          <header className={styles.hero}>
+            <svg
+              className={styles.heroAccent}
+              viewBox="0 0 180 188"
+              preserveAspectRatio="none"
+              aria-hidden="true"
+            >
+              <path
+                className={styles.heroAccentShape}
+                d="M0 0H148L180 94L130 188H0Z"
+              />
+            </svg>
 
-        <div className={styles.dropdowns}>
-          <div className={styles.dropdownWrapper}>
-            <label className={styles.label}>Age Category:</label>
-            <select value={selectedAge} onChange={(e) => setSelectedAge(e.target.value)} className={styles.dropdown}>
-              {availableAges.map((age) => (
-                <option key={age} value={age}>
-                  {age}
-                </option>
-              ))}
-            </select>
-          </div>
+            <div className={styles.heroEmblem}>
+              {logoLeft ? (
+                <img src={logoLeft} alt="Tournament logo" />
+              ) : (
+                <Trophy size={57} strokeWidth={1.8} aria-hidden="true" />
+              )}
+            </div>
 
-          <div className={styles.dropdownWrapper}>
-            <label className={styles.label}>Gender:</label>
-            <select value={selectedGender} onChange={(e) => setSelectedGender(e.target.value)} className={styles.dropdown}>
-              {availableGenders.map((gender) => (
-                <option key={gender} value={gender}>
-                  {gender}
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
+            <div className={styles.heroContent}>
+              <h1>{tournament?.name || "Tournament"}</h1>
+              <p>{tournament?.federation || "Tournament Federation"}</p>
 
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Rank</th>
-              <th>Team Name</th>
-              <th>Gold</th>
-              <th>Silver</th>
-              <th>Bronze</th>
-              <th>Total Points</th>
-            </tr>
-          </thead>
+              <h2>
+                <Trophy size={30} strokeWidth={2} aria-hidden="true" />
+                <span>Team Championship</span>
+              </h2>
 
-          <tbody>
-            {filteredTeams.length === 0 ? (
-              <tr>
-                <td colSpan={6} className={styles.noData}>
-                  No team points available for {selectedEvent}. Declare medals in Entry page or declare winners in TieSheet first.
-                </td>
-              </tr>
-            ) : (
-              filteredTeams.map((teamData, index) => (
-                <tr
-                  key={teamData.team}
-                  className={
-                    index === 0
-                      ? styles.highlightGold
-                      : index === 1
-                        ? styles.highlightSilver
-                        : index === 2
-                          ? styles.highlightBronze
-                          : ""
-                  }
+              <div className={styles.eventSelectWrapper}>
+                <select
+                  value={selectedEvent}
+                  onChange={(event) => setSelectedEvent(event.target.value)}
+                  aria-label="Championship event"
                 >
-                  <td className={styles.rank}>#{index + 1}</td>
-                  <td className={styles.teamName}>{teamData.team}</td>
-                  <td>{teamData.gold}</td>
-                  <td>{teamData.silver}</td>
-                  <td>{teamData.bronze}</td>
-                  <td className={styles.totalPoints}>{teamData.total}</td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+                  {availableEvents.map((eventName) => (
+                    <option key={eventName} value={eventName}>
+                      {eventName}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown size={15} aria-hidden="true" />
+                <span className={styles.eventPrintValue} aria-hidden="true">
+                  {selectedEvent}
+                </span>
+              </div>
+            </div>
 
-        <div className={styles.stats}>
-          <span>Total Teams: {totalTeams}</span>
-          <span>Total Players: {totalPlayers}</span>
-          <span>Total Male: {totalMale}</span>
-          <span>Total Female: {totalFemale}</span>
-          <span>Medal Winners: {bracketsWithWinners}</span>
-        </div>
-      </div>
-      </PremiumAccessGuard>
-    </div>
+            <div className={styles.heroStripes} aria-hidden="true" />
+
+            {logoRight ? (
+              <img
+                src={logoRight}
+                alt="Federation logo"
+                className={styles.heroRightLogo}
+              />
+            ) : null}
+          </header>
+
+          <div className={styles.toolbar}>
+            <div className={styles.filters}>
+              <label className={styles.filterControl}>
+                <span className={styles.filterIcon}>
+                  <Users size={23} aria-hidden="true" />
+                </span>
+                <span className={styles.filterText}>
+                  <small>Age Category</small>
+                  <span className={styles.selectShell}>
+                    <select
+                      value={selectedAge}
+                      onChange={(event) => setSelectedAge(event.target.value)}
+                    >
+                      {availableAges.map((age) => (
+                        <option key={age} value={age}>
+                          {age}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={15} aria-hidden="true" />
+                  </span>
+                </span>
+              </label>
+
+              <span className={styles.filterDivider} aria-hidden="true" />
+
+              <label className={styles.filterControl}>
+                <span className={styles.filterIcon}>
+                  <UserRound size={23} aria-hidden="true" />
+                </span>
+                <span className={styles.filterText}>
+                  <small>Gender</small>
+                  <span className={styles.selectShell}>
+                    <select
+                      value={selectedGender}
+                      onChange={(event) =>
+                        setSelectedGender(event.target.value)
+                      }
+                    >
+                      {availableGenders.map((gender) => (
+                        <option key={gender} value={gender}>
+                          {gender}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown size={15} aria-hidden="true" />
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            <div
+              className={styles.actionButtons}
+              data-screen-only="true"
+              aria-label="Team Championship actions"
+            >
+              <button
+                type="button"
+                onClick={refreshData}
+                disabled={isRefreshing || isExporting}
+              >
+                <RefreshCw
+                  size={18}
+                  className={isRefreshing ? styles.spinning : ""}
+                  aria-hidden="true"
+                />
+                <span>{isRefreshing ? "Refreshing..." : "Refresh"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={printAllPDF}
+                disabled={!filteredTeams.length || isExporting}
+              >
+                <Printer size={18} aria-hidden="true" />
+                <span>Print</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={saveAllPDF}
+                disabled={!filteredTeams.length || isExporting}
+              >
+                <FileDown size={18} aria-hidden="true" />
+                <span>{isExporting ? "Preparing..." : "Save PDF"}</span>
+              </button>
+            </div>
+          </div>
+
+          {podiumTeams.length ? (
+            <section className={styles.podiumGrid} aria-label="Top teams">
+              {podiumTeams.map(({ team, config }) => (
+                <PodiumCard
+                  key={`${config.rank}-${team.team}`}
+                  team={team}
+                  config={config}
+                />
+              ))}
+            </section>
+          ) : null}
+
+          <section className={styles.leaderboardCard}>
+            <div className={styles.tableScroller}>
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Rank</th>
+                    <th>Team</th>
+                    <th>
+                      <span className={styles.headingWithMedal}>
+                        <Medal size={17} /> Gold
+                      </span>
+                    </th>
+                    <th>
+                      <span className={styles.headingWithMedal}>
+                        <Medal size={17} /> Silver
+                      </span>
+                    </th>
+                    <th>
+                      <span className={styles.headingWithMedal}>
+                        <Medal size={17} /> Bronze
+                      </span>
+                    </th>
+                    <th>Total Points</th>
+                  </tr>
+                </thead>
+
+                <tbody>
+                  {!filteredTeams.length ? (
+                    <tr>
+                      <td colSpan={6} className={styles.noData}>
+                        No team points are available for the selected filters.
+                        Declare medals in Entry or winners in TieSheet first.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredTeams.map((team, index) => (
+                      <tr key={`${team.team}-${index}`}>
+                        <td className={styles.rankCell}>#{index + 1}</td>
+                        <td className={styles.teamCell} title={team.team || ""}>
+                          {team.team || "Unknown Team"}
+                        </td>
+                        <td>{Number(team.gold || 0)}</td>
+                        <td>{Number(team.silver || 0)}</td>
+                        <td>{Number(team.bronze || 0)}</td>
+                        <td className={styles.totalCell}>
+                          {Number(team.total || 0)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          <section className={styles.statsGrid} aria-label="Tournament summary">
+            <StatCard
+              icon={Users}
+              label="Total Teams"
+              value={stats.totalTeams}
+            />
+            <StatCard
+              icon={UserRound}
+              label="Total Players"
+              value={stats.totalPlayers}
+            />
+            <StatCard icon={Mars} label="Total Male" value={stats.totalMale} />
+            <StatCard
+              icon={Venus}
+              label="Total Female"
+              value={stats.totalFemale}
+            />
+            <StatCard
+              icon={Medal}
+              label="Medal Winners"
+              value={stats.medalWinners}
+            />
+          </section>
+        </section>
+      </main>
+    </PremiumAccessGuard>
   );
 };
 

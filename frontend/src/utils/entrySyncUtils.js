@@ -17,7 +17,9 @@ const INTERNAL_FIELDS = new Set([
   "_id",
   "__v",
   "id",
+  "entryId",
   "actions",
+  "pendingSync",
   "createdAt",
   "updatedAt",
   "createdBy",
@@ -37,7 +39,7 @@ export const sanitizeEntryUpdates = (updates = {}) => {
 };
 
 export const mergeEntryUpdates = (current = {}, incoming = {}) => ({
-  ...current,
+  ...sanitizeEntryUpdates(current),
   ...sanitizeEntryUpdates(incoming),
 });
 
@@ -144,12 +146,14 @@ export const buildBracketCategoryKey = (entry = {}) =>
 
 export const buildBracketGroupSignatures = (entries = []) => {
   const groups = new Map();
+
   for (const entry of Array.isArray(entries) ? entries : []) {
     const key = buildBracketCategoryKey(entry);
     const group = groups.get(key) || [];
     group.push(entry);
     groups.set(key, group);
   }
+
   return Object.fromEntries(
     [...groups.entries()]
       .sort(([left], [right]) => left.localeCompare(right))

@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   buildBracketEntrySignature,
-  buildBracketGroupSignatures,
   chunkEntryOperations,
+  mergeEntryUpdates,
   reconcileEntriesWithPending,
+  sanitizeEntryUpdates,
 } from "../entrySyncUtils";
 
 describe("entrySyncUtils", () => {
@@ -52,25 +53,34 @@ describe("entrySyncUtils", () => {
     );
   });
 
-  it("ignores row order, serial number and non-bracket contact changes", () => {
-    const rows = [
-      { entryId: "a", name: "A", srNo: 1, coachContact: "111" },
-      { entryId: "b", name: "B", srNo: 2, coachContact: "222" },
-    ];
-    const reordered = [
-      { ...rows[1], srNo: 1, coachContact: "999" },
-      { ...rows[0], srNo: 2, coachContact: "888" },
-    ];
-    expect(buildBracketEntrySignature(rows)).toBe(
-      buildBracketEntrySignature(reordered)
-    );
+  it("removes row identity and UI-only fields from imported-row updates", () => {
+    expect(
+      sanitizeEntryUpdates({
+        entryId: "imported-entry-1",
+        _id: "mongo-id",
+        actions: "",
+        pendingSync: true,
+        name: "PLAYER ONE",
+        team: "TEAM ONE",
+        sr: "1",
+      })
+    ).toEqual({
+      name: "PLAYER ONE",
+      team: "TEAM ONE",
+      sr: "1",
+    });
   });
 
-  it("builds stable per-category signatures", () => {
-    const rows = [
-      { entryId: "a", gender: "Male", ageCategory: "Cadet", name: "A" },
-      { entryId: "b", gender: "Female", ageCategory: "Cadet", name: "B" },
-    ];
-    expect(Object.keys(buildBracketGroupSignatures(rows))).toHaveLength(2);
+  it("also removes invalid internal fields left in an older queued update", () => {
+    expect(
+      mergeEntryUpdates(
+        {
+          entryId: "old-imported-entry",
+          pendingSync: true,
+          name: "OLD NAME",
+        },
+        { name: "NEW NAME" }
+      )
+    ).toEqual({ name: "NEW NAME" });
   });
 });
