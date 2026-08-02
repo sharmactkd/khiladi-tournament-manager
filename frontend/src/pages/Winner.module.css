@@ -1,479 +1,1105 @@
-/* Winner.module.css */
+/* src/pages/Winner.module.css */
+
 .winnerContainer {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 20px;
-  font-family: 'Arial', sans-serif;
-  background: #f8f9fa;
+  width: min(100%, 1440px);
   min-height: 100vh;
+  margin: 0 auto;
+  padding: 18px 22px 36px;
+  box-sizing: border-box;
+  background: #ffffff;
+  color: #111827;
+  font-family: Arial, Helvetica, sans-serif;
 }
 
-.pdfButtonWrapper {
-  display: flex;
-  justify-content: center;      /* centre on small screens */
-  gap: 10px;
-  flex-wrap: wrap;
-  margin: 20px 0;
-}
-
-/* ---- Base button (used for both PDF & Print) ---- */
-.pdfButton,
-.printButton {
-  padding: 8px 16px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s ease;
-  border: none;
-  white-space: nowrap;
-  background: #cf0006;          /* same red as tie-sheet */
-  color: #ffffff;
-  font-weight: 600;
-}
-
-/* ---- Hover (same as tie-sheet) ---- */
-.pdfButton:hover:not(:disabled),
-.printButton:hover:not(:disabled) {
-  background: #a50040;
-}
-
-/* ---- Disabled state ---- */
-.pdfButton:disabled,
-.printButton:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-/* ---- Optional: give Print a slightly different colour (green) ---- */
-.printButton {
-  background: #a50040;          /* green – same as your earlier Print button */
-}
-.printButton:hover:not(:disabled) {
-  background: #a50040;
-}
-
-.winnerPage {
-  background: white;
-  margin-bottom: 30px;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+.hero {
+  position: relative;
+  min-height: 188px;
   overflow: hidden;
-  page-break-after: always;
-  page-break-inside: avoid;
-}
-
-.pageHeader {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr) 210px;
   align-items: center;
-  padding: 20px;
- background: #f5f5f5;
-  color: linear-gradient(135deg, #2c3e50 0%, #34495e 100%);
-  gap: 20px;
-  min-height: 100px; /* Ensures space for logos */
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  border-radius: 15px;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.1);
 }
 
-.logoLeft,
-.logoRight {
-  max-height: 100px;
-  width: auto;
+.heroAccent {
+  position: absolute;
+  inset: 0 auto 0 0;
+  z-index: 0;
+  width: 210px;
+  height: 100%;
+}
+
+.heroAccent path {
+  fill: #bd0005;
+}
+
+.heroEmblem {
+  position: relative;
+  z-index: 2;
+  width: 92px;
+  height: 92px;
+  margin-left: 43px;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+}
+
+.heroEmblem svg {
+  display: block;
+  color: #ffffff;
+  stroke: #ffffff;
+}
+
+.heroEmblem img {
+  display: block;
+  max-width: 86px;
+  max-height: 86px;
   object-fit: contain;
-  flex-shrink: 0;
 }
 
-.headerContent {
-  flex: 1;
+.heroContent {
+  position: relative;
+  z-index: 3;
+  grid-column: 2;
+  min-width: 0;
+  padding: 22px 30px;
   text-align: center;
 }
 
-.tournamentName {
-  font-size: 1.8rem;
-  font-weight: bold;
-  margin: 0 0 5px 0;
+.heroContent h1 {
+  margin: 0;
+  overflow-wrap: anywhere;
+  color: #111827;
+  font-size: clamp(25px, 2.4vw, 38px);
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  line-height: 1.05;
   text-transform: uppercase;
-  letter-spacing: 1px;
 }
 
-.federation {
-  font-size: 0.9rem;
-  margin: 0 0 10px 0;
-  opacity: 0.9;
+.heroContent p {
+  margin: 6px 0 11px;
+  color: #4b5563;
+  font-size: 14px;
+  line-height: 1.2;
+  text-transform: uppercase;
 }
 
-.medalTitle {
-  font-size: 1.4rem;
-  margin: 10px 0 5px 0;
+.heroContent h2 {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: #111827;
+  font-size: clamp(24px, 2.5vw, 38px);
+  font-weight: 900;
+  letter-spacing: 0.025em;
+  line-height: 1.1;
+  text-transform: uppercase;
 }
 
-.ageGenderTitle {
-  font-size: 1.1rem;
-  margin: 5px 0 0 0;
-  font-weight: 600;
-  opacity: 0.95;
+.heroContent h2 svg {
+  flex: 0 0 auto;
+  color: #cf0006;
+  stroke: #cf0006;
 }
 
-.tableContainer {
-  padding: 20px;
-  overflow-x: auto;
+.eventPill,
+.reportEvent {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 118px;
+  min-height: 31px;
+  box-sizing: border-box;
+  background: #cf0006;
+  border-radius: 7px;
+  color: #ffffff;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
-.medalTable {
-  width: 100%;
-  border-collapse: collapse;
-  background: white;
-  border-radius: 8px;
+.eventPill {
+  margin-top: 11px;
+}
+
+.heroDots {
+  position: absolute;
+  top: 18px;
+  right: 26px;
+  z-index: 1;
+  width: 185px;
+  display: grid;
+  grid-template-columns: repeat(14, 4px);
+  gap: 8px 9px;
+  pointer-events: none;
+}
+
+.heroDots span {
+  display: block;
+  width: 4px;
+  height: 4px;
+  background: #ef9da0;
+  border-radius: 50%;
+}
+
+.heroStripes {
+  position: absolute;
+  right: 19px;
+  bottom: 0;
+  z-index: 2;
+  width: 104px;
+  height: 156px;
   overflow: hidden;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+  pointer-events: none;
 }
 
-.medalTable th {
-  background: #34495e;
-  color: white;
-  padding: 15px 12px;
-  text-align: left;
-  font-weight: 600;
-  font-size: 0.9rem;
+.heroStripes span {
+  position: absolute;
+  display: block;
+  width: 13px;
+  height: 128px;
+  background: #df0006;
+  transform: rotate(37deg);
+}
+
+.heroStripes span:first-child {
+  right: 42px;
+  top: -7px;
+}
+
+.heroStripes span:last-child {
+  right: 2px;
+  bottom: -50px;
+}
+
+.heroRightLogo {
+  position: absolute;
+  right: 28px;
+  bottom: 20px;
+  z-index: 3;
+  max-width: 68px;
+  max-height: 58px;
+  object-fit: contain;
+}
+
+.toolbar {
+  margin-top: 16px;
+  min-height: 76px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 22px;
+  padding: 13px 17px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1px solid #e1e5eb;
+  border-radius: 12px;
+  box-shadow: 0 5px 18px rgba(17, 24, 39, 0.05);
+}
+
+.filters,
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.filters {
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.filterControl {
+  min-width: 194px;
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: #cf0006;
+}
+
+.filterControl > svg {
+  display: block;
+  stroke: #cf0006;
+}
+
+.filterControl > span {
+  min-width: 0;
+}
+
+.filterControl small {
+  display: block;
+  margin-bottom: 4px;
+  color: #374151;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+.selectWrapper {
+  position: relative;
+  display: block;
+}
+
+.selectWrapper select {
+  width: 100%;
+  min-height: 36px;
+  padding: 0 34px 0 12px;
+  appearance: none;
+  background: #ffffff;
+  border: 1px solid #d5dbe4;
+  border-radius: 7px;
+  color: #111827;
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  outline: none;
+  text-overflow: ellipsis;
+}
+
+.selectWrapper select:focus-visible {
+  border-color: #cf0006;
+  box-shadow: 0 0 0 3px rgba(207, 0, 6, 0.12);
+}
+
+.selectWrapper svg {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  color: #4b5563;
+  pointer-events: none;
+}
+
+.actions {
+  flex: 0 0 auto;
+}
+
+.actions button,
+.errorBanner button,
+.emptyState button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 15px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1px solid #cf0006;
+  border-radius: 8px;
+  color: #cf0006;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  transition: background 0.2s ease, color 0.2s ease, transform 0.2s ease;
+}
+
+.actions button svg,
+.errorBanner button svg,
+.emptyState button svg {
+  stroke: currentColor;
+}
+
+.actions button:hover:not(:disabled),
+.errorBanner button:hover,
+.emptyState button:hover {
+  background: #cf0006;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.actions button:focus-visible,
+.errorBanner button:focus-visible,
+.emptyState button:focus-visible {
+  outline: 3px solid rgba(207, 0, 6, 0.17);
+  outline-offset: 2px;
+}
+
+.actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.reportList {
+  display: grid;
+  gap: 24px;
+  margin-top: 18px;
+}
+
+.winnerPage {
+  overflow: hidden;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1px solid #dce1e8;
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.08);
+  page-break-inside: avoid;
+}
+
+.reportHeading {
+  min-height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 18px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.reportKicker {
+  display: block;
+  margin-bottom: 5px;
+  color: #cf0006;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 2px solid #2c3e50;
 }
 
-.medalTable td {
-  padding: 12px;
-  border-bottom: 1px solid #ecf0f1;
-  vertical-align: middle;
+.reportHeading h2 {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 9px;
+  color: #111827;
+  font-size: 21px;
+  font-weight: 900;
+  line-height: 1.1;
+  text-transform: uppercase;
 }
 
-.weightHeader { width: 20%; }
-.medalHeader { width: 15%; }
-.participantHeader { width: 35%; }
-.teamHeader { width: 20%; }
-.markHeader { width: 10%; }
-
-.weightCell {
-  background: #f8f9fa;
-  font-weight: 600;
-  color: #2c3e50;
-  border-right: 2px solid #ecf0f1;
-  font-size: 0.95rem;
+.reportHeading h2 span {
+  color: #cf0006;
 }
 
-.weightCellFirst {
-  border-top-left-radius: 8px;
+.reportEvent {
+  min-width: 100px;
+  min-height: 28px;
+  font-size: 10px;
 }
 
-.medalCell {
+.reportHeadingRight {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sheetActions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
-.medalContainer {
-  display: flex;
+.sheetActions button {
+  min-height: 31px;
+  display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-}
-
-.medalIcon {
-  width: 20px;
-  height: 20px;
-}
-
-.medalIconGold { color: #f1c40f; }
-.medalIconSilver { color: #bdc3c7; }
-.medalIconBronze { color: #cd7f32; }
-
-.medalText {
-  font-weight: 600;
-  font-size: 0.85rem;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.participantCell {
-  font-size: 0.95rem;
-  color: #2c3e50;
-}
-
-.winnerName {
-  font-size: 1rem !important;
-  color: #a50040 !important;
-}
-
-
-
-.teamName {
+  padding: 0 10px;
+  box-sizing: border-box;
   background: #ffffff;
-  padding: 4px 8px;
-  border-radius: 12px;
-  font-weight: bold;
-  font-size: 0.85rem;
-  display: inline-block;
-}
-
-.noTeam {
-  color: #95a5a6;
-  font-style: italic;
-}
-
-.markCell {
-  text-align: center;
-}
-
-.markLine {
-  display: block;
-  border-bottom: 2px solid #34495e;
-  width: 80%;
-  margin: 0 auto;
-  height: 2px;
-}
-
-.noMedalCell {
-  text-align: center;
-  color: #7f8c8d;
-  font-style: italic;
-  background: #f8f9fa;
-}
-
-.noMedalText {
-  font-size: 0.9rem;
-}
-
-.pageFooter {
-  background: #f8f9fa;
-  padding: 15px 20px;
-  border-top: 1px solid #ecf0f1;
-  font-size: 0.8rem;
-  color: #7f8c8d;
-}
-
-.footerContent {
-  display: flex;
-  justify-content: space-between;   /* Left empty, Center, Right */
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-/* Center Text: www.khiladi.com */
-.footerCenterText {
-  flex: 1;
-  text-align: center;
-  font-weight: 500;
-  color: #7f8c8d;
-}
-
-/* Page Number: Right */
-.pageNumber {
-  color: #34495e;
-  font-weight: 500;
+  border: 1px solid #cf0006;
+  border-radius: 7px;
+  color: #cf0006;
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  font-weight: 900;
   white-space: nowrap;
 }
 
-/* No winners state */
-.noWinnersContainer {
-  text-align: center;
-  padding: 60px 20px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-  margin: 40px 0;
+.sheetActions button svg {
+  display: block;
+  stroke: #cf0006;
 }
 
-.noWinnersIcon {
-  width: 80px;
-  height: 80px;
-  color: #bdc3c7;
-  margin-bottom: 20px;
-}
-
-.noWinnersTitle {
-  color: #2c3e50;
-  font-size: 1.8rem;
-  margin-bottom: 10px;
-  font-weight: 600;
-}
-
-.noWinnersText {
-  color: #7f8c8d;
-  font-size: 1.1rem;
-  margin-bottom: 30px;
-  line-height: 1.5;
-}
-
-.goToTieSheetButton {
-  background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
-  color: white;
-  border: none;
-  padding: 12px 30px;
-  border-radius: 25px;
-  font-size: 16px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  text-decoration: none;
-  display: inline-block;
-}
-
-.goToTieSheetButton:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(231, 76, 60, 0.3);
-}
-
-/* Error state */
-.errorContainer {
-  max-width: 600px;
-  margin: 40px auto;
-  padding: 40px;
-  background: white;
-  border-radius: 8px;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-  text-align: center;
-}
-
-.errorTitle {
-  color: #e74c3c;
-  font-size: 1.5rem;
-  margin-bottom: 15px;
-}
-
-.errorMessage {
-  color: #7f8c8d;
-  margin-bottom: 25px;
-  line-height: 1.5;
-}
-
-.retryButton, .backButton {
-  background: #3498db;
-  color: white;
-  border: none;
-  padding: 10px 20px;
-  border-radius: 20px;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  margin: 0 10px;
-  transition: all 0.3s ease;
-}
-
-.retryButton:hover, .backButton:hover {
-  background: #2980b9;
-  transform: translateY(-1px);
-}
-
-.backButton {
-  background: #95a5a6;
-}
-
-.backButton:hover {
-  background: #7f8c8d;
-}
-
-/* Loading state */
-.loading {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  min-height: 300px;
-  font-size: 1.2rem;
-  color: #7f8c8d;
-}
-
-/* Responsive */
-@media print {
-  .winnerContainer {
-    background: white;
-    padding: 0;
-  }
-  
-  .buttonSection, .pdfButtonWrapper {
-    display: none;
-  }
-  
-  .winnerPage {
-    box-shadow: none;
-    margin: 0;
-    page-break-after: always;
-    page-break-inside: avoid;
-  }
-  
-  .pageHeader {
-    background: #2c3e50 !important;
-   -webkit-print-color-adjust: exact;
-        print-color-adjust: exact;
-  }
-}
-
-@media (max-width: 768px) {
-  .winnerContainer {
-    padding: 10px;
-  }
-  
-  .pageHeader {
-    flex-direction: column;
-    text-align: center;
-    gap: 15px;
-  }
-  
-  .tournamentName {
-    font-size: 1.4rem;
-  }
-  
-  .medalTable {
-    font-size: 0.85rem;
-  }
-  
-  .medalTable th, .medalTable td {
-    padding: 8px 6px;
-  }
-  
-  .tableContainer {
-    padding: 15px;
-  }
-  
-  .footerContent {
-    flex-direction: column;
-    gap: 8px;
-    text-align: center;
-  }
-
-  .pdfButtonWrapper {
-    flex-direction: column;
-    gap: 10px;
-  }
-}
-
-.eventToggleWrapper {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-  justify-content: center;
-  margin-top: 14px;
-}
-
-.eventToggleButton {
-  padding: 8px 16px;
-  border: 1px solid #cf0006;
-  background: #ffffff;
-  color: #cf0006;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.eventToggleActive {
+.sheetActions button:hover:not(:disabled) {
   background: #cf0006;
   color: #ffffff;
 }
 
-
-.weightGroupStart td {
-  border-top: 1px solid rgba(15, 23, 42, 0.14);
+.sheetActions button:hover:not(:disabled) svg {
+  stroke: #ffffff;
 }
-/* keep table clean */
+
+.sheetActions button:focus-visible {
+  outline: 3px solid rgba(207, 0, 6, 0.16);
+  outline-offset: 2px;
+}
+
+.sheetActions button:disabled {
+  opacity: 0.48;
+  cursor: not-allowed;
+}
+
+.tableContainer {
+  padding: 0 16px 13px;
+  overflow-x: auto;
+}
+
 .medalTable {
+  width: 100%;
+  table-layout: fixed;
   border-collapse: separate;
   border-spacing: 0;
+  background: #ffffff;
 }
 
+.medalTable th {
+  padding: 12px 10px;
+  background: #cf0006;
+  border-right: 1px solid rgba(255, 255, 255, 0.45);
+  color: #ffffff;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.055em;
+  line-height: 1.15;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.medalTable th:first-child {
+  border-radius: 8px 0 0 0;
+}
+
+.medalTable th:last-child {
+  border-right: 0;
+  border-radius: 0 8px 0 0;
+}
+
+.medalTable td {
+  height: 46px;
+  padding: 7px 10px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border-right: 1px solid #e1e5eb;
+  border-bottom: 1px solid #e1e5eb;
+  color: #1f2937;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
+  vertical-align: middle;
+  overflow-wrap: anywhere;
+}
+
+.medalTable tbody tr:nth-child(even) td:not(.weightCell) {
+  background: #f8f9fb;
+}
+
+.medalTable td:first-child {
+  border-left: 1px solid #e1e5eb;
+}
+
+.weightHeader { width: 20%; }
+.medalHeader { width: 16%; }
+.participantHeader { width: 28%; }
+.teamHeader { width: 24%; }
+.markHeader { width: 12%; }
+
+.weightCell {
+  background: #f4f5f7 !important;
+  color: #111827 !important;
+  font-size: 13px !important;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.weightGroupStart td {
+  border-top: 1px solid #cfd5de;
+}
+
+.medalCell {
+  padding: 6px !important;
+}
+
+.medalBadge {
+  min-width: 96px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 7px;
+  padding: 5px 9px;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.medalBadge svg {
+  display: block;
+  flex: 0 0 auto;
+  stroke: currentColor;
+}
+
+.medalGold {
+  color: #a97800;
+}
+
+.medalSilver {
+  color: #737b86;
+}
+
+.medalBronze {
+  color: #a85e1d;
+}
+
+.participantCell,
+.teamCell {
+  text-align: left !important;
+}
+
+.participantCell strong,
+.teamCell strong {
+  display: block;
+  max-width: 100%;
+  color: #111827;
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.teamCell strong {
+  color: #374151;
+  font-size: 11px;
+}
+
+.noTeam {
+  color: #9ca3af;
+  font-style: italic;
+}
+
+
+.summaryGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 16px 14px;
+}
+
+.summaryCard {
+  min-height: 72px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 9px 14px;
+  box-sizing: border-box;
+  background: #ffffff;
+  border: 1px solid #dce1e8;
+  border-radius: 9px;
+}
+
+.summaryIcon {
+  width: 42px;
+  height: 42px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  background: #cf0006;
+  border: 1px solid #cf0006;
+  border-radius: 50%;
+  color: #ffffff;
+}
+
+.summaryIcon svg {
+  display: block;
+  color: #ffffff;
+  stroke: #ffffff;
+}
+
+.summaryCard > span:last-child {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.summaryCard strong {
+  color: #111827;
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.summaryCard small {
+  margin-top: 5px;
+  color: #4b5563;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  line-height: 1.1;
+  text-transform: uppercase;
+}
+
+.pageFooter {
+  min-height: 39px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
+  padding: 8px 17px;
+  box-sizing: border-box;
+  background: #f8f9fb;
+  border-top: 1px solid #e1e5eb;
+  color: #6b7280;
+  font-size: 9px;
+  line-height: 1.2;
+}
+
+.pageFooter strong {
+  color: #cf0006;
+}
+
+.footerWebsite {
+  color: #1151b8;
+  font-weight: 800;
+  text-align: center;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.footerWebsite:hover {
+  color: #cf0006;
+}
+
+.pageFooter > span:last-child {
+  color: #374151;
+  font-weight: 800;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.errorBanner {
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 11px 14px;
+  background: #fff1f2;
+  border: 1px solid #f2a6a9;
+  border-radius: 9px;
+  color: #991b1b;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.errorBanner button {
+  min-height: 33px;
+}
+
+.emptyState {
+  margin-top: 18px;
+  padding: 58px 22px;
+  text-align: center;
+  background: #ffffff;
+  border: 1px solid #dce1e8;
+  border-radius: 12px;
+  box-shadow: 0 8px 22px rgba(17, 24, 39, 0.07);
+}
+
+.emptyIcon {
+  width: 82px;
+  height: 82px;
+  margin: 0 auto 17px;
+  display: grid;
+  place-items: center;
+  background: #fff1f2;
+  border: 1px solid #f2a6a9;
+  border-radius: 50%;
+  color: #cf0006;
+}
+
+.emptyIcon svg {
+  stroke: #cf0006;
+}
+
+.emptyState h2 {
+  margin: 0 0 9px;
+  color: #111827;
+  font-size: 25px;
+  font-weight: 900;
+}
+
+.emptyState p {
+  max-width: 650px;
+  margin: 0 auto 22px;
+  color: #6b7280;
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.emptyState button {
+  min-height: 42px;
+  background: #cf0006;
+  color: #ffffff;
+}
+
+.loadingState {
+  min-height: 360px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #374151;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.spinner {
+  width: 28px;
+  height: 28px;
+  border: 3px solid #f2b8ba;
+  border-top-color: #cf0006;
+  border-radius: 50%;
+  animation: rotate 0.85s linear infinite;
+}
+
+.spinning {
+  animation: rotate 0.85s linear infinite;
+}
+
+@keyframes rotate {
+  to { transform: rotate(360deg); }
+}
+
+/* Deterministic A4 portrait capture. These rules are independent of viewport breakpoints. */
+.pdfExport {
+  width: 794px !important;
+  max-width: none !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+  background: #ffffff !important;
+  color: #111827 !important;
+  font-family: Arial, Helvetica, sans-serif !important;
+}
+
+.pdfExport .hero {
+  width: 794px !important;
+  min-height: 143px !important;
+  grid-template-columns: 164px minmax(0, 1fr) 164px !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.pdfExport .heroAccent {
+  width: 164px !important;
+}
+
+.pdfExport .heroEmblem {
+  width: 72px !important;
+  height: 72px !important;
+  margin-left: 33px !important;
+}
+
+.pdfExport .heroEmblem img {
+  max-width: 65px !important;
+  max-height: 65px !important;
+}
+
+.pdfExport .heroContent {
+  padding: 12px 20px !important;
+}
+
+.pdfExport .heroContent h1 {
+  font-size: 22px !important;
+}
+
+.pdfExport .heroContent p {
+  margin: 4px 0 7px !important;
+  font-size: 10px !important;
+}
+
+.pdfExport .heroContent h2 {
+  gap: 7px !important;
+  font-size: 22px !important;
+}
+
+.pdfExport .eventPill {
+  min-width: 92px !important;
+  min-height: 24px !important;
+  margin-top: 7px !important;
+  font-size: 9px !important;
+}
+
+.pdfExport .heroDots {
+  top: 13px !important;
+  right: 18px !important;
+  width: 139px !important;
+  grid-template-columns: repeat(14, 3px) !important;
+  gap: 6px 7px !important;
+}
+
+.pdfExport .heroDots span {
+  width: 3px !important;
+  height: 3px !important;
+}
+
+.pdfExport .heroStripes {
+  right: 12px !important;
+  width: 80px !important;
+  height: 120px !important;
+}
+
+.pdfExport .heroRightLogo {
+  right: 18px !important;
+  bottom: 13px !important;
+  max-width: 48px !important;
+  max-height: 42px !important;
+}
+
+.pdfExport .winnerPage {
+  width: 794px !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.pdfExport [data-screen-only="true"] {
+  display: none !important;
+}
+
+.pdfExport .reportHeading {
+  min-height: 55px !important;
+  padding: 8px 13px !important;
+}
+
+.pdfExport .reportKicker {
+  margin-bottom: 3px !important;
+  font-size: 7px !important;
+}
+
+.pdfExport .reportHeading h2 {
+  font-size: 16px !important;
+}
+
+.pdfExport .reportEvent {
+  min-width: 82px !important;
+  min-height: 22px !important;
+  font-size: 8px !important;
+}
+
+.pdfExport .tableContainer {
+  padding: 0 11px 9px !important;
+  overflow: visible !important;
+}
+
+.pdfExport .medalTable th {
+  padding: 8px 6px !important;
+  font-size: 8px !important;
+}
+
+.pdfExport .medalTable td {
+  height: 32px !important;
+  padding: 4px 6px !important;
+  font-size: 8px !important;
+}
+
+.pdfExport .weightCell {
+  font-size: 9px !important;
+}
+
+.pdfExport .medalBadge {
+  min-width: 72px !important;
+  gap: 4px !important;
+  padding: 3px 6px !important;
+  font-size: 7px !important;
+}
+
+.pdfExport .medalBadge svg {
+  width: 13px !important;
+  height: 13px !important;
+}
+
+.pdfExport .participantCell strong,
+.pdfExport .teamCell strong {
+  font-size: 8px !important;
+}
+
+.pdfExport .summaryGrid {
+  gap: 8px !important;
+  padding: 0 11px 9px !important;
+}
+
+.pdfExport .summaryCard {
+  min-height: 49px !important;
+  gap: 8px !important;
+  padding: 6px 9px !important;
+}
+
+.pdfExport .summaryIcon {
+  width: 31px !important;
+  height: 31px !important;
+}
+
+.pdfExport .summaryIcon svg {
+  width: 17px !important;
+  height: 17px !important;
+}
+
+.pdfExport .summaryCard strong {
+  font-size: 16px !important;
+}
+
+.pdfExport .summaryCard small {
+  margin-top: 3px !important;
+  font-size: 7px !important;
+}
+
+.pdfExport .pageFooter {
+  min-height: 30px !important;
+  padding: 6px 12px !important;
+  font-size: 7px !important;
+}
+
+@media (max-width: 1100px) {
+  .toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .actions {
+    justify-content: flex-end;
+  }
+}
+
+@media (max-width: 760px) {
+  .winnerContainer {
+    padding: 12px 10px 28px;
+  }
+
+  .hero {
+    min-height: 174px;
+    grid-template-columns: 126px minmax(0, 1fr);
+  }
+
+  .heroAccent {
+    width: 140px;
+  }
+
+  .heroEmblem {
+    width: 62px;
+    height: 62px;
+    margin-left: 28px;
+  }
+
+  .heroEmblem img {
+    max-width: 57px;
+    max-height: 57px;
+  }
+
+  .heroContent {
+    grid-column: 2;
+    padding: 18px 14px 18px 4px;
+  }
+
+  .heroContent h1 {
+    font-size: 21px;
+  }
+
+  .heroContent h2 {
+    font-size: 21px;
+  }
+
+  .heroDots,
+  .heroStripes,
+  .heroRightLogo {
+    display: none;
+  }
+
+  .filters {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .filterControl {
+    min-width: 0;
+  }
+
+  .actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .reportHeading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .reportHeadingRight {
+    width: 100%;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .sheetActions {
+    width: 100%;
+  }
+
+  .sheetActions button {
+    flex: 1 1 0;
+  }
+
+  .tableContainer {
+    padding: 0 8px 10px;
+  }
+
+  .medalTable {
+    min-width: 700px;
+  }
+
+  .summaryGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .pageFooter {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+@media print {
+  .winnerContainer {
+    width: 100%;
+    max-width: none;
+    padding: 0;
+  }
+
+  .toolbar,
+  .errorBanner,
+  .emptyState,
+  .sheetActions {
+    display: none !important;
+  }
+
+  .hero,
+  .winnerPage {
+    box-shadow: none;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .winnerPage {
+    break-after: page;
+    page-break-after: always;
+  }
+}

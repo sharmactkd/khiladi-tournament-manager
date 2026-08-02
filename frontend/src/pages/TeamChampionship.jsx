@@ -28,6 +28,7 @@ import styles from "./TeamChampionship.module.css";
 
 const EVENT_FILTERS = ["OVERALL", "KYORUGI", "POOMSAE", "FRESHER", "TAG TEAM"];
 const PDF_EXPORT_WIDTH = 1400;
+const HERO_DOT_COUNT = 126;
 
 const EMPTY_STATS = {
   totalTeams: 0,
@@ -42,6 +43,14 @@ const PODIUM_CONFIG = [
   { rank: 2, label: "Runner-up", variant: "silver" },
   { rank: 3, label: "Third place", variant: "bronze" },
 ];
+
+const HeroDots = () => (
+  <div className={styles.heroDots} aria-hidden="true">
+    {Array.from({ length: HERO_DOT_COUNT }, (_, index) => (
+      <span key={index} />
+    ))}
+  </div>
+);
 
 const getFullImageUrl = (filename) => {
   if (!filename) return "";
@@ -646,6 +655,7 @@ const TeamChampionship = () => {
               </div>
             </div>
 
+            <HeroDots />
             <div className={styles.heroStripes} aria-hidden="true" />
 
             {logoRight ? (
