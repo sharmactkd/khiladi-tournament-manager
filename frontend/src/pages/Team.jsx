@@ -1,11 +1,24 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import PropTypes from "prop-types";
 import { useParams, useNavigate, useOutletContext } from "react-router-dom";
-import axios from "axios";
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
-import { FaPrint, FaFilePdf } from "react-icons/fa";
+import {
+  ArrowLeft,
+  Banknote,
+  Building2,
+  CircleCheck,
+  FileDown,
+  Printer,
+  RefreshCw,
+  ShieldCheck,
+  UserRound,
+  Users,
+  VenusAndMars,
+  WalletCards,
+} from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { getEntries } from "../api";
+import api, { getEntries } from "../api";
 import PremiumAccessGuard from "../components/payment/PremiumAccessGuard";
 import styles from "./Team.module.css";
 
@@ -18,6 +31,9 @@ const CONDITIONAL_COLUMNS = {
   pair: "Pair",
   teamPoomsae: "Team Poomsae",
 };
+
+const HERO_DOT_COUNT = 126;
+const PDF_EXPORT_WIDTH = 1400;
 
 const getFullImageUrl = (filename) => {
   if (!filename) return "";
@@ -91,6 +107,52 @@ const formatWeightCategoryForDisplay = (value = "") => {
     .trim();
 };
 
+const HeroDots = () => (
+  <div className={styles.heroDots} aria-hidden="true">
+    {Array.from({ length: HERO_DOT_COUNT }, (_, index) => (
+      <span key={index} style={{ opacity: 0.18 + (index % 14) * 0.035 }} />
+    ))}
+  </div>
+);
+
+const TeamEmblem = () => (
+  <svg
+    className={styles.teamEmblemIcon}
+    viewBox="0 0 96 96"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <circle cx="48" cy="48" r="42" />
+    <circle cx="48" cy="48" r="35" />
+    <circle cx="48" cy="32" r="10" />
+    <circle cx="25" cy="39" r="8" />
+    <circle cx="71" cy="39" r="8" />
+    <path d="M29 71v-7c0-13 8-22 19-22s19 9 19 22v7" />
+    <path d="M10 69v-5c0-11 6-18 15-18 6 0 11 3 14 8" />
+    <path d="M86 69v-5c0-11-6-18-15-18-6 0-11 3-14 8" />
+    <path d="M31 78h34" />
+  </svg>
+);
+
+const StatCard = ({ icon: Icon, label, value, tone = "red" }) => (
+  <div className={`${styles.statCard} ${styles[`stat${tone}`] || ""}`}>
+    <span className={styles.statIcon} aria-hidden="true">
+      <Icon size={21} strokeWidth={2.2} />
+    </span>
+    <span className={styles.statCopy}>
+      <small>{label}</small>
+      <strong>{value}</strong>
+    </span>
+  </div>
+);
+
+StatCard.propTypes = {
+  icon: PropTypes.elementType.isRequired,
+  label: PropTypes.string.isRequired,
+  value: PropTypes.oneOfType([PropTypes.string, PropTypes.number]).isRequired,
+  tone: PropTypes.string,
+};
+
 const Team = () => {
   const { id: rawId } = useParams();
   const id = rawId?.trim();
@@ -126,22 +188,28 @@ const Team = () => {
   });
 
   const [paymentData, setPaymentData] = useState({});
+  const [saveStatus, setSaveStatus] = useState("idle");
+  const [pageError, setPageError] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   const teamsPageRef = useRef(null);
   const playersPageRef = useRef(null);
+  const lastPaymentSnapshotRef = useRef("");
 
   useEffect(() => {
     const loadPayments = async () => {
       if (!token || !id) return;
 
       try {
-        const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-        const res = await axios.get(`${baseUrl}/tournament/${id}/team-payments`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        setPaymentData(res.data.teamPayments || {});
+        const res = await api.get(`/tournament/${id}/team-payments`);
+        const loadedPayments = res.data.teamPayments || {};
+        lastPaymentSnapshotRef.current = JSON.stringify(loadedPayments);
+        setPaymentData(loadedPayments);
       } catch (err) {
-        console.warn("No payment data on server or error:", err.message);
+        console.warn(
+          "No payment data on server or error:",
+          err?.response?.data?.message || err.message
+        );
       }
     };
 
@@ -154,18 +222,26 @@ const Team = () => {
     if (!canEditTeamPayments) return;
     if (Object.keys(paymentData).length === 0 || !token || !id) return;
 
+    const snapshot = JSON.stringify(paymentData);
+    if (snapshot === lastPaymentSnapshotRef.current) return;
+
     const timeoutId = setTimeout(async () => {
+      setSaveStatus("saving");
       try {
-        const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-        await axios.put(
-          `${baseUrl}/tournament/${id}/team-payments`,
-          { teamPayments: paymentData },
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
+        await api.put(`/tournament/${id}/team-payments`, {
+          teamPayments: paymentData,
+        });
+        lastPaymentSnapshotRef.current = snapshot;
+        setSaveStatus("saved");
+        window.setTimeout(
+          () => setSaveStatus((current) => (current === "saved" ? "idle" : current)),
+          2200
         );
       } catch (err) {
-        console.error("Auto-save failed:", err.message);
+        const message = err?.response?.data?.message || err.message || "Payment save failed";
+        console.error("Team payment autosave failed:", message);
+        setPageError(message);
+        setSaveStatus("error");
       }
     }, 1000);
 
@@ -175,8 +251,7 @@ const Team = () => {
   useEffect(() => {
     const fetchTournament = async () => {
       try {
-        const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
-        const res = await axios.get(`${baseUrl}/tournament/${id}`);
+        const res = await api.get(`/tournament/${id}`);
         setTournament(res.data);
       } catch (err) {
         console.warn("Could not load tournament details:", err);
@@ -297,7 +372,7 @@ const Team = () => {
             if (resolvedRows.length > 0) {
               localStorage.setItem(`entryData_${id}`, JSON.stringify(resolvedRows));
             }
-          } catch (serverError) {
+          } catch {
             console.warn("Could not fetch entries from server, falling back to local cache.");
           }
         }
@@ -436,45 +511,77 @@ const Team = () => {
   const logoLeft = tournament?.logos?.[0] ? getFullImageUrl(tournament.logos[0]) : null;
   const logoRight = tournament?.logos?.[1] ? getFullImageUrl(tournament.logos[1]) : logoLeft;
 
+  const totalPlayers = teamStats.reduce((sum, team) => sum + team.totalPlayers, 0);
+  const totalMale = teamStats.reduce((sum, team) => sum + team.malePlayers, 0);
+  const totalFemale = teamStats.reduce((sum, team) => sum + team.femalePlayers, 0);
+  const totalReceivable = teamStats.reduce((sum, team) => sum + getTotalFee(team), 0);
+  const totalCollected = teamStats.reduce((sum, team) => {
+    const payment = paymentData[team.name] || {};
+    return sum + Number(payment.cash || 0) + Number(payment.online || 0);
+  }, 0);
+
   const generatePDFDoc = async (pageRef) => {
     if (!pageRef.current) {
       alert("Page not ready for PDF generation");
       return null;
     }
 
-    const element = pageRef.current;
-    const clone = element.cloneNode(true);
+    const clone = pageRef.current.cloneNode(true);
+    clone.classList.add(styles.pdfExport);
+    clone.querySelectorAll('[data-screen-only="true"]').forEach((node) => node.remove());
+    clone.querySelectorAll("input, select").forEach((control) => {
+      const value = control.tagName === "SELECT"
+        ? control.options?.[control.selectedIndex]?.text || "-"
+        : control.value || "-";
+      const text = document.createElement("span");
+      text.className = styles.exportControlValue;
+      text.textContent = value;
+      control.replaceWith(text);
+    });
 
     const container = document.createElement("div");
     Object.assign(container.style, {
-      position: "absolute",
-      left: "-9999px",
-      top: "-9999px",
-      width: "auto",
+      position: "fixed",
+      left: "-20000px",
+      top: "0",
+      width: `${PDF_EXPORT_WIDTH}px`,
       maxWidth: "none",
       background: "#ffffff",
       boxSizing: "border-box",
+      pointerEvents: "none",
+      zIndex: "-1",
     });
 
     container.appendChild(clone);
     document.body.appendChild(container);
 
-    const style = document.createElement("style");
-    style.textContent = ``;
-    clone.appendChild(style);
-
     try {
+      if (document.fonts?.ready) await document.fonts.ready;
+      await Promise.all(
+        Array.from(clone.querySelectorAll("img")).map(
+          (image) =>
+            image.complete ||
+            new Promise((resolve) => {
+              image.addEventListener("load", resolve, { once: true });
+              image.addEventListener("error", resolve, { once: true });
+            })
+        )
+      );
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(resolve))
+      );
+
       const scale = 2;
       const canvas = await html2canvas(clone, {
         scale,
         useCORS: true,
         backgroundColor: "#ffffff",
         logging: false,
-        width: clone.scrollWidth,
+        width: PDF_EXPORT_WIDTH,
         height: clone.scrollHeight,
         scrollX: 0,
         scrollY: 0,
-        windowWidth: clone.scrollWidth,
+        windowWidth: PDF_EXPORT_WIDTH,
         windowHeight: clone.scrollHeight,
       });
 
@@ -486,7 +593,7 @@ const Team = () => {
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = pdf.internal.pageSize.getHeight();
 
-      const margin = 1;
+      const margin = 4;
       const availableWidth = pdfWidth - 2 * margin;
       const availableHeight = pdfHeight - 2 * margin;
 
@@ -508,48 +615,70 @@ const Team = () => {
       alert("Failed to generate PDF");
       return null;
     } finally {
-      document.body.removeChild(container);
+      container.remove();
     }
   };
 
   const savePDF = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
     const ref = selectedTeam ? playersPageRef : teamsPageRef;
-    const doc = await generatePDFDoc(ref);
-
-    if (doc) {
-      const suffix = selectedTeam
-        ? `_${selectedTeam.name.replace(/[^a-z0-9]/gi, "_")}`
-        : "_Overview";
-
-      doc.save(
-        `Teams_${
-          tournament?.tournamentName?.replace(/[^a-z0-9]/gi, "_") || "Tournament"
-        }${suffix}_${id}.pdf`
-      );
+    try {
+      const doc = await generatePDFDoc(ref);
+      if (doc) {
+        const suffix = selectedTeam
+          ? `_${selectedTeam.name.replace(/[^a-z0-9]/gi, "_")}`
+          : "_Overview";
+        doc.save(
+          `Teams_${
+            tournament?.tournamentName?.replace(/[^a-z0-9]/gi, "_") || "Tournament"
+          }${suffix}_${id}.pdf`
+        );
+      }
+    } finally {
+      setIsExporting(false);
     }
   };
 
   const printPDF = async () => {
+    if (isExporting) return;
+    setIsExporting(true);
     const ref = selectedTeam ? playersPageRef : teamsPageRef;
-    const doc = await generatePDFDoc(ref);
-
-    if (doc) {
-      const blob = doc.output("blob");
-      const url = URL.createObjectURL(blob);
-      const printWin = window.open(url, "_blank");
-      if (printWin) printWin.focus();
+    try {
+      const doc = await generatePDFDoc(ref);
+      if (doc) {
+        const blob = doc.output("blob");
+        const url = URL.createObjectURL(blob);
+        const printWin = window.open(url, "_blank", "noopener,noreferrer");
+        if (printWin) printWin.focus();
+        window.setTimeout(() => URL.revokeObjectURL(url), 120000);
+      }
+    } finally {
+      setIsExporting(false);
     }
   };
 
-  if (loading) return <div className={styles.loading}>Loading Team Data...</div>;
+  if (loading) {
+    return (
+      <div className={styles.stateShell} role="status">
+        <span className={styles.stateIcon}><RefreshCw size={30} /></span>
+        <h2>Loading Team Directory</h2>
+        <p>Entries, team totals and payments are being prepared.</p>
+      </div>
+    );
+  }
 
   if (teamStats.length === 0) {
     return (
       <div className={styles.container}>
-        <h2>No Teams Found</h2>
-        <button onClick={() => navigate(`/tournaments/${id}/entry`)} className={styles.backButton}>
-          Go to Entry Page
-        </button>
+        <div className={styles.stateShell}>
+          <span className={styles.stateIcon}><Users size={32} /></span>
+          <h2>No Teams Found</h2>
+          <p>Add players with a Team name on the Entry page to generate this directory.</p>
+          <button onClick={() => navigate(`/tournaments/${id}/entry`)} className={styles.primaryButton}>
+            <ArrowLeft size={17} /> Go to Entry Page
+          </button>
+        </div>
       </div>
     );
   }
@@ -558,48 +687,71 @@ const Team = () => {
     <div className={styles.container}>
       <PremiumAccessGuard tournamentId={id}>
         {isTournamentReadOnly && (
-          <div
-            style={{
-              background: "#fef3c7",
-              border: "1px solid #f59e0b",
-              color: "#92400e",
-              padding: "12px",
-              borderRadius: "8px",
-              marginBottom: "16px",
-              fontWeight: 700,
-            }}
-          >
+          <div className={styles.readOnlyBanner} role="status">
+            <ShieldCheck size={18} aria-hidden="true" />
             This tournament is archived and read-only. Team payment edits are locked.
             Print and PDF export remain available.
           </div>
         )}
 
-        <div className={styles.buttonSection}>
+        {pageError ? (
+          <div className={styles.errorBanner} role="alert">
+            {pageError}
+            <button type="button" onClick={() => setPageError("")}>Dismiss</button>
+          </div>
+        ) : null}
+
+        <div className={styles.buttonSection} data-screen-only="true">
           <div className={styles.buttonGroupLeft}>
+            {selectedTeam ? (
+              <button onClick={handleBackToTeams} className={styles.secondaryButton}>
+                <ArrowLeft size={17} />
+                <span>All Teams</span>
+              </button>
+            ) : (
+              <div className={styles.pageEyebrow}>
+                <Building2 size={17} /> Team Directory
+              </div>
+            )}
+            {saveStatus !== "idle" ? (
+              <span className={`${styles.saveStatus} ${styles[saveStatus] || ""}`}>
+                {saveStatus === "saving" ? "Saving payments…" : null}
+                {saveStatus === "saved" ? "All payment changes saved" : null}
+                {saveStatus === "error" ? "Payment save failed" : null}
+              </span>
+            ) : null}
+          </div>
+
+          <div className={styles.buttonGroupRight}>
             <button
               onClick={printPDF}
               className={styles.actionButton}
-              disabled={!canPrintTeams}
+              disabled={!canPrintTeams || isExporting}
             >
-              <FaPrint className={styles.buttonIcon} />
-              <span>Print</span>
+              <Printer size={17} />
+              <span>{isExporting ? "Preparing…" : "Print"}</span>
             </button>
 
             <button
               onClick={savePDF}
-              className={styles.actionButton}
-              disabled={!canExportTeams}
+              className={styles.primaryButton}
+              disabled={!canExportTeams || isExporting}
             >
-              <FaFilePdf className={styles.buttonIcon} />
-              <span>Save PDF</span>
+              <FileDown size={17} />
+              <span>{isExporting ? "Preparing…" : "Save PDF"}</span>
             </button>
           </div>
         </div>
 
         {!selectedTeam ? (
           <div ref={teamsPageRef} className={styles.pageContent}>
-            <div className={styles.header}>
-              {logoLeft ? <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} /> : null}
+            <header className={styles.header}>
+              <svg className={styles.heroAccent} viewBox="0 0 190 190" preserveAspectRatio="none" aria-hidden="true">
+                <path d="M0 0H150L190 95L140 190H0Z" />
+              </svg>
+              <div className={styles.heroEmblem} aria-hidden="true">
+                {logoLeft ? <img src={logoLeft} alt="" /> : <TeamEmblem />}
+              </div>
 
               <div className={styles.headerContent}>
                 <h1 className={styles.tournamentName}>
@@ -608,15 +760,40 @@ const Team = () => {
                     : "TOURNAMENT TEAMS"}
                 </h1>
                 <p className={styles.federation}>{tournament?.federation || "N/A"}</p>
-                <h2 className={styles.title}>TOTAL TEAMS - {totalTeams}</h2>
+                <h2 className={styles.title}>
+                  <TeamEmblem />
+                  <span>Team Directory</span>
+                </h2>
+                <span className={styles.heroPill}>{totalTeams} Registered Teams</span>
               </div>
 
-              {logoRight ? (
-                <img src={logoRight} alt="Logo Right" className={styles.logoRight} />
+              <HeroDots />
+              <span className={styles.heroStripeOne} aria-hidden="true" />
+              <span className={styles.heroStripeTwo} aria-hidden="true" />
+              {logoRight && logoRight !== logoLeft ? (
+                <img src={logoRight} alt="" className={styles.heroLogoRight} />
               ) : null}
+            </header>
+
+            <section className={styles.statsGrid} aria-label="Team summary">
+              <StatCard icon={Building2} label="Total Teams" value={totalTeams} />
+              <StatCard icon={Users} label="Total Players" value={totalPlayers} />
+              <StatCard icon={UserRound} label="Male Players" value={totalMale} />
+              <StatCard icon={VenusAndMars} label="Female Players" value={totalFemale} />
+              {hasFees ? (
+                <StatCard icon={WalletCards} label="Total Fees" value={`₹${totalReceivable}`} />
+              ) : null}
+              {hasFees ? (
+                <StatCard icon={CircleCheck} label="Collected" value={`₹${totalCollected}`} />
+              ) : null}
+            </section>
+
+            <div className={styles.sectionHeading}>
+              <span><Building2 size={18} /> Team Overview</span>
+              <small>Click any team row to view its complete player list</small>
             </div>
 
-            <div className={styles.tableWrapper} style={{ overflowX: "auto" }}>
+            <div className={styles.tableWrapper}>
               <table className={styles.table}>
                 <thead>
                   <tr>
@@ -859,16 +1036,22 @@ const Team = () => {
                 </tbody>
               </table>
             </div>
+            <footer className={styles.pageFooter}>
+              <span>Generated by <strong>KHILADI</strong> – Tournament Manager</span>
+              <a href="https://khiladi-khoj.com" target="_blank" rel="noopener noreferrer">khiladi-khoj.com</a>
+              <span>Team Directory</span>
+            </footer>
           </div>
         ) : (
-          <div>
-            <button onClick={handleBackToTeams} className={styles.backButton}>
-              ← Back to Teams List
-            </button>
-
+          <div className={styles.detailShell}>
             <div ref={playersPageRef} className={styles.pageContent}>
-              <div className={styles.header}>
-                {logoLeft ? <img src={logoLeft} alt="Logo Left" className={styles.logoLeft} /> : null}
+              <header className={styles.header}>
+                <svg className={styles.heroAccent} viewBox="0 0 190 190" preserveAspectRatio="none" aria-hidden="true">
+                  <path d="M0 0H150L190 95L140 190H0Z" />
+                </svg>
+                <div className={styles.heroEmblem} aria-hidden="true">
+                  {logoLeft ? <img src={logoLeft} alt="" /> : <TeamEmblem />}
+                </div>
 
                 <div className={styles.headerContent}>
                   <h1 className={styles.tournamentName}>
@@ -877,19 +1060,33 @@ const Team = () => {
                       : "TOURNAMENT TEAMS"}
                   </h1>
                   <p className={styles.federation}>{tournament?.federation || "N/A"}</p>
-                  <h2 className={styles.title}>TEAM - {selectedTeam.name.toUpperCase()}</h2>
+                  <h2 className={styles.title}>
+                    <TeamEmblem />
+                    <span>{selectedTeam.name.toUpperCase()}</span>
+                  </h2>
+                  <span className={styles.heroPill}>Team Player Directory</span>
                 </div>
 
-                {logoRight ? (
-                  <img src={logoRight} alt="Logo Right" className={styles.logoRight} />
+                <HeroDots />
+                <span className={styles.heroStripeOne} aria-hidden="true" />
+                <span className={styles.heroStripeTwo} aria-hidden="true" />
+                {logoRight && logoRight !== logoLeft ? (
+                  <img src={logoRight} alt="" className={styles.heroLogoRight} />
                 ) : null}
-              </div>
+              </header>
 
-              <h3 className={styles.playersListHeading}>Players List</h3>
-              <p className={styles.playersSummary}>
-                Total Players: {selectedTeam.totalPlayers} | Male: {selectedTeam.malePlayers} |
-                Female: {selectedTeam.femalePlayers}
-              </p>
+              <section className={styles.statsGrid} aria-label="Selected team summary">
+                <StatCard icon={Users} label="Total Players" value={selectedTeam.totalPlayers} />
+                <StatCard icon={UserRound} label="Male Players" value={selectedTeam.malePlayers} />
+                <StatCard icon={VenusAndMars} label="Female Players" value={selectedTeam.femalePlayers} />
+                <StatCard icon={ShieldCheck} label="Coach" value={selectedTeam.coach || "Not Added"} />
+                <StatCard icon={Banknote} label="Team Fee" value={`₹${getTotalFee(selectedTeam)}`} />
+              </section>
+
+              <div className={styles.sectionHeading}>
+                <span><Users size={18} /> Players List</span>
+                <small>{selectedTeam.name}</small>
+              </div>
 
               <div className={styles.tableWrapper}>
                 <table className={styles.table}>
@@ -910,7 +1107,7 @@ const Team = () => {
                       <th>Coach Contact</th>
                       <th>Manager</th>
                       <th>Manager Contact</th>
-                      {selectedTeam.players[0]?.fathersName ? <th>Father's Name</th> : null}
+                      {selectedTeam.players[0]?.fathersName ? <th>Father&apos;s Name</th> : null}
                       {selectedTeam.players[0]?.school ? <th>School</th> : null}
                       {selectedTeam.players[0]?.class ? <th>Class</th> : null}
                     </tr>
@@ -942,6 +1139,11 @@ const Team = () => {
                   </tbody>
                 </table>
               </div>
+              <footer className={styles.pageFooter}>
+                <span>Generated by <strong>KHILADI</strong> – Tournament Manager</span>
+                <a href="https://khiladi-khoj.com" target="_blank" rel="noopener noreferrer">khiladi-khoj.com</a>
+                <span>{selectedTeam.name}</span>
+              </footer>
             </div>
           </div>
         )}

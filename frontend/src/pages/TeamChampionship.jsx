@@ -47,7 +47,7 @@ const PODIUM_CONFIG = [
 const HeroDots = () => (
   <div className={styles.heroDots} aria-hidden="true">
     {Array.from({ length: HERO_DOT_COUNT }, (_, index) => (
-      <span key={index} />
+      <span key={index} style={{ opacity: 0.2 + (index % 14) * 0.035 }} />
     ))}
   </div>
 );
@@ -516,6 +516,34 @@ const TeamChampionship = () => {
         onclone: (clonedDocument) => {
           clonedDocument.documentElement.style.backgroundColor = "#ffffff";
           clonedDocument.body.style.backgroundColor = "#ffffff";
+
+          // The capture document can inherit a responsive rule from the real
+          // browser viewport. Force the decorative matrix back to its fixed
+          // export layout so PDF output never depends on window size.
+          const clonedDots = clonedDocument.querySelector(
+            `.${styles.pdfExport} .${styles.heroDots}`,
+          );
+
+          if (clonedDots) {
+            Object.assign(clonedDots.style, {
+              display: "grid",
+              top: "18px",
+              right: "26px",
+              width: "173px",
+              gridTemplateColumns: "repeat(14, 4px)",
+              gap: "8px 9px",
+            });
+
+            clonedDots.querySelectorAll("span").forEach((dot) => {
+              Object.assign(dot.style, {
+                display: "block",
+                width: "4px",
+                height: "4px",
+                borderRadius: "50%",
+                backgroundColor: "#ef9da0",
+              });
+            });
+          }
         },
       });
 

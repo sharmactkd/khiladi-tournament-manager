@@ -212,9 +212,14 @@ const tournamentSchema = new mongoose.Schema(
       type: [
         {
           name: { type: String, trim: true },
+          districtState: { type: String, trim: true },
+          contact: { type: String, trim: true },
           rank: { type: String, trim: true },
           dan: { type: String, trim: true },
           danNumber: { type: String, trim: true },
+          officialClass: { type: String, trim: true },
+          role: { type: String, trim: true },
+          arena: { type: String, trim: true },
           mark: { type: String, trim: true },
         },
       ],

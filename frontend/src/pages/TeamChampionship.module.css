@@ -244,6 +244,27 @@
   display: block !important;
 }
 
+/* html2canvas captures a fixed 1400px export clone. Keep the dot matrix
+   independent from the live browser's responsive breakpoint. */
+.pdfExport .heroDots {
+  top: 18px !important;
+  right: 26px !important;
+  z-index: 1 !important;
+  width: 173px !important;
+  display: grid !important;
+  grid-template-columns: repeat(14, 4px) !important;
+  gap: 8px 9px !important;
+  pointer-events: none !important;
+}
+
+.pdfExport .heroDots span {
+  display: block !important;
+  width: 4px !important;
+  height: 4px !important;
+  border-radius: 50% !important;
+  background: #ef9da0 !important;
+}
+
 .heroStripes {
   position: absolute;
   top: -46px;
@@ -986,10 +1007,13 @@
   height: 82px !important;
 }
 
-.exportRoot .heroDots,
 .exportRoot .heroStripes,
 .exportRoot .heroRightLogo {
   display: block !important;
+}
+
+.exportRoot .heroDots {
+  display: grid !important;
 }
 
 .exportRoot .heroContent h1 {
