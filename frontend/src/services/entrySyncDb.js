@@ -40,17 +40,64 @@ export const recoverInterruptedEntryOperations = async (scopeKey) => {
   const transaction = db.transaction(PENDING_STORE, "readwrite");
   const index = transaction.store.index("scopeKey");
   const operations = await index.getAll(scopeKey);
-  await Promise.all(
-    operations
-      .filter((operation) => operation.status === "sending")
-      .map((operation) =>
-        transaction.store.put({
-          ...operation,
-          status: "pending",
-          updatedAt: new Date().toISOString(),
-        })
-      )
-  );
+  const now = new Date().toISOString();
+
+  for (const operation of operations) {
+    const entryId = String(operation?.entryId || "").trim();
+    const type = String(operation?.type || "").trim();
+    const isStructurallyValid =
+      Boolean(operation?.operationId) &&
+      Boolean(entryId) &&
+      entryId.length <= 160 &&
+      ["upsert", "delete"].includes(type);
+
+    if (!isStructurallyValid) {
+      await transaction.store.put({
+        ...operation,
+        status: "quarantined",
+        lastError: "Invalid stored Entry operation was quarantined",
+        quarantinedAt: now,
+        updatedAt: now,
+      });
+      continue;
+    }
+
+    const sanitizedUpdates =
+      type === "upsert" ? sanitizeEntryUpdates(operation.updates) : {};
+
+    if (type === "upsert" && Object.keys(sanitizedUpdates).length === 0) {
+      await transaction.store.put({
+        ...operation,
+        updates: {},
+        status: "quarantined",
+        lastError: "Stored Entry operation contained no valid update fields",
+        quarantinedAt: now,
+        updatedAt: now,
+      });
+      continue;
+    }
+
+    const needsRecovery = ["sending", "failed"].includes(operation.status);
+    const updatesChanged =
+      type === "upsert" &&
+      JSON.stringify(sanitizedUpdates) !== JSON.stringify(operation.updates || {});
+
+    if (needsRecovery || updatesChanged) {
+      await transaction.store.put({
+        ...operation,
+        entryId,
+        type,
+        updates: sanitizedUpdates,
+        status: "pending",
+        clientSeq: createSequence(),
+        batchMutationId: "",
+        retryCount: 0,
+        lastError: "",
+        recoveredAt: now,
+        updatedAt: now,
+      });
+    }
+  }
   await transaction.done;
 };
 
@@ -210,11 +257,37 @@ export const retryFailedEntryOperations = async (scopeKey) => {
   const operations = await transaction.store.index("scopeKey").getAll(scopeKey);
   for (const operation of operations) {
     if (operation.status === "failed") {
+      const entryId = String(operation?.entryId || "").trim();
+      const type = String(operation?.type || "").trim();
+      const updates = type === "upsert" ? sanitizeEntryUpdates(operation.updates) : {};
+
+      if (
+        !entryId ||
+        entryId.length > 160 ||
+        !["upsert", "delete"].includes(type) ||
+        (type === "upsert" && Object.keys(updates).length === 0)
+      ) {
+        await transaction.store.put({
+          ...operation,
+          updates,
+          status: "quarantined",
+          lastError: "Invalid failed Entry operation was quarantined",
+          quarantinedAt: new Date().toISOString(),
+        });
+        continue;
+      }
+
       await transaction.store.put({
         ...operation,
+        entryId,
+        type,
+        updates,
         status: "pending",
+        clientSeq: createSequence(),
+        batchMutationId: "",
         retryCount: 0,
         lastError: "",
+        updatedAt: new Date().toISOString(),
       });
     }
   }

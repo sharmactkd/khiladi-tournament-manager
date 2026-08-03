@@ -28,7 +28,14 @@ const EntryHeader = ({
   tournamentData,
   isLoading = false,
   
-  visibleColumns = { fathersName: false, school: false, class: false },
+  visibleColumns = {
+    fathersName: false,
+    school: false,
+    class: false,
+    aadhaarNumber: false,
+    panNumber: false,
+    udiseCode: false,
+  },
   onToggleColumn,
   searchTerm = '',
   onSearchChange,
@@ -153,7 +160,14 @@ const EntryHeader = ({
         <div className={styles.leftControls}>
           {/* Column Toggles */}
           <div className={styles.toggleGroup}>
-            {['fathersName', 'school', 'class'].map((col) => (
+            {[
+              ['fathersName', "Father's Name"],
+              ['school', 'School'],
+              ['class', 'Class'],
+              ['aadhaarNumber', 'Aadhaar Card Number'],
+              ['panNumber', 'PAN Number'],
+              ['udiseCode', 'UDISE Code'],
+            ].map(([col, label]) => (
               <button
                 key={col}
                 className={`${styles.toggleButton} ${visibleColumns?.[col] ? styles.active : ''}`}
@@ -163,7 +177,7 @@ const EntryHeader = ({
                 disabled={isLoading}
                 title={`Show/Hide ${col.replace(/([A-Z])/g, ' $1').trim()}`}
               >
-                {col === 'fathersName' ? "Father's Name" : col.charAt(0).toUpperCase() + col.slice(1)}
+                {label}
               </button>
             ))}
           </div>

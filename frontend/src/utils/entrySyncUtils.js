@@ -20,6 +20,9 @@ const ENTRY_SYNC_ALLOWED_FIELDS = new Set([
   "school",
   "schoolName",
   "class",
+  "aadhaarNumber",
+  "panNumber",
+  "udiseCode",
   "team",
   "gender",
   "dob",
@@ -41,6 +44,22 @@ const ENTRY_SYNC_ALLOWED_FIELDS = new Set([
   "sr",
   "srNo",
 ]);
+
+export const TWELVE_DIGIT_ENTRY_FIELDS = [
+  "aadhaarNumber",
+  "panNumber",
+  "udiseCode",
+];
+
+export const formatTwelveDigitIdentifier = (value = "") => {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 12);
+  return digits.match(/.{1,4}/g)?.join("-") || "";
+};
+
+export const isValidTwelveDigitIdentifier = (value = "") => {
+  const digits = String(value || "").replace(/\D/g, "");
+  return digits.length === 0 || digits.length === 12;
+};
 
 export const sanitizeEntryUpdates = (updates = {}) => {
   const result = {};

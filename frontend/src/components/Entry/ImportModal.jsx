@@ -28,6 +28,9 @@ const headerSynonyms = {
   fathersName: ["father's name", 'parent name', 'father name'],
   school: ['school name', 'institution', 'school'],
   class: ['grade', 'class', 'year'],
+  aadhaarNumber: ['aadhaar', 'aadhaar number', 'aadhar', 'aadhar number', 'aadhaar card number'],
+  panNumber: ['pan', 'pan number', 'pan card number'],
+  udiseCode: ['udise', 'udise code', 'school udise code'],
 };
 
 const cleanHeaderText = (value) =>

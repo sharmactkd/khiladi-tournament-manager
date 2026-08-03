@@ -28,6 +28,9 @@ const entryRowSchema = new mongoose.Schema(
     school: { type: String, trim: true, default: "" },
     schoolName: { type: String, trim: true, default: "" },
     class: { type: String, trim: true, default: "" },
+    aadhaarNumber: { type: String, trim: true, default: "" },
+    panNumber: { type: String, trim: true, default: "" },
+    udiseCode: { type: String, trim: true, default: "" },
 
     team: {
       type: String,
@@ -90,7 +93,7 @@ const entryRowSchema = new mongoose.Schema(
 
     medalSource: {
       type: String,
-      enum: ["", "manual", "tiesheet", "category-auto"],
+      enum: ["", "manual", "tiesheet"],
       default: "",
       index: true,
     },

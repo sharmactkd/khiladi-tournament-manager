@@ -61,6 +61,11 @@ const parseWeight = (value) => {
   return Number.isFinite(num) ? num : null;
 };
 
+const formatTwelveDigitIdentifier = (value = "") => {
+  const digits = String(value ?? "").replace(/\D/g, "").slice(0, 12);
+  return digits.match(/.{1,4}/g)?.join("-") || "";
+};
+
 const parseDob = (value) => {
   if (!value) return null;
 
@@ -126,6 +131,9 @@ const normalizePlayers = (players = [], teamName = "") => {
       fathersName: String(row.fathersName || "").trim(),
       school: String(row.school ?? row.schoolName ?? "").trim(),
       class: String(row.class || "").trim(),
+      aadhaarNumber: formatTwelveDigitIdentifier(row.aadhaarNumber),
+      panNumber: formatTwelveDigitIdentifier(row.panNumber),
+      udiseCode: formatTwelveDigitIdentifier(row.udiseCode),
       title: String(row.title || "").trim(),
       gender: String(row.gender || "").trim(),
       dob: row.dob ?? null,
@@ -153,6 +161,9 @@ sourcePlayerId: String(row.sourcePlayerId || ""),
     school,
     schoolName: school,
     class: String(row.class || "").trim(),
+    aadhaarNumber: formatTwelveDigitIdentifier(row.aadhaarNumber),
+    panNumber: formatTwelveDigitIdentifier(row.panNumber),
+    udiseCode: formatTwelveDigitIdentifier(row.udiseCode),
     team: String(row.team || "").trim().toUpperCase(),
     gender: normalizeGender(row.gender),
     dob: parseDob(row.dob),
@@ -491,6 +502,9 @@ const existingEntryIds = new Set(
         school: row.school || "",
         schoolName: row.schoolName || row.school || "",
         class: row.class || "",
+        aadhaarNumber: row.aadhaarNumber || "",
+        panNumber: row.panNumber || "",
+        udiseCode: row.udiseCode || "",
         team: row.team || "",
         gender: row.gender || "",
         dob: row.dob || null,

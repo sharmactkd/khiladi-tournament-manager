@@ -78,6 +78,24 @@ const entrySchema = new mongoose.Schema(
             default: "",
           },
 
+          aadhaarNumber: {
+            type: String,
+            trim: true,
+            default: "",
+          },
+
+          panNumber: {
+            type: String,
+            trim: true,
+            default: "",
+          },
+
+          udiseCode: {
+            type: String,
+            trim: true,
+            default: "",
+          },
+
           team: {
             type: String,
             trim: true,
@@ -134,7 +152,7 @@ const entrySchema = new mongoose.Schema(
 
           medalSource: {
             type: String,
-            enum: ["", "manual", "tiesheet", "category-auto"],
+            enum: ["", "manual", "tiesheet"],
             default: "",
           },
 

@@ -13,6 +13,9 @@ const allowedPlayerKeys = new Set([
   "school",
   "schoolName",
   "class",
+  "aadhaarNumber",
+  "panNumber",
+  "udiseCode",
   "team",
   "coach",
   "coachContact",
@@ -41,6 +44,12 @@ const isValidDateLike = (value) => {
 };
 
 const validateLength = (value, max) => cleanString(value).length <= max;
+
+const isValidTwelveDigitIdentifier = (value) => {
+  if (value === undefined || value === null || cleanString(value) === "") return true;
+  const normalized = cleanString(value);
+  return /^\d{12}$/.test(normalized) || /^\d{4}-\d{4}-\d{4}$/.test(normalized);
+};
 
 export const validateTeamSubmissionPayload = (req, res, next) => {
   const { teamName, players } = req.body || {};
@@ -95,6 +104,18 @@ export const validateTeamSubmissionPayload = (req, res, next) => {
 
     if (!validateLength(player.class, 30)) {
       return res.status(400).json({ message: `Class value too long at row ${i + 1}` });
+    }
+
+    for (const [field, label] of [
+      ["aadhaarNumber", "Aadhaar Card Number"],
+      ["panNumber", "PAN Number"],
+      ["udiseCode", "UDISE Code"],
+    ]) {
+      if (!isValidTwelveDigitIdentifier(player[field])) {
+        return res.status(400).json({
+          message: `${label} must contain exactly 12 digits at row ${i + 1}`,
+        });
+      }
     }
 
     if (!validateLength(player.coach, 80) || !validateLength(player.manager, 80)) {

@@ -30,6 +30,9 @@ const createEmptyRow = () => ({
   fathersName: "",
   school: "",
   class: "",
+  aadhaarNumber: "",
+  panNumber: "",
+  udiseCode: "",
 });
 
 const getTextWidth = (text = "", font = '16px "Helvetica Neue", Arial, sans-serif') => {
@@ -47,7 +50,14 @@ const TeamEntryTable = ({
   rows,
   setRows,
   disabled = false,
-  visibleColumns = { fathersName: false, school: false, class: false },
+  visibleColumns = {
+    fathersName: false,
+    school: false,
+    class: false,
+    aadhaarNumber: false,
+    panNumber: false,
+    udiseCode: false,
+  },
 }) => {
   const [editingCell, setEditingCell] = useState(null);
   const [columnWidths, setColumnWidths] = useState([]);
@@ -67,6 +77,9 @@ const TeamEntryTable = ({
     fathersName: { size: 170, minSize: 140 },
     school: { size: 150, minSize: 130 },
     class: { size: 80, minSize: 70 },
+    aadhaarNumber: { size: 180, minSize: 180 },
+    panNumber: { size: 180, minSize: 180 },
+    udiseCode: { size: 180, minSize: 180 },
   };
 
   const tableColumnsDef = useMemo(() => {

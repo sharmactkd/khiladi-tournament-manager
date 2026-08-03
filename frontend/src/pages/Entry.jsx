@@ -30,7 +30,9 @@ import {
 import { normalizeMultiSortingState } from '../utils/entrySortingUtils';
 import {
   applyCompletedCategoryMedals,
+  formatTwelveDigitIdentifier,
   MEDAL_CATEGORY_FIELDS,
+  TWELVE_DIGIT_ENTRY_FIELDS,
 } from '../utils/entrySyncUtils';
 
 import styles from './Entry.module.css';
@@ -184,7 +186,16 @@ const Entry = () => {
   const [editingCell, setEditingCell] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState(() => {
     const saved = localStorage.getItem(`visibleColumns_${id}`);
-    return saved ? JSON.parse(saved) : { fathersName: false, school: false, class: false };
+    return saved
+      ? JSON.parse(saved)
+      : {
+          fathersName: false,
+          school: false,
+          class: false,
+          aadhaarNumber: false,
+          panNumber: false,
+          udiseCode: false,
+        };
   });
   const [columnWidths, setColumnWidths] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -721,6 +732,10 @@ if (!committedUpdates && ["event", "subEvent", "ageCategory", "weightCategory"].
   finalValue = normalizeEntryCategoryValue(finalValue, columnId);
 }
 
+if (!committedUpdates && TWELVE_DIGIT_ENTRY_FIELDS.includes(columnId)) {
+  finalValue = formatTwelveDigitIdentifier(finalValue);
+}
+
 saveToHistory();
 
 const newData = [...dataRef.current];
@@ -1041,6 +1056,10 @@ categoryFields.forEach((field) => {
   if (cleaned[field]) {
     cleaned[field] = normalizeEntryCategoryValue(cleaned[field], field);
   }
+});
+
+TWELVE_DIGIT_ENTRY_FIELDS.forEach((field) => {
+  cleaned[field] = formatTwelveDigitIdentifier(cleaned[field]);
 });
 
         if (cleaned.gender) {

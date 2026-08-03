@@ -24,6 +24,9 @@ export const optionalColumnsDef = [
   { header: "Father's Name", accessorKey: 'fathersName', id: 'fathersName', size: 300, minSize: 350, className: 'col-fathersName' },
   { header: 'School', accessorKey: 'school', id: 'school', size: 220, minSize: 200, className: 'col-school' },
   { header: 'Class', accessorKey: 'class', id: 'class', size: 100, minSize: 80, className: 'col-class' },
+  { header: 'Aadhaar Number', accessorKey: 'aadhaarNumber', id: 'aadhaarNumber', size: 180, minSize: 180, className: 'col-aadhaarNumber' },
+  { header: 'PAN Number', accessorKey: 'panNumber', id: 'panNumber', size: 180, minSize: 180, className: 'col-panNumber' },
+  { header: 'UDISE Code', accessorKey: 'udiseCode', id: 'udiseCode', size: 180, minSize: 180, className: 'col-udiseCode' },
 ];
 
 export const MULTI_SORT_COLUMNS = [
@@ -34,6 +37,9 @@ export const MULTI_SORT_COLUMNS = [
   { id: 'fathersName', label: "Father's Name" },
   { id: 'school', label: 'School' },
   { id: 'class', label: 'Class' },
+  { id: 'aadhaarNumber', label: 'Aadhaar Card Number' },
+  { id: 'panNumber', label: 'PAN Number' },
+  { id: 'udiseCode', label: 'UDISE Code' },
   { id: 'gender', label: 'Gender' },
   { id: 'dob', label: 'DOB' },
   { id: 'weight', label: 'Weight' },

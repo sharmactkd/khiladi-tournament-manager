@@ -10,6 +10,11 @@ import {
   getWeightCategory,
 } from './helpers';
 import styles from '../../pages/Entry.module.css';
+import {
+  formatTwelveDigitIdentifier,
+  isValidTwelveDigitIdentifier,
+  TWELVE_DIGIT_ENTRY_FIELDS,
+} from '../../utils/entrySyncUtils';
 
 const formatDOB = (val) => {
   if (!val) return '';
@@ -44,7 +49,9 @@ const EditableCell = ({ getValue, row, column, table }) => {
       ? formatDOB(rawInitial)
       : column.id === 'weightCategory'
         ? formatWeightCategory(rawInitial)
-        : rawInitial;
+        : TWELVE_DIGIT_ENTRY_FIELDS.includes(column.id)
+          ? formatTwelveDigitIdentifier(rawInitial)
+          : rawInitial;
 
   const [value, setValue] = useState(initialValue || '');
   const [isContactValid, setIsContactValid] = useState(true);
@@ -139,7 +146,9 @@ const autofillSuggestion = React.useMemo(() => {
           ? formatDOB(rawInitial)
           : column.id === 'weightCategory'
             ? formatWeightCategory(rawInitial)
-            : rawInitial;
+            : TWELVE_DIGIT_ENTRY_FIELDS.includes(column.id)
+              ? formatTwelveDigitIdentifier(rawInitial)
+              : rawInitial;
 
       setValue(formatted);
       setErrorMessage('');
@@ -239,6 +248,20 @@ const autofillSuggestion = React.useMemo(() => {
         } else {
           finalValue = validation.formatted;
           setIsContactValid(true);
+          lastToastKeyRef.current = '';
+        }
+      } else if (TWELVE_DIGIT_ENTRY_FIELDS.includes(column.id)) {
+        finalValue = formatTwelveDigitIdentifier(finalValue);
+
+        if (!isValidTwelveDigitIdentifier(finalValue)) {
+          validationMessage = `${column.columnDef.header} must contain exactly 12 digits`;
+          setErrorMessage(validationMessage);
+          showValidationToast(
+            validationMessage,
+            `${row.index}-${column.id}-${finalValue}-${validationMessage}`
+          );
+          isValid = false;
+        } else {
           lastToastKeyRef.current = '';
         }
       } else if (column.id === 'weight') {
@@ -421,7 +444,16 @@ const autofillSuggestion = React.useMemo(() => {
   const handleKeyDown = useCallback(
     (e) => {
 
-      const copyFromAboveColumns = ['team', 'coach', 'coachContact', 'manager', 'managerContact'];
+      const copyFromAboveColumns = [
+        'team',
+        'school',
+        'class',
+        'udiseCode',
+        'coach',
+        'coachContact',
+        'manager',
+        'managerContact',
+      ];
 
 if (e.altKey && e.key.toLowerCase() === 'd') {
   if (copyFromAboveColumns.includes(column.id)) {
@@ -501,6 +533,7 @@ if (autofillSuggestion && autofillColumns.includes(column.id)) {
         if (column.id === 'dob' && !/[0-9-]/.test(e.key)) e.preventDefault();
         if (column.id === 'weight' && !/[0-9.]/.test(e.key)) e.preventDefault();
         if (['coachContact', 'managerContact'].includes(column.id) && !/[0-9]/.test(e.key)) e.preventDefault();
+        if (TWELVE_DIGIT_ENTRY_FIELDS.includes(column.id) && !/[0-9-]/.test(e.key)) e.preventDefault();
         if (column.id === 'event' && !/^[kKpP]$/.test(e.key)) e.preventDefault();
         if (column.id === 'subEvent' && !['k', 'f', 't', 'i', 'p'].includes(e.key.toLowerCase())) e.preventDefault();
         if (column.id === 'medal' && !/^[gGsSbBxX]$/.test(e.key)) e.preventDefault();
@@ -607,6 +640,10 @@ if (autofillSuggestion && autofillColumns.includes(column.id)) {
 
         newValue = result.formatted;
         setIsContactValid(result.digitCount === 0 || result.digitCount >= 10);
+      }
+
+      if (TWELVE_DIGIT_ENTRY_FIELDS.includes(column.id)) {
+        newValue = formatTwelveDigitIdentifier(newValue);
       }
 
       setValue(newValue);
@@ -739,6 +776,8 @@ if (autofillSuggestion && autofillColumns.includes(column.id)) {
         className={`${styles.editableInput} ${highlightRow ? styles.highlightRow : ''}`}
         aria-label={`Editing ${column.columnDef.header} for row ${row.index + 1}`}
         role="textbox"
+        inputMode={TWELVE_DIGIT_ENTRY_FIELDS.includes(column.id) ? 'numeric' : undefined}
+        maxLength={TWELVE_DIGIT_ENTRY_FIELDS.includes(column.id) ? 14 : undefined}
         aria-invalid={!!errorMessage || (!isContactValid && ['coachContact', 'managerContact'].includes(column.id))}
       />
 

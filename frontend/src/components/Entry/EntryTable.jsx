@@ -22,7 +22,11 @@ import { saveEntries as saveEntriesApi } from "../../api";
 
 import EditableCell from "./EditableCell";
 import FilterDropdown from "./FilterDropdown";
-import { baseColumnsDef, MAX_MULTI_SORT_LEVELS } from "./constants";
+import {
+  baseColumnsDef,
+  optionalColumnsDef,
+  MAX_MULTI_SORT_LEVELS,
+} from "./constants";
 import {
   createEntrySortingFn,
   subEventSortingFn,
@@ -333,11 +337,9 @@ const EntryTable = forwardRef(
     }, [data, isReadOnly, entrySyncEnabled]);
 
     const columnsDef = useMemo(() => {
-      const optional = [
-        { header: "Father's Name", accessorKey: "fathersName", id: "fathersName", className: "col-fathersName" },
-        { header: "School", accessorKey: "school", id: "school", className: "col-school" },
-        { header: "Class", accessorKey: "class", id: "class", className: "col-class" },
-      ].filter((col) => visibleColumns?.[col.id]);
+      const optional = optionalColumnsDef.filter(
+        (col) => visibleColumns?.[col.id]
+      );
 
       const teamIndex = baseColumnsDef.findIndex((c) => c.id === "team");
       return [
@@ -354,6 +356,9 @@ const EntryTable = forwardRef(
         fathersName: { size: 180, minSize: 150, maxSize: 250, enableResizing: true },
         school: { size: 220, minSize: 180, maxSize: 300, enableResizing: true },
         class: { size: 100, minSize: 80, maxSize: 140, enableResizing: true },
+        aadhaarNumber: { size: 180, minSize: 170, maxSize: 220, enableResizing: true },
+        panNumber: { size: 180, minSize: 170, maxSize: 220, enableResizing: true },
+        udiseCode: { size: 180, minSize: 170, maxSize: 220, enableResizing: true },
       };
 
       const defaultConfig = {

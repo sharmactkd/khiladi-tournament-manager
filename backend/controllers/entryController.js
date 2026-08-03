@@ -15,7 +15,7 @@ const isProd = process.env.NODE_ENV === "production";
 const MAX_ENTRY_SAVE_BYTES = 10 * 1024 * 1024;
 
 const allowedMedals = ["Gold", "Silver", "Bronze", "X-X-X-X", ""];
-const allowedMedalSources = ["", "manual", "tiesheet", "category-auto"];
+const allowedMedalSources = ["", "manual", "tiesheet"];
 const allowedEntrySources = ["", "manual", "teamSubmission", "import"];
 const bracketDisplayFields = new Set(["name", "team"]);
 const bracketStructureFields = new Set([
@@ -64,6 +64,11 @@ const normalizeWeight = (value) => {
 
   const num = Number(cleaned);
   return Number.isFinite(num) ? num : null;
+};
+
+const normalizeTwelveDigitIdentifier = (value) => {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 12);
+  return digits.match(/.{1,4}/g)?.join("-") || "";
 };
 
 const normalizeDob = (value) => {
@@ -230,6 +235,9 @@ const normalizeEntryForEntryRow = ({ tournamentId, entry, index = 0, userId = nu
     school: String(school || "").trim(),
     schoolName: String(school || "").trim(),
     class: String(source.class || "").trim(),
+    aadhaarNumber: normalizeTwelveDigitIdentifier(source.aadhaarNumber),
+    panNumber: normalizeTwelveDigitIdentifier(source.panNumber),
+    udiseCode: normalizeTwelveDigitIdentifier(source.udiseCode),
 
     team: String(source.team || "").trim(),
     gender: normalizeGender(source.gender),
@@ -303,6 +311,9 @@ const syncEntryRowsFromEntries = async ({
           school: row.school,
           schoolName: row.schoolName,
           class: row.class,
+          aadhaarNumber: row.aadhaarNumber,
+          panNumber: row.panNumber,
+          udiseCode: row.udiseCode,
           team: row.team,
           gender: row.gender,
           dob: row.dob,
@@ -473,6 +484,9 @@ const buildSanitizedEntries = ({ incomingEntries, existingEntries }) => {
       school: String(school || "").trim(),
       schoolName: String(school || "").trim(),
       class: String(e.class || "").trim(),
+      aadhaarNumber: normalizeTwelveDigitIdentifier(e.aadhaarNumber),
+      panNumber: normalizeTwelveDigitIdentifier(e.panNumber),
+      udiseCode: normalizeTwelveDigitIdentifier(e.udiseCode),
       team: String(e.team || "").trim(),
       gender: normalizeGender(e.gender),
       dob: normalizeDob(e.dob),
@@ -516,14 +530,10 @@ const buildSanitizedEntries = ({ incomingEntries, existingEntries }) => {
     }
 
     if (incomingMedal) {
-      const incomingMedalSource = normalizeMedalSource(e.medalSource);
       return {
         ...enrichedBaseEntry,
         medal: incomingMedal,
-        medalSource:
-          incomingMedal === "X-X-X-X" && incomingMedalSource === "category-auto"
-            ? "category-auto"
-            : "manual",
+        medalSource: "manual",
         medalUpdatedAt: now,
       };
     }
@@ -545,6 +555,9 @@ const buildEntryRowSetFromUpdates = (updates = {}) => {
     "school",
     "schoolName",
     "class",
+    "aadhaarNumber",
+    "panNumber",
+    "udiseCode",
     "team",
     "gender",
     "dob",
@@ -576,6 +589,9 @@ const buildEntryRowSetFromUpdates = (updates = {}) => {
     if (field === "dob") value = normalizeDob(value);
     if (field === "medal") value = normalizeMedal(value);
     if (field === "medalSource") value = normalizeMedalSource(value);
+    if (["aadhaarNumber", "panNumber", "udiseCode"].includes(field)) {
+      value = normalizeTwelveDigitIdentifier(value);
+    }
 
     if (
       [
@@ -585,6 +601,9 @@ const buildEntryRowSetFromUpdates = (updates = {}) => {
         "school",
         "schoolName",
         "class",
+        "aadhaarNumber",
+        "panNumber",
+        "udiseCode",
         "team",
         "event",
         "subEvent",
@@ -1309,6 +1328,9 @@ export const createBulkEntries = async (req, res) => {
             school: row.school,
             schoolName: row.schoolName,
             class: row.class,
+            aadhaarNumber: row.aadhaarNumber,
+            panNumber: row.panNumber,
+            udiseCode: row.udiseCode,
             team: row.team,
             gender: row.gender,
             dob: row.dob,

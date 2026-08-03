@@ -3,12 +3,25 @@ import {
   applyCompletedCategoryMedals,
   buildBracketEntrySignature,
   chunkEntryOperations,
+  formatTwelveDigitIdentifier,
+  isValidTwelveDigitIdentifier,
   mergeEntryUpdates,
   reconcileEntriesWithPending,
   sanitizeEntryUpdates,
 } from "../entrySyncUtils";
 
 describe("entrySyncUtils", () => {
+  it("formats optional identity fields as four-digit groups", () => {
+    expect(formatTwelveDigitIdentifier("123456789012")).toBe("1234-5678-9012");
+    expect(formatTwelveDigitIdentifier("12ab34 5678-901234")).toBe("1234-5678-9012");
+  });
+
+  it("accepts blank or complete 12-digit identity values only", () => {
+    expect(isValidTwelveDigitIdentifier("")).toBe(true);
+    expect(isValidTwelveDigitIdentifier("1234-5678-9012")).toBe(true);
+    expect(isValidTwelveDigitIdentifier("1234-5678")).toBe(false);
+  });
+
   it("splits 1,000 operations into controlled batches", () => {
     const operations = Array.from({ length: 1000 }, (_, index) => ({
       operationId: `operation-${index}`,

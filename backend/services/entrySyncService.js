@@ -14,6 +14,9 @@ const TEXT_FIELDS = new Set([
   "school",
   "schoolName",
   "class",
+  "aadhaarNumber",
+  "panNumber",
+  "udiseCode",
   "team",
   "event",
   "subEvent",
@@ -62,6 +65,16 @@ const normalizeWeight = (value) => {
   return Number.isFinite(parsed) && parsed >= 0 && parsed <= 200 ? parsed : null;
 };
 
+const normalizeTwelveDigitIdentifier = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (!/^\d{12}$/.test(raw) && !/^\d{4}-\d{4}-\d{4}$/.test(raw)) {
+    throw new Error("Identifier must contain exactly 12 digits");
+  }
+  const digits = raw.replace(/\D/g, "");
+  return digits.match(/.{1,4}/g)?.join("-") || "";
+};
+
 const normalizeDob = (value) => {
   if (!value) return null;
   if (value instanceof Date && !Number.isNaN(value.getTime())) return value;
@@ -82,9 +95,7 @@ const normalizeMedal = (value) => {
 
 const normalizeMedalSource = (value) => {
   const source = String(value || "").trim();
-  return ["", "manual", "tiesheet", "category-auto"].includes(source)
-    ? source
-    : "";
+  return ["", "manual", "tiesheet"].includes(source) ? source : "";
 };
 
 const normalizeEntrySource = (value) => {
@@ -123,6 +134,9 @@ export const normalizeEntrySyncUpdates = (updates = {}) => {
     if (TEXT_FIELDS.has(field)) value = String(rawValue || "").trim();
     if (field === "gender") value = normalizeGender(rawValue);
     if (field === "weight") value = normalizeWeight(rawValue);
+    if (["aadhaarNumber", "panNumber", "udiseCode"].includes(field)) {
+      value = normalizeTwelveDigitIdentifier(rawValue);
+    }
     if (field === "dob") value = normalizeDob(rawValue);
     if (field === "medal") value = normalizeMedal(rawValue);
     if (field === "medalSource") value = normalizeMedalSource(rawValue);
@@ -147,40 +161,23 @@ export const normalizeEntrySyncUpdates = (updates = {}) => {
 };
 
 const validateOperation = (operation, index) => {
-  const invalid = (message) => {
-    const error = new Error(message);
-    error.statusCode = 400;
-    error.retryable = false;
-    return error;
-  };
   const operationId = String(operation?.operationId || "").trim();
   const entryId = String(operation?.entryId || "").trim();
   const type = String(operation?.type || "").trim();
 
-  if (!operationId) throw invalid(`operations[${index}].operationId is required`);
+  if (!operationId) throw new Error(`operations[${index}].operationId is required`);
   if (!entryId || entryId.length > 160) {
-    throw invalid(`operations[${index}].entryId is invalid`);
+    throw new Error(`operations[${index}].entryId is invalid`);
   }
   if (!["upsert", "delete"].includes(type)) {
-    throw invalid(`operations[${index}].type must be upsert or delete`);
-  }
-
-  let updates = {};
-  if (type === "upsert") {
-    try {
-      updates = normalizeEntrySyncUpdates(operation.updates);
-    } catch (error) {
-      error.statusCode = 400;
-      error.retryable = false;
-      throw error;
-    }
+    throw new Error(`operations[${index}].type must be upsert or delete`);
   }
 
   return {
     operationId,
     entryId,
     type,
-    updates,
+    updates: type === "upsert" ? normalizeEntrySyncUpdates(operation.updates) : {},
   };
 };
 
@@ -352,18 +349,8 @@ export const processEntrySyncBatch = async ({
         delete updates.medalSource;
         delete updates.medalUpdatedAt;
       } else if (updates.medal !== undefined) {
-        updates.medalSource = updates.medal
-          ? updates.medal === "X-X-X-X" &&
-            updates.medalSource === "category-auto"
-            ? "category-auto"
-            : "manual"
-          : "";
+        updates.medalSource = updates.medal ? "manual" : "";
         updates.medalUpdatedAt = updates.medal ? now : null;
-      } else if (
-        updates.medalSource === "category-auto" &&
-        existing?.medal !== "X-X-X-X"
-      ) {
-        updates.medalSource = existing?.medal ? "manual" : "";
       }
 
       effectiveOperations.push({ ...operation, updates });
