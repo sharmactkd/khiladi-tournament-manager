@@ -100,6 +100,8 @@ const TieSheet = () => {
   const [players, setPlayers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [incompleteBracketEntries, setIncompleteBracketEntries] = useState([]);
+  const [showIncompleteEntriesPrompt, setShowIncompleteEntriesPrompt] = useState(false);
   const [selectedGenders, setSelectedGenders] = useState([]);
   const [selectedAgeCategories, setSelectedAgeCategories] = useState([]);
   const [availableGenders, setAvailableGenders] = useState([]);
@@ -464,6 +466,53 @@ const getUniqueAgeCategories = (rows = []) => {
   team: p?.team || "",
 }));
 
+const incompleteRows = cleanedMapped
+  .filter((player) => {
+    const event = String(player?.event || '').trim().toLowerCase();
+    const subEvent = String(player?.subEvent || '').trim().toLowerCase();
+    const hasEntryContent = [
+      player?.name,
+      player?.team,
+      player?.gender,
+      player?.event,
+      player?.subEvent,
+      player?.ageCategory,
+      player?.weightCategory,
+      player?.fresherGroup,
+    ].some((value) => String(value || '').trim());
+
+    if (!hasEntryContent) return false;
+    return !event || event.includes('kyorugi') || subEvent.includes('fresher');
+  })
+  .map((player, index) => {
+    const reasons = [];
+    const event = String(player?.event || '').trim();
+    const fresher = isFresherEntry(player);
+
+    if (!String(player?.name || '').trim()) reasons.push('Player Name');
+    if (!event) reasons.push('Event');
+    if (!String(player?.gender || '').trim()) reasons.push('Gender');
+
+    if (fresher) {
+      if (!String(player?.fresherGroup || '').trim()) reasons.push('Fresher Group');
+    } else {
+      if (!String(player?.ageCategory || '').trim()) reasons.push('Age Category');
+      if (!String(player?.weightCategory || '').trim()) reasons.push('Weight Category');
+    }
+
+    return {
+      entryId: String(player?.entryId || ''),
+      sr: player?.srNo || player?.sr || index + 1,
+      name: String(player?.name || '').trim() || 'Unnamed player',
+      team: String(player?.team || '').trim(),
+      reasons,
+    };
+  })
+  .filter((item) => item.reasons.length > 0);
+
+setIncompleteBracketEntries(incompleteRows);
+setShowIncompleteEntriesPrompt(incompleteRows.length > 0);
+
     if (isDev) console.log('BEFORE FILTER SAMPLE:', cleanedMapped?.[0]);
 
    // ✅ TieSheet only for Kyorugi players
@@ -471,15 +520,6 @@ const getUniqueAgeCategories = (rows = []) => {
 const fresherRows = cleanedMapped.filter(
   (p) => isFresherEntry(p) && p?.name && p?.gender && p?.fresherGroup
 );
-const incompleteFresherRows = cleanedMapped.filter(
-  (p) => isFresherEntry(p) && p?.name && (!p?.gender || !p?.fresherGroup)
-);
-if (incompleteFresherRows.length > 0) {
-  throw {
-    title: 'Incomplete Fresher Entry',
-    message: `${incompleteFresherRows.length} Fresher player(s) are missing Gender or Fresher Group. Age Category and Weight Category may remain blank.`,
-  };
-}
 const kyorugiOnly = cleanedMapped.filter(
   (p) =>
     !isFresherEntry(p) &&
@@ -539,7 +579,11 @@ console.log(
   }, {})
 );
 
-if (validKyorugiRows.length === 0 && invalidKyorugiRows.length > 0) {
+if (
+  validKyorugiRows.length === 0 &&
+  invalidKyorugiRows.length > 0 &&
+  fresherRows.length === 0
+) {
   const tournamentAgesText = allAgeCategories.join(", ");
   const entryAgesText = [
     ...new Set(kyorugiOnly.map((p) => p.ageCategory).filter(Boolean)),
@@ -2063,6 +2107,71 @@ canMutateTieSheet,
     </button>
   </div>
 )}
+
+        {!isLoading && showIncompleteEntriesPrompt && incompleteBracketEntries.length > 0 && (
+          <div className={styles.incompleteEntriesOverlay} role="presentation">
+            <section
+              className={styles.incompleteEntriesDialog}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="incomplete-entries-title"
+              aria-describedby="incomplete-entries-description"
+            >
+              <div className={styles.incompleteEntriesHeader}>
+                <div>
+                  <span className={styles.incompleteEntriesEyebrow}>Entry check</span>
+                  <h2 id="incomplete-entries-title">Some entries are incomplete</h2>
+                  <p id="incomplete-entries-description">
+                    These players will be skipped. All complete and valid entries will still generate brackets.
+                  </p>
+                </div>
+                <span className={styles.incompleteEntriesCount}>
+                  {incompleteBracketEntries.length}
+                </span>
+              </div>
+
+              <div className={styles.incompleteEntriesList}>
+                {incompleteBracketEntries.map((entry, index) => (
+                  <div
+                    className={styles.incompleteEntryItem}
+                    key={entry.entryId || `${entry.sr}-${entry.name}-${index}`}
+                  >
+                    <span className={styles.incompleteEntrySerial}>#{entry.sr}</span>
+                    <div className={styles.incompleteEntryIdentity}>
+                      <strong>{entry.name}</strong>
+                      {entry.team ? <span>{entry.team}</span> : null}
+                    </div>
+                    <div className={styles.incompleteEntryReasons}>
+                      {entry.reasons.map((reason) => (
+                        <span key={reason}>{reason} missing</span>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className={styles.incompleteEntriesActions}>
+                <button
+                  type="button"
+                  className={styles.incompleteEntriesSecondary}
+                  onClick={() => navigate(`/tournaments/${id}/entry`)}
+                >
+                  Complete These Entries
+                </button>
+                <button
+                  type="button"
+                  className={styles.incompleteEntriesPrimary}
+                  onClick={() => setShowIncompleteEntriesPrompt(false)}
+                  disabled={players.length === 0}
+                >
+                  {players.length > 0
+                    ? `Proceed with ${players.length} Valid ${players.length === 1 ? 'Entry' : 'Entries'}`
+                    : 'No Valid Entries Available'}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
 
         {!isLoading && !error && (
           <>
