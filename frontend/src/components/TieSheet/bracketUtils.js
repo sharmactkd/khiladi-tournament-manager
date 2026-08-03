@@ -175,6 +175,7 @@ const stableTeamIdentity = (team = {}) =>
     entryId: String(team?.entryId || team?.id || '').trim(),
     name: String(team?.name || '').trim(),
     team: String(team?.team || '').trim(),
+    fresherGroup: String(team?.fresherGroup || '').trim(),
   });
 
   const stableOutcomeParticipantIdentity = (team = {}) => {
@@ -281,6 +282,7 @@ export const buildBracketStructureSignature = (brackets = []) =>
           weightCategory: String(player?.weightCategory || '').trim(),
           event: String(player?.event || '').trim(),
           subEvent: String(player?.subEvent || '').trim(),
+          fresherGroup: String(player?.fresherGroup || '').trim(),
         })),
         games: [...flattenBracketGames(bracket).values()].map((game) =>
           getBracketGameSignature(game)

@@ -70,6 +70,8 @@ const entryRowSchema = new mongoose.Schema(
       default: "",
     },
 
+    fresherGroup: { type: String, trim: true, uppercase: true, default: "", index: true },
+
     ageCategory: {
       type: String,
       trim: true,
@@ -166,6 +168,7 @@ const entryRowSchema = new mongoose.Schema(
 );
 
 entryRowSchema.index({ tournamentId: 1, entryId: 1 }, { unique: true });
+entryRowSchema.index({ tournamentId: 1, subEvent: 1, gender: 1, fresherGroup: 1 });
 entryRowSchema.index({ tournamentId: 1, srNo: 1 });
 entryRowSchema.index({ tournamentId: 1, team: 1 });
 entryRowSchema.index({ tournamentId: 1, medal: 1 });

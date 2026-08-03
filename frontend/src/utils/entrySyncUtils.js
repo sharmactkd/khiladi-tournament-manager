@@ -29,6 +29,7 @@ const ENTRY_SYNC_ALLOWED_FIELDS = new Set([
   "weight",
   "event",
   "subEvent",
+  "fresherGroup",
   "ageCategory",
   "weightCategory",
   "medal",
@@ -59,6 +60,40 @@ export const formatTwelveDigitIdentifier = (value = "") => {
 export const isValidTwelveDigitIdentifier = (value = "") => {
   const digits = String(value || "").replace(/\D/g, "");
   return digits.length === 0 || digits.length === 12;
+};
+
+export const normalizeFresherGroup = (value = "") =>
+  String(value || "")
+    .normalize("NFKC")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toUpperCase();
+
+export const isFresherEntry = (entry = {}) =>
+  [entry?.event, entry?.subEvent].some((value) =>
+    /\bfresh(?:er|ers)?\b/i.test(String(value || "").trim())
+  );
+
+export const buildFresherBracketKey = (entry = {}) =>
+  ["fresher", entry?.gender, normalizeFresherGroup(entry?.fresherGroup)]
+    .map((value) => String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"))
+    .join("_");
+
+export const getFresherGroupValidation = (entries = [], candidate = null) => {
+  const rows = candidate ? [...(entries || []), candidate] : [...(entries || [])];
+  const counts = new Map();
+  for (const row of rows) {
+    if (!isFresherEntry(row)) continue;
+    const group = normalizeFresherGroup(row?.fresherGroup);
+    const gender = String(row?.gender || "").trim().toLowerCase();
+    if (!group || !gender) continue;
+    const key = `${gender}::${group}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+    if (counts.get(key) > 4) {
+      return { valid: false, key, count: counts.get(key), message: `${group} (${row.gender}) can contain maximum 4 Fresher players` };
+    }
+  }
+  return { valid: true, key: "", count: 0, message: "" };
 };
 
 export const sanitizeEntryUpdates = (updates = {}) => {
@@ -148,6 +183,7 @@ export const buildBracketEntrySignature = (entries = []) => {
       weightCategory: String(entry?.weightCategory || "").trim(),
       event: String(entry?.event || "").trim(),
       subEvent: String(entry?.subEvent || "").trim(),
+      fresherGroup: normalizeFresherGroup(entry?.fresherGroup),
     }))
     .sort((left, right) => left.entryId.localeCompare(right.entryId));
 
@@ -160,13 +196,9 @@ export const buildBracketEntrySignature = (entries = []) => {
 };
 
 export const buildBracketCategoryKey = (entry = {}) =>
-  [
-    entry?.gender,
-    entry?.ageCategory,
-    entry?.weightCategory,
-    entry?.event,
-    entry?.subEvent,
-  ]
+  (isFresherEntry(entry)
+    ? ["Fresher", entry?.gender, normalizeFresherGroup(entry?.fresherGroup)]
+    : [entry?.gender, entry?.ageCategory, entry?.weightCategory, entry?.event, entry?.subEvent])
     .map((value) =>
       String(value || "")
         .normalize("NFKC")
@@ -199,6 +231,7 @@ export const MEDAL_CATEGORY_FIELDS = [
   "weightCategory",
   "event",
   "subEvent",
+  "fresherGroup",
 ];
 
 const normalizeMedalCategoryPart = (value) =>
@@ -211,7 +244,13 @@ const normalizeMedalCategoryPart = (value) =>
     .toLowerCase();
 
 export const buildMedalCategoryKey = (entry = {}) => {
-  const parts = MEDAL_CATEGORY_FIELDS.map((field) =>
+  if (isFresherEntry(entry)) {
+    const parts = ["fresher", entry?.gender, normalizeFresherGroup(entry?.fresherGroup)].map(
+      normalizeMedalCategoryPart
+    );
+    return parts.every(Boolean) ? parts.join("|") : "";
+  }
+  const parts = MEDAL_CATEGORY_FIELDS.filter((field) => field !== "fresherGroup").map((field) =>
     normalizeMedalCategoryPart(entry?.[field])
   );
   return parts.every(Boolean) ? parts.join("|") : "";

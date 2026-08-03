@@ -20,6 +20,7 @@ const TEXT_FIELDS = new Set([
   "team",
   "event",
   "subEvent",
+  "fresherGroup",
   "ageCategory",
   "weightCategory",
   "coach",
@@ -50,6 +51,7 @@ const STRUCTURAL_BRACKET_FIELDS = new Set([
   "weightCategory",
   "event",
   "subEvent",
+  "fresherGroup",
 ]);
 
 const normalizeGender = (value) => {
@@ -105,6 +107,18 @@ const normalizeEntrySource = (value) => {
     : "manual";
 };
 
+const isFresherEntry = (row = {}) =>
+  [row?.event, row?.subEvent].some((value) =>
+    /\bfresh(?:er|ers)?\b/i.test(String(value || "").trim())
+  );
+
+const fresherGroupKey = (row = {}) => {
+  if (!isFresherEntry(row)) return "";
+  const gender = normalizeGender(row?.gender).toLowerCase();
+  const group = String(row?.fresherGroup || "").trim().replace(/\s+/g, " ").toUpperCase();
+  return gender && group ? `${gender}::${group}` : "";
+};
+
 const normalizeObjectId = (value) => {
   if (!value || !mongoose.Types.ObjectId.isValid(String(value))) return null;
   return new mongoose.Types.ObjectId(String(value));
@@ -133,6 +147,7 @@ export const normalizeEntrySyncUpdates = (updates = {}) => {
     let value = rawValue;
     if (TEXT_FIELDS.has(field)) value = String(rawValue || "").trim();
     if (field === "gender") value = normalizeGender(rawValue);
+    if (field === "fresherGroup") value = String(rawValue || "").trim().replace(/\s+/g, " ").toUpperCase();
     if (field === "weight") value = normalizeWeight(rawValue);
     if (["aadhaarNumber", "panNumber", "udiseCode"].includes(field)) {
       value = normalizeTwelveDigitIdentifier(rawValue);
@@ -315,6 +330,41 @@ export const processEntrySyncBatch = async ({
     const existingByEntryId = new Map(
       existingRows.map((row) => [String(row.entryId), row])
     );
+    const allTournamentRows = await EntryRow.find({ tournamentId: tournamentObjectId })
+      .select("entryId event subEvent gender fresherGroup")
+      .lean();
+    const projectedRows = new Map(
+      allTournamentRows.map((row) => [String(row.entryId), { ...row }])
+    );
+    const touchedFresherKeys = new Set();
+    for (const operation of normalizedOperations) {
+      const previous = projectedRows.get(operation.entryId);
+      const previousKey = fresherGroupKey(previous);
+      if (previousKey) touchedFresherKeys.add(previousKey);
+      if (operation.type === "delete") {
+        projectedRows.delete(operation.entryId);
+        continue;
+      }
+      const next = { ...(previous || {}), ...operation.updates, entryId: operation.entryId };
+      projectedRows.set(operation.entryId, next);
+      const nextKey = fresherGroupKey(next);
+      if (nextKey) touchedFresherKeys.add(nextKey);
+    }
+    const fresherCounts = new Map();
+    for (const row of projectedRows.values()) {
+      const key = fresherGroupKey(row);
+      if (!key || !touchedFresherKeys.has(key)) continue;
+      fresherCounts.set(key, (fresherCounts.get(key) || 0) + 1);
+    }
+    const oversizedGroup = [...fresherCounts.entries()].find(([, count]) => count > 4);
+    if (oversizedGroup) {
+      const validationError = new Error(
+        `Fresher group ${oversizedGroup[0].split("::")[1]} can contain maximum 4 players`
+      );
+      validationError.statusCode = 400;
+      validationError.retryable = false;
+      throw validationError;
+    }
     const now = new Date();
     const confirmedOperationIds = [];
     const staleOperationIds = [];

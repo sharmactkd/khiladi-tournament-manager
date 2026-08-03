@@ -6,7 +6,11 @@ import {
   buildBracketStructureSignature,
   reconcileBracketOutcomes,
 } from './bracketUtils';
-import { buildBracketEntrySignature } from '../../utils/entrySyncUtils';
+import {
+  buildBracketEntrySignature,
+  isFresherEntry,
+  normalizeFresherGroup,
+} from '../../utils/entrySyncUtils';
 
 // ── Config (easy to extend in future) ───────────────────────────────────────
 const GENDER_ORDER = ['Male', 'Female'];
@@ -214,6 +218,7 @@ const generateSingleEliminationGameStructure = (players = [], poolLabel = '') =>
           weight: '',
           event: '',
           subEvent: '',
+          fresherGroup: '',
         },
         score: { score: null },
       };
@@ -233,6 +238,7 @@ const generateSingleEliminationGameStructure = (players = [], poolLabel = '') =>
         weight: player.weight || '',
         event: player.event || '',
         subEvent: player.subEvent || '',
+        fresherGroup: player.fresherGroup || '',
       },
       score: { score: null },
     };
@@ -483,6 +489,8 @@ export default function useBracketGenerator({
           const genderDisplay = String(player?.gender || '').trim();
           const ageDisplay = normalizeAgeCategoryForDisplay(player?.ageCategory);
           const weightDisplay = normalizeWeightCategoryForDisplay(player?.weightCategory);
+          const fresher = isFresherEntry(player);
+          const fresherGroup = normalizeFresherGroup(player?.fresherGroup);
 
           const genderKey = normalizeCategoryText(genderDisplay)
             .replace(/[^a-z0-9]+/g, '_')
@@ -491,13 +499,20 @@ export default function useBracketGenerator({
           const ageKey = getCanonicalAgeCategoryKey(player?.ageCategory);
           const weightKey = getCanonicalWeightCategoryKey(player?.weightCategory);
 
-          const key = `${genderKey}_${ageKey}_${weightKey}`;
+          const groupKey = fresher
+            ? fresherGroup.toLowerCase().replace(/[^a-z0-9]+/g, '_')
+            : '';
+          const key = fresher
+            ? `fresher_${genderKey}_${groupKey}`
+            : `${genderKey}_${ageKey}_${weightKey}`;
 
           if (!acc[key]) {
             acc[key] = {
               gender: genderDisplay,
               ageCategory: ageDisplay,
               weightCategory: weightDisplay,
+              fresherGroup,
+              eventType: fresher ? 'FRESHER' : 'KYORUGI',
               players: [],
             };
           }
@@ -507,6 +522,7 @@ export default function useBracketGenerator({
             gender: genderDisplay,
             ageCategory: ageDisplay,
             weightCategory: weightDisplay,
+            fresherGroup,
           });
 
           return acc;
@@ -515,9 +531,13 @@ export default function useBracketGenerator({
         const generatedBrackets = [];
 
         Object.entries(grouped).forEach(([key, group]) => {
-          const { gender, ageCategory, weightCategory } = group;
+          const { gender, ageCategory, weightCategory, fresherGroup, eventType } = group;
           const groupPlayers = group.players;
           const categoryPlayerCount = groupPlayers.length;
+
+          if (eventType === 'FRESHER' && categoryPlayerCount > 4) {
+            throw new Error(`${fresherGroup} (${gender}) has ${categoryPlayerCount} players; a Fresher group can contain maximum 4 players.`);
+          }
 
           if (categoryPlayerCount <= 16) {
             const seededPlayers = smartSeedPlayers([...groupPlayers]);
@@ -589,6 +609,8 @@ export default function useBracketGenerator({
               gender,
               ageCategory,
               weightCategory,
+              fresherGroup,
+              eventType,
               playerCount: categoryPlayerCount,
               categoryPlayerCount,
               shuffledPlayers: seededPlayers,

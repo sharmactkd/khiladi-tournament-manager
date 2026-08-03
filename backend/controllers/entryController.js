@@ -24,12 +24,32 @@ const bracketStructureFields = new Set([
   "weightCategory",
   "event",
   "subEvent",
+  "fresherGroup",
 ]);
 
 const createEntryId = () => new mongoose.Types.ObjectId().toString();
 
 const normalizeText = (value) =>
   String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
+
+const validateFresherGroups = (rows = []) => {
+  const counts = new Map();
+  for (const row of rows) {
+    const fresher = [row?.event, row?.subEvent].some((value) =>
+      /\bfresh(?:er|ers)?\b/i.test(String(value || "").trim())
+    );
+    if (!fresher) continue;
+    const gender = normalizeGender(row?.gender);
+    const group = String(row?.fresherGroup || "").trim().replace(/\s+/g, " ").toUpperCase();
+    if (!gender || !group) continue;
+    const key = `${gender.toLowerCase()}::${group}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+    if (counts.get(key) > 4) {
+      return `${group} (${gender}) can contain maximum 4 Fresher players`;
+    }
+  }
+  return "";
+};
 
 const normalizeMedal = (value) => {
   const medal = String(value || "").trim();
@@ -112,6 +132,7 @@ const buildStrictMatchKey = (row) =>
     normalizeText(row?.gender),
     normalizeText(row?.event),
     normalizeText(row?.subEvent),
+    normalizeText(row?.fresherGroup),
     normalizeText(row?.ageCategory),
     normalizeText(row?.weightCategory),
     normalizeWeightKey(row?.weight),
@@ -125,6 +146,7 @@ const buildMediumMatchKey = (row) =>
     normalizeText(row?.gender),
     normalizeText(row?.event),
     normalizeText(row?.subEvent),
+    normalizeText(row?.fresherGroup),
     normalizeText(row?.ageCategory),
     normalizeText(row?.weightCategory),
   ].join("|||");
@@ -246,6 +268,7 @@ const normalizeEntryForEntryRow = ({ tournamentId, entry, index = 0, userId = nu
 
     event: String(source.event || "").trim(),
     subEvent: String(source.subEvent || "").trim(),
+    fresherGroup: String(source.fresherGroup || "").trim().replace(/\s+/g, " ").toUpperCase(),
     ageCategory: String(source.ageCategory || "").trim(),
     weightCategory: String(source.weightCategory || "").trim(),
 
@@ -320,6 +343,7 @@ const syncEntryRowsFromEntries = async ({
           weight: row.weight,
           event: row.event,
           subEvent: row.subEvent,
+          fresherGroup: row.fresherGroup,
           ageCategory: row.ageCategory,
           weightCategory: row.weightCategory,
 
@@ -493,6 +517,7 @@ const buildSanitizedEntries = ({ incomingEntries, existingEntries }) => {
       weight: normalizeWeight(e.weight),
       event: String(e.event || "").trim(),
       subEvent: String(e.subEvent || "").trim(),
+      fresherGroup: String(e.fresherGroup || "").trim().replace(/\s+/g, " ").toUpperCase(),
       ageCategory: String(e.ageCategory || "").trim(),
       weightCategory: String(e.weightCategory || "").trim(),
       coach: String(e.coach || "").trim(),
@@ -564,6 +589,7 @@ const buildEntryRowSetFromUpdates = (updates = {}) => {
     "weight",
     "event",
     "subEvent",
+    "fresherGroup",
     "ageCategory",
     "weightCategory",
     "coach",
@@ -589,6 +615,7 @@ const buildEntryRowSetFromUpdates = (updates = {}) => {
     if (field === "dob") value = normalizeDob(value);
     if (field === "medal") value = normalizeMedal(value);
     if (field === "medalSource") value = normalizeMedalSource(value);
+    if (field === "fresherGroup") value = String(value || "").trim().replace(/\s+/g, " ").toUpperCase();
     if (["aadhaarNumber", "panNumber", "udiseCode"].includes(field)) {
       value = normalizeTwelveDigitIdentifier(value);
     }
@@ -607,6 +634,7 @@ const buildEntryRowSetFromUpdates = (updates = {}) => {
         "team",
         "event",
         "subEvent",
+        "fresherGroup",
         "ageCategory",
         "weightCategory",
         "coach",
@@ -712,6 +740,7 @@ if (search) {
     { gender: searchRegex },
     { event: searchRegex },
     { subEvent: searchRegex },
+    { fresherGroup: searchRegex },
     { ageCategory: searchRegex },
     { weightCategory: searchRegex },
     { medal: searchRegex },
@@ -921,6 +950,10 @@ export const saveEntries = async (req, res) => {
       incomingEntries: entries,
       existingEntries,
     });
+    const fresherValidationError = validateFresherGroups(mappedEntries);
+    if (fresherValidationError) {
+      return res.status(400).json({ success: false, message: fresherValidationError });
+    }
 
     await syncEntryRowsFromEntries({
       tournamentId: id,
@@ -1312,6 +1345,18 @@ export const createBulkEntries = async (req, res) => {
         userId: req.user._id,
       })
     );
+    const existingFresherRows = await EntryRow.find({
+      tournamentId: new mongoose.Types.ObjectId(id),
+    })
+      .select("event subEvent gender fresherGroup")
+      .lean();
+    const fresherValidationError = validateFresherGroups([
+      ...existingFresherRows,
+      ...normalizedRows,
+    ]);
+    if (fresherValidationError) {
+      return res.status(400).json({ success: false, message: fresherValidationError });
+    }
 
     const bulkOps = normalizedRows.map((row) => ({
       updateOne: {
@@ -1337,6 +1382,7 @@ export const createBulkEntries = async (req, res) => {
             weight: row.weight,
             event: row.event,
             subEvent: row.subEvent,
+            fresherGroup: row.fresherGroup,
             ageCategory: row.ageCategory,
             weightCategory: row.weightCategory,
             medal: row.medal,

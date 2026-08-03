@@ -18,6 +18,8 @@ const ToggleButton = ({ label, isActive, onClick, disabled = false, count }) => 
 );
 
 const BracketFilters = ({
+  selectedEvent = 'ALL',
+  setSelectedEvent,
   availableGenders,
   selectedGenders,
   setSelectedGenders,
@@ -60,6 +62,15 @@ const BracketFilters = ({
   return (
     <div className={styles.toggleContainer}>
       <div className={styles.toggleGroup}>
+        {['ALL', 'KYORUGI', 'FRESHER'].map((eventName) => (
+          <ToggleButton
+            key={eventName}
+            label={eventName === 'ALL' ? 'All' : eventName === 'FRESHER' ? 'Fresher' : 'Kyorugi'}
+            isActive={selectedEvent === eventName}
+            onClick={() => setSelectedEvent?.(eventName)}
+          />
+        ))}
+        <span className={styles.spacer} />
         <ToggleButton
           label="Select All"
           isActive={isAllSelected}

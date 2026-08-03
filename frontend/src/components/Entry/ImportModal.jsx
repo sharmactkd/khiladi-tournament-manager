@@ -18,6 +18,7 @@ const headerSynonyms = {
   weight: ['weight kg', 'body weight', 'weight', 'wt'],
   event: ['event type', 'competition', 'event'],
   subEvent: ['sub-event', 'sub event'],
+  fresherGroup: ['fresher group', 'freshers group', 'group', 'group name', 'group number'],
   ageCategory: ['age group', 'age category', 'age'],
   weightCategory: ['weight class', 'weight category', 'weight group', 'wt category'],
   medal: ['award', 'medal', 'result'],

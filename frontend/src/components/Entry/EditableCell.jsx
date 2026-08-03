@@ -106,6 +106,10 @@ const autofillSuggestion = React.useMemo(() => {
   const isTieSheetMedalLocked =
     column.id === 'medal' && row.original?.medalSource === 'tiesheet';
 
+  const isFresherGroupDisabled =
+    column.id === 'fresherGroup' &&
+    String(row.original?.subEvent || '').trim().toLowerCase() !== 'fresher';
+
   const showValidationToast = useCallback(
     (message, uniqueKey = '') => {
       const normalizedMessage = String(message || '').trim();
@@ -172,6 +176,12 @@ const autofillSuggestion = React.useMemo(() => {
     (e) => {
       if (['actions', 'sr', 'title'].includes(column.id)) return;
 
+      if (isFresherGroupDisabled) {
+        e?.preventDefault?.();
+        e?.stopPropagation?.();
+        return;
+      }
+
       if (isTieSheetMedalLocked) {
         e?.preventDefault?.();
         e?.stopPropagation?.();
@@ -190,7 +200,15 @@ const autofillSuggestion = React.useMemo(() => {
         setEditingCell?.({ rowIndex: row.index, colIndex: column.getIndex() });
       });
     },
-    [column.id, column, row.index, setEditingCell, isTieSheetMedalLocked, showTieSheetLockToast]
+    [
+      column.id,
+      column,
+      row.index,
+      setEditingCell,
+      isTieSheetMedalLocked,
+      isFresherGroupDisabled,
+      showTieSheetLockToast,
+    ]
   );
 
   const validateAndCommit = useCallback(
@@ -263,6 +281,12 @@ const autofillSuggestion = React.useMemo(() => {
           isValid = false;
         } else {
           lastToastKeyRef.current = '';
+        }
+      } else if (column.id === 'fresherGroup') {
+        finalValue = String(finalValue || '').trim().replace(/\s+/g, ' ').toUpperCase();
+      } else if (column.id === 'subEvent') {
+        if (String(finalValue || '').trim().toLowerCase() !== 'fresher') {
+          derivedUpdates.fresherGroup = '';
         }
       } else if (column.id === 'weight') {
         if (finalValue) {
@@ -735,6 +759,19 @@ if (autofillSuggestion && autofillColumns.includes(column.id)) {
       <div className={`${styles.nonEditableCell} ${highlightRow ? styles.highlightRow : ''}`}>
         {column.id === 'sr' ? (row.index + 1).toString() : initialValue}
       </div>
+    );
+  }
+
+  if (isFresherGroupDisabled) {
+    return (
+      <div
+        className={`${styles.nonEditableCell} ${styles.disabledEntryCell} ${
+          highlightRow ? styles.highlightRow : ''
+        }`}
+        title="Select Fresher in Sub Event to enable this cell"
+        aria-label={`Fresher Group disabled for row ${row.index + 1}`}
+        aria-disabled="true"
+      />
     );
   }
 

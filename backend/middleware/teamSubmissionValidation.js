@@ -26,6 +26,7 @@ const allowedPlayerKeys = new Set([
   "weight",
   "event",
   "subEvent",
+  "fresherGroup",
   "ageCategory",
   "weightCategory",
   "medal",
@@ -33,7 +34,7 @@ const allowedPlayerKeys = new Set([
 
 const allowedGender = new Set(["", "m", "male", "boy", "boys", "f", "female", "girl", "girls"]);
 const allowedMedal = new Set(["", "g", "gold", "s", "silver", "b", "bronze"]);
-const allowedEvent = new Set(["", "kyorugi", "poomsae", "freshers"]);
+const allowedEvent = new Set(["", "kyorugi", "poomsae", "fresher", "freshers"]);
 
 const cleanString = (value) => String(value ?? "").trim();
 
@@ -72,6 +73,7 @@ export const validateTeamSubmissionPayload = (req, res, next) => {
     });
   }
 
+  const fresherCounts = new Map();
   for (let i = 0; i < players.length; i += 1) {
     const player = players[i];
 
@@ -143,6 +145,25 @@ export const validateTeamSubmissionPayload = (req, res, next) => {
     const event = cleanString(player.event).toLowerCase();
     if (!allowedEvent.has(event)) {
       return res.status(400).json({ message: `Invalid event at row ${i + 1}` });
+    }
+
+    const subEvent = cleanString(player.subEvent).toLowerCase();
+    const isFresher = /\bfresh(?:er|ers)?\b/.test(`${event} ${subEvent}`);
+    if (isFresher) {
+      const group = cleanString(player.fresherGroup).replace(/\s+/g, " ").toUpperCase();
+      if (!gender || !group) {
+        return res.status(400).json({
+          message: `Gender and Fresher Group are required at row ${i + 1}`,
+        });
+      }
+      const key = `${gender}::${group}`;
+      const count = (fresherCounts.get(key) || 0) + 1;
+      fresherCounts.set(key, count);
+      if (count > 4) {
+        return res.status(400).json({
+          message: `${group} can contain maximum 4 Fresher players for this gender`,
+        });
+      }
     }
 
     if (!isValidDateLike(player.dob)) {

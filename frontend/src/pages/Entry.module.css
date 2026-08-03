@@ -1665,6 +1665,46 @@
   background: #a00005;
 }
 
+.disabledEntryCell {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  cursor: not-allowed !important;
+  user-select: none;
+  color: #7b8491 !important;
+  background-color: #e9ecef !important;
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgba(148, 163, 184, 0.10) 0,
+    rgba(148, 163, 184, 0.10) 6px,
+    rgba(255, 255, 255, 0.32) 6px,
+    rgba(255, 255, 255, 0.32) 12px
+  ) !important;
+  box-shadow: inset 0 0 0 1px rgba(100, 116, 139, 0.18);
+}
+
+.disabledEntryCellLabel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 8px;
+  border: 1px solid #cbd1d8;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #68717d;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 @media (max-width: 620px) {
   .multiSortRule {
     grid-template-columns: 34px 1fr 36px;

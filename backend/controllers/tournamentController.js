@@ -624,7 +624,15 @@ const normalizeEventTypeForAggregation = {
       {
         case: {
           $regexMatch: {
-            input: { $toLower: { $ifNull: ["$subEvent", ""] } },
+            input: {
+              $toLower: {
+                $concat: [
+                  { $ifNull: ["$event", ""] },
+                  " ",
+                  { $ifNull: ["$subEvent", ""] },
+                ],
+              },
+            },
             regex: "fresher|freshers|fresh",
           },
         },
@@ -880,8 +888,6 @@ export const getWinnerAggregation = async (req, res) => {
           medal: { $in: ["Gold", "Silver", "Bronze"] },
           name: { $nin: ["", null] },
           gender: { $nin: ["", null] },
-          ageCategory: { $nin: ["", null] },
-          weightCategory: { $nin: ["", null] },
         },
       },
       {
@@ -890,6 +896,7 @@ export const getWinnerAggregation = async (req, res) => {
           normalizedGender: normalizeGenderForAggregation,
           normalizedAgeCategory: normalizeAgeCategoryForAggregation,
           normalizedWeightCategory: { $trim: { input: { $ifNull: ["$weightCategory", ""] } } },
+          normalizedFresherGroup: { $trim: { input: { $ifNull: ["$fresherGroup", ""] } } },
           normalizedName: { $trim: { input: { $ifNull: ["$name", ""] } } },
           normalizedTeam: { $trim: { input: { $ifNull: ["$team", ""] } } },
           medalOrder: {
@@ -902,6 +909,18 @@ export const getWinnerAggregation = async (req, res) => {
               default: 99,
             },
           },
+        },
+      },
+      {
+        $match: {
+          $or: [
+            { eventType: "FRESHER", normalizedFresherGroup: { $nin: ["", null] } },
+            {
+              eventType: { $ne: "FRESHER" },
+              normalizedAgeCategory: { $nin: ["", null] },
+              normalizedWeightCategory: { $nin: ["", null] },
+            },
+          ],
         },
       },
       { $match: buildEventMatch(selectedEvent) },
@@ -918,8 +937,8 @@ export const getWinnerAggregation = async (req, res) => {
         $group: {
           _id: {
             gender: "$normalizedGender",
-            age: "$normalizedAgeCategory",
-            weightCategory: "$normalizedWeightCategory",
+            age: { $cond: [{ $eq: ["$eventType", "FRESHER"] }, "Fresher", "$normalizedAgeCategory"] },
+            weightCategory: { $cond: [{ $eq: ["$eventType", "FRESHER"] }, "$normalizedFresherGroup", "$normalizedWeightCategory"] },
           },
           rows: {
             $push: {
@@ -933,6 +952,7 @@ export const getWinnerAggregation = async (req, res) => {
               event: "$event",
               subEvent: "$subEvent",
               eventType: "$eventType",
+              fresherGroup: "$normalizedFresherGroup",
             },
           },
         },
@@ -1041,8 +1061,6 @@ export const getTeamChampionshipAggregation = async (req, res) => {
           name: { $nin: ["", null] },
           team: { $nin: ["", null, "Independent"] },
           gender: { $nin: ["", null] },
-          ageCategory: { $nin: ["", null] },
-          weightCategory: { $nin: ["", null] },
         },
       },
       {
@@ -1050,6 +1068,7 @@ export const getTeamChampionshipAggregation = async (req, res) => {
           eventType: normalizeEventTypeForAggregation,
           normalizedGender: normalizeGenderForAggregation,
           normalizedAgeCategory: normalizeAgeCategoryForAggregation,
+          normalizedFresherGroup: { $trim: { input: { $ifNull: ["$fresherGroup", ""] } } },
           normalizedTeam: {
             $trim: {
               input: { $ifNull: ["$team", "Independent"] },
@@ -1057,6 +1076,21 @@ export const getTeamChampionshipAggregation = async (req, res) => {
           },
           normalizedMedal: {
             $cond: [{ $in: ["$medal", ["Gold", "Silver", "Bronze"]] }, "$medal", ""],
+          },
+        },
+      },
+      {
+        $match: {
+          $or: [
+            { eventType: "FRESHER", normalizedFresherGroup: { $nin: ["", null] } },
+            { eventType: { $ne: "FRESHER" }, normalizedAgeCategory: { $nin: ["", null] } },
+          ],
+        },
+      },
+      {
+        $set: {
+          normalizedAgeCategory: {
+            $cond: [{ $eq: ["$eventType", "FRESHER"] }, "Fresher", "$normalizedAgeCategory"],
           },
         },
       },

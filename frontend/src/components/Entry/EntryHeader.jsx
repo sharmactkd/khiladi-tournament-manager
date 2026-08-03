@@ -26,6 +26,7 @@ import styles from '../../pages/Entry.module.css';
 
 const EntryHeader = ({
   tournamentData,
+  showFresherGroupColumn = false,
   isLoading = false,
   
   visibleColumns = {
@@ -66,6 +67,9 @@ const EntryHeader = ({
   const fileInputRef = useRef(null);
   const [showSortModal, setShowSortModal] = useState(false);
   const [draftSorting, setDraftSorting] = useState([]);
+  const availableSortColumns = showFresherGroupColumn
+    ? MULTI_SORT_COLUMNS
+    : MULTI_SORT_COLUMNS.filter((column) => column.id !== 'fresherGroup');
 
   useEffect(() => {
     if (!showSortModal) return;
@@ -91,7 +95,7 @@ const EntryHeader = ({
   const applySorting = () => {
     const nextSorting = normalizeMultiSortingState(
       draftSorting,
-      MULTI_SORT_COLUMNS.map((column) => column.id),
+      availableSortColumns.map((column) => column.id),
       MAX_MULTI_SORT_LEVELS
     );
     onApplyMultiSort?.(nextSorting);
@@ -423,7 +427,7 @@ const EntryHeader = ({
                         }}
                       >
                         <option value="">Not used</option>
-                        {MULTI_SORT_COLUMNS.map((column) => (
+                        {availableSortColumns.map((column) => (
                           <option
                             key={column.id}
                             value={column.id}
@@ -474,7 +478,7 @@ const EntryHeader = ({
                     ...current,
                     {
                       id:
-                        MULTI_SORT_COLUMNS.find(
+                        availableSortColumns.find(
                           (column) => !current.some((rule) => rule.id === column.id)
                         )?.id || '',
                       desc: false,

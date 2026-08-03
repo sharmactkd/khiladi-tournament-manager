@@ -31,7 +31,9 @@ import { normalizeMultiSortingState } from '../utils/entrySortingUtils';
 import {
   applyCompletedCategoryMedals,
   formatTwelveDigitIdentifier,
+  getFresherGroupValidation,
   MEDAL_CATEGORY_FIELDS,
+  normalizeFresherGroup,
   TWELVE_DIGIT_ENTRY_FIELDS,
 } from '../utils/entrySyncUtils';
 
@@ -42,6 +44,23 @@ const isDev = typeof import.meta !== 'undefined' && import.meta.env && import.me
 const ENABLE_IMAGE_IMPORT = false;
 const ENTRY_SYNC_V2_ENABLED =
   import.meta.env.VITE_ENABLE_ENTRY_SYNC_V2 !== "false";
+
+const tournamentHasFresherCategory = (tournament = {}) => {
+  const kyorugi = tournament?.eventCategories?.kyorugi;
+  if (kyorugi?.selected === false) return false;
+  if (kyorugi?.sub?.Fresher === true) return true;
+
+  // Backward compatibility for tournaments saved with an older event shape.
+  const configuredValues = [
+    ...(Array.isArray(kyorugi?.sub) ? kyorugi.sub : []),
+    ...(Array.isArray(tournament?.eventCategories) ? tournament.eventCategories : []),
+    ...(Array.isArray(tournament?.events) ? tournament.events : []),
+  ];
+
+  return configuredValues.some((value) =>
+    String(value?.key || value?.name || value || '').trim().toLowerCase().includes('fresher')
+  );
+};
 
 const resolveApiBaseUrl = () => {
   const envUrl =
@@ -182,6 +201,10 @@ const Entry = () => {
 
   const [data, setData] = useState([]);
   const [tournamentData, setTournamentData] = useState(null);
+  const showFresherGroupColumn = useMemo(
+    () => tournamentHasFresherCategory(tournamentData),
+    [tournamentData]
+  );
   const [selectedImportFile, setSelectedImportFile] = useState(null);
   const [editingCell, setEditingCell] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState(() => {
@@ -736,6 +759,10 @@ if (!committedUpdates && TWELVE_DIGIT_ENTRY_FIELDS.includes(columnId)) {
   finalValue = formatTwelveDigitIdentifier(finalValue);
 }
 
+if (!committedUpdates && columnId === 'fresherGroup') {
+  finalValue = normalizeFresherGroup(finalValue);
+}
+
 saveToHistory();
 
 const newData = [...dataRef.current];
@@ -744,6 +771,13 @@ const nextRow = {
   ...currentRow,
   ...(committedUpdates || { [columnId]: finalValue }),
 };
+const projectedRows = [...newData];
+projectedRows[rowIndex] = nextRow;
+const fresherValidation = getFresherGroupValidation(projectedRows);
+if (!fresherValidation.valid) {
+  toast.error(fresherValidation.message);
+  return;
+}
 newData[rowIndex] = nextRow;
 
 const committedFieldIds = Object.keys(
@@ -1061,6 +1095,7 @@ categoryFields.forEach((field) => {
 TWELVE_DIGIT_ENTRY_FIELDS.forEach((field) => {
   cleaned[field] = formatTwelveDigitIdentifier(cleaned[field]);
 });
+cleaned.fresherGroup = normalizeFresherGroup(cleaned.fresherGroup);
 
         if (cleaned.gender) {
           const g = String(cleaned.gender).trim().toLowerCase();
@@ -1077,6 +1112,15 @@ TWELVE_DIGIT_ENTRY_FIELDS.forEach((field) => {
 
         return cleaned;
       });
+
+      const importedFresherValidation = getFresherGroupValidation([
+        ...dataRef.current,
+        ...cleanedRows,
+      ]);
+      if (!importedFresherValidation.valid) {
+        toast.error(importedFresherValidation.message);
+        return;
+      }
 
     const numberedRows = cleanedRows.map((row, idx) => ({
   ...ensureEntryId(row),
@@ -1360,6 +1404,7 @@ newData = [emptyRow];
 
       <EntryHeader
         tournamentData={tournamentData}
+        showFresherGroupColumn={showFresherGroupColumn}
         isLoading={isLoading}
         visibleColumns={visibleColumns}
         onAddTeamEntries={() => {
@@ -1466,6 +1511,7 @@ newData = [emptyRow];
         data={data}
         tournamentData={tournamentData}
         visibleColumns={visibleColumns}
+        showFresherGroupColumn={showFresherGroupColumn}
         editingCell={isPageReadOnly ? null : editingCell}
         setEditingCell={isPageReadOnly ? () => {} : setEditingCell}
         searchTerm={searchTerm}

@@ -54,6 +54,25 @@ const normalizeMedal = (value = "") => {
   return "";
 };
 
+const validateFresherGroups = (rows = []) => {
+  const counts = new Map();
+  for (const row of rows) {
+    const isFresher = [row?.event, row?.subEvent].some((value) =>
+      /\bfresh(?:er|ers)?\b/i.test(String(value || "").trim())
+    );
+    if (!isFresher) continue;
+    const gender = normalizeGender(row?.gender);
+    const group = String(row?.fresherGroup || "").trim().replace(/\s+/g, " ").toUpperCase();
+    if (!gender || !group) continue;
+    const key = `${gender.toLowerCase()}::${group}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+    if (counts.get(key) > 4) {
+      return `${group} (${gender}) can contain maximum 4 Fresher players`;
+    }
+  }
+  return "";
+};
+
 const parseWeight = (value) => {
   if (value === "" || value === null || value === undefined) return null;
 
@@ -100,6 +119,7 @@ const buildStrictDuplicateKey = (row = {}) =>
     normalizeTextForKey(normalizeGender(row.gender)),
     normalizeDobForKey(row.dob),
     normalizeTextForKey(row.event),
+    normalizeTextForKey(row.fresherGroup),
     normalizeTextForKey(row.ageCategory),
     normalizeTextForKey(row.weightCategory),
     String(parseWeight(row.weight) ?? ""),
@@ -111,6 +131,7 @@ const buildStrictDuplicateKey = (row = {}) =>
     normalizeDobForKey(row.dob),
     normalizeTextForKey(row.team),
     normalizeTextForKey(row.event),
+    normalizeTextForKey(row.fresherGroup),
     normalizeTextForKey(row.ageCategory),
     normalizeTextForKey(row.weightCategory),
   ].join("|||");
@@ -140,6 +161,7 @@ const normalizePlayers = (players = [], teamName = "") => {
       weight: row.weight ?? null,
       event: String(row.event || "").trim(),
       subEvent: String(row.subEvent || "").trim(),
+      fresherGroup: String(row.fresherGroup || "").trim().replace(/\s+/g, " ").toUpperCase(),
       ageCategory: String(row.ageCategory || "").trim(),
       weightCategory: String(row.weightCategory || "").trim(),
       medal: String(row.medal || "").trim(),
@@ -170,6 +192,7 @@ sourcePlayerId: String(row.sourcePlayerId || ""),
     weight: parseWeight(row.weight),
     event: toTitleCase(row.event || ""),
     subEvent: String(row.subEvent || "").trim(),
+    fresherGroup: String(row.fresherGroup || "").trim().replace(/\s+/g, " ").toUpperCase(),
     ageCategory: String(row.ageCategory || "").trim(),
     weightCategory: String(row.weightCategory || "").trim(),
     medal: normalizeMedal(row.medal),
@@ -458,6 +481,11 @@ const existingEntryIds = new Set(
       .filter(isMeaningfulRow)
       .map((row, index) => normalizeEntryRowForEntryModel(row, index));
 
+    const fresherValidationError = validateFresherGroups(mergedEntries);
+    if (fresherValidationError) {
+      return res.status(400).json({ message: fresherValidationError });
+    }
+
     const userState =
       entryDoc?.userState && typeof entryDoc.userState === "object"
         ? entryDoc.userState
@@ -511,6 +539,7 @@ const existingEntryIds = new Set(
         weight: row.weight ?? null,
         event: row.event || "",
         subEvent: row.subEvent || "",
+        fresherGroup: row.fresherGroup || "",
         ageCategory: row.ageCategory || "",
         weightCategory: row.weightCategory || "",
         medal: row.medal || "",
@@ -555,6 +584,7 @@ if (uniqueApprovedPlayers.length > 0) {
       "weightCategory",
       "event",
       "subEvent",
+      "fresherGroup",
     ],
   });
 }

@@ -72,6 +72,7 @@ const EntryTable = forwardRef(
       data = [],
       tournamentData,
       visibleColumns,
+      showFresherGroupColumn = false,
       editingCell,
       setEditingCell,
       searchTerm,
@@ -342,12 +343,16 @@ const EntryTable = forwardRef(
       );
 
       const teamIndex = baseColumnsDef.findIndex((c) => c.id === "team");
-      return [
+      const columns = [
         ...baseColumnsDef.slice(0, teamIndex + 1),
         ...optional,
         ...baseColumnsDef.slice(teamIndex + 1),
       ];
-    }, [visibleColumns]);
+
+      return showFresherGroupColumn
+        ? columns
+        : columns.filter((column) => column.id !== "fresherGroup");
+    }, [visibleColumns, showFresherGroupColumn]);
 
     const columns = useMemo(() => {
       const customWidths = {
@@ -359,6 +364,7 @@ const EntryTable = forwardRef(
         aadhaarNumber: { size: 180, minSize: 170, maxSize: 220, enableResizing: true },
         panNumber: { size: 180, minSize: 170, maxSize: 220, enableResizing: true },
         udiseCode: { size: 180, minSize: 170, maxSize: 220, enableResizing: true },
+        fresherGroup: { size: 140, minSize: 120, maxSize: 220, enableResizing: true },
       };
 
       const defaultConfig = {

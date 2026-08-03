@@ -9,6 +9,7 @@ const ENTRY_FIELDS = [
   "weight",
   "event",
   "subEvent",
+  "fresherGroup",
   "ageCategory",
   "weightCategory",
   "medal",
@@ -93,6 +94,14 @@ const FIELD_ALIASES = {
     "event type",
     "sub category",
     "sub-category",
+  ],
+  fresherGroup: [
+    "fresher group",
+    "freshers group",
+    "group",
+    "group name",
+    "group number",
+    "batch",
   ],
   ageCategory: [
     "age category",
@@ -359,6 +368,7 @@ const normalizeValueByField = (field, value) => {
 
     case "event":
     case "subEvent":
+    case "fresherGroup":
     case "ageCategory":
     case "weightCategory":
     case "medal":

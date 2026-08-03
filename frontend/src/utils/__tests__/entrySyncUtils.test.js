@@ -4,13 +4,35 @@ import {
   buildBracketEntrySignature,
   chunkEntryOperations,
   formatTwelveDigitIdentifier,
+  getFresherGroupValidation,
+  isFresherEntry,
   isValidTwelveDigitIdentifier,
+  normalizeFresherGroup,
   mergeEntryUpdates,
   reconcileEntriesWithPending,
   sanitizeEntryUpdates,
 } from "../entrySyncUtils";
 
 describe("entrySyncUtils", () => {
+  it("recognizes and normalizes Fresher entries without age or weight categories", () => {
+    expect(isFresherEntry({ event: "Kyorugi", subEvent: "Fresher" })).toBe(true);
+    expect(isFresherEntry({ event: "Fresher", subEvent: "" })).toBe(true);
+    expect(normalizeFresherGroup("  group   1 ")).toBe("GROUP 1");
+  });
+
+  it("allows four players but rejects a fifth in the same gender and Fresher group", () => {
+    const rows = Array.from({ length: 4 }, (_, index) => ({
+      entryId: `f-${index}`,
+      name: `PLAYER ${index}`,
+      gender: "Male",
+      event: "Kyorugi",
+      subEvent: "Fresher",
+      fresherGroup: "Group 1",
+    }));
+    expect(getFresherGroupValidation(rows).valid).toBe(true);
+    expect(getFresherGroupValidation([...rows, { ...rows[0], entryId: "f-5" }]).valid).toBe(false);
+  });
+
   it("formats optional identity fields as four-digit groups", () => {
     expect(formatTwelveDigitIdentifier("123456789012")).toBe("1234-5678-9012");
     expect(formatTwelveDigitIdentifier("12ab34 5678-901234")).toBe("1234-5678-9012");

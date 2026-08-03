@@ -132,6 +132,13 @@ const entrySchema = new mongoose.Schema(
             default: "",
           },
 
+          fresherGroup: {
+            type: String,
+            trim: true,
+            uppercase: true,
+            default: "",
+          },
+
           ageCategory: {
             type: String,
             trim: true,

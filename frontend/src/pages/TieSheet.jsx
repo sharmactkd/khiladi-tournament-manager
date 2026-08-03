@@ -16,6 +16,8 @@ import {
 import {
   buildBracketEntrySignature,
   buildBracketGroupSignatures,
+  isFresherEntry,
+  normalizeFresherGroup,
 } from '../utils/entrySyncUtils';
 import useBracketGenerator from '../components/TieSheet/useBracketGenerator.jsx';
 import BracketFilters from '../components/TieSheet/BracketFilters';
@@ -102,6 +104,7 @@ const TieSheet = () => {
   const [selectedAgeCategories, setSelectedAgeCategories] = useState([]);
   const [availableGenders, setAvailableGenders] = useState([]);
   const [availableAgeCategories, setAvailableAgeCategories] = useState([]);
+  const [selectedBracketEvent, setSelectedBracketEvent] = useState('ALL');
   const [tournamentName, setTournamentName] = useState('Unnamed Tournament');
   const [federation, setFederation] = useState('N/A');
   const [logoLeft, setLogoLeft] = useState(null);
@@ -455,7 +458,8 @@ const getUniqueAgeCategories = (rows = []) => {
   entryId: String(p?.entryId || "").trim(),
   gender: normalizeGender(p?.gender),
   ageCategory: ageCategoryMapping[normalizeString(p?.ageCategory)] || p?.ageCategory,
-  weightCategory: normalizeWeightCategoryForDisplay(p?.weightCategory),
+ weightCategory: normalizeWeightCategoryForDisplay(p?.weightCategory),
+  fresherGroup: normalizeFresherGroup(p?.fresherGroup),
   name: p?.name || "",
   team: p?.team || "",
 }));
@@ -464,14 +468,28 @@ const getUniqueAgeCategories = (rows = []) => {
 
    // ✅ TieSheet only for Kyorugi players
 // ✅ TieSheet only for Kyorugi players
-const kyorugiOnly = cleanedMapped.filter((p) =>
-  String(p?.event || "").trim().toLowerCase().includes("kyorugi")
+const fresherRows = cleanedMapped.filter(
+  (p) => isFresherEntry(p) && p?.name && p?.gender && p?.fresherGroup
+);
+const incompleteFresherRows = cleanedMapped.filter(
+  (p) => isFresherEntry(p) && p?.name && (!p?.gender || !p?.fresherGroup)
+);
+if (incompleteFresherRows.length > 0) {
+  throw {
+    title: 'Incomplete Fresher Entry',
+    message: `${incompleteFresherRows.length} Fresher player(s) are missing Gender or Fresher Group. Age Category and Weight Category may remain blank.`,
+  };
+}
+const kyorugiOnly = cleanedMapped.filter(
+  (p) =>
+    !isFresherEntry(p) &&
+    String(p?.event || "").trim().toLowerCase().includes("kyorugi")
 );
 
 if (!tournamentData) {
-  return kyorugiOnly.filter(
+  return [...kyorugiOnly.filter(
     (p) => p?.name && p?.gender && p?.ageCategory && p?.weightCategory
-  );
+  ), ...fresherRows];
 }
 
 if (isDev) console.log('🧬 [TieSheet] tournamentData.ageGender:', tournamentData?.ageGender || null);
@@ -627,8 +645,9 @@ console.log(
   }, {})
 );
 
+   const allMappedPlayers = [...mappedPlayers, ...fresherRows];
    const genders = [
-  ...new Set(mappedPlayers.map((p) => p.gender).filter(Boolean)),
+  ...new Set(allMappedPlayers.map((p) => p.gender).filter(Boolean)),
 ].sort((a, b) => genderOrder.indexOf(a) - genderOrder.indexOf(b));
 
 const ageCategories = [
@@ -646,7 +665,7 @@ setSelectedGenders(genders);
 setAvailableAgeCategories(ageCategories);
 setSelectedAgeCategories(ageCategories);
 
-    return mappedPlayers;
+    return allMappedPlayers;
   }, []);
 
   const fetchTournamentFromServer = useCallback(
@@ -991,6 +1010,8 @@ const shouldRestoreSavedBrackets = useCallback((serverTieSheet, currentEntriesMe
       gender: br.gender,
       ageCategory: br.ageCategory,
       weightCategory: br.weightCategory,
+      fresherGroup: br.fresherGroup || '',
+      eventType: br.eventType || 'KYORUGI',
       pool: br.pool || '',
       playerCount: br.playerCount || 0,
       categoryPlayerCount: br.categoryPlayerCount || br.playerCount || 0,
@@ -1519,13 +1540,16 @@ if (availableAgeCategories.length > 0 && safeAges.length === 0) return [];
 
     const genderMatch = b.gender && safeGenders.includes(b.gender);
 
-     const ageMatch =
+     const isFresherBracket = b.eventType === 'FRESHER' || String(b.key || '').startsWith('fresher_');
+     const eventMatch = selectedBracketEvent === 'ALL' ||
+       (selectedBracketEvent === 'FRESHER' ? isFresherBracket : !isFresherBracket);
+     const ageMatch = isFresherBracket || (
   b.ageCategory &&
   safeAges.some(
     (age) =>
       normalizeAgeCategoryForCompare(age) ===
       normalizeAgeCategoryForCompare(b.ageCategory)
-  );
+  ));
 
           console.log("FILTER CHECK", {
   bracketAge: b.ageCategory,
@@ -1533,7 +1557,7 @@ if (availableAgeCategories.length > 0 && safeAges.length === 0) return [];
   normalizedBracket: normalizeAgeCategoryForCompare(b.ageCategory),
   normalizedSelected: safeAges.map(normalizeAgeCategoryForCompare),
 });
-      return genderMatch && ageMatch;
+      return eventMatch && genderMatch && ageMatch;
     });
 
   } catch (err) {
@@ -1546,6 +1570,7 @@ if (availableAgeCategories.length > 0 && safeAges.length === 0) return [];
   selectedAgeCategories,
   availableGenders,
   availableAgeCategories,
+  selectedBracketEvent,
 ]);
 
   const safeFilteredBrackets = useMemo(() => (Array.isArray(filteredBrackets) ? filteredBrackets : []), [filteredBrackets]);
@@ -1556,9 +1581,12 @@ const categoryNavigatorGroups = useMemo(() => {
   safeFilteredBrackets
     .filter((bracket) => bracket?.key)
     .forEach((bracket) => {
-      const ageCategory = bracket.ageCategory || "N/A";
+      const isFresherBracket = bracket.eventType === 'FRESHER' || String(bracket.key || '').startsWith('fresher_');
+      const ageCategory = isFresherBracket ? "Fresher" : (bracket.ageCategory || "N/A");
       const gender = bracket.gender || "N/A";
-      const weightCategory = bracket.weightCategory || "N/A";
+      const weightCategory = isFresherBracket
+        ? (bracket.fresherGroup || "Unassigned Group")
+        : (bracket.weightCategory || "N/A");
 
       const rawPool = String(bracket?.pool || "").trim();
       const poolLabel =
@@ -2049,6 +2077,8 @@ canMutateTieSheet,
 
   <div className={styles.filterActionRow}>
     <BracketFilters
+      selectedEvent={selectedBracketEvent}
+      setSelectedEvent={setSelectedBracketEvent}
       availableGenders={availableGenders}
       selectedGenders={selectedGenders}
       setSelectedGenders={setSelectedGenders}

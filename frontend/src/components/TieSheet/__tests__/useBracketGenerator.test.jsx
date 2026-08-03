@@ -14,7 +14,7 @@ describe("TieSheet generator change detection", () => {
     subEvent: "Kyorugi",
   };
 
-  it.each(["name", "team", "gender", "ageCategory", "weightCategory", "event", "subEvent"])(
+  it.each(["name", "team", "gender", "ageCategory", "weightCategory", "event", "subEvent", "fresherGroup"])(
     "changes the player signature when %s changes while count stays equal",
     (field) => {
       expect(buildBracketEntrySignature([player])).not.toBe(

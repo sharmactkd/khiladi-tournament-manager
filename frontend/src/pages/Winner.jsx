@@ -284,13 +284,18 @@ const MedalBadge = ({ medal = "" }) => {
   );
 };
 
-const PageSummary = ({ page = null }) => {
+const PageSummary = ({ page = null, selectedEvent = "OVERALL" }) => {
   const rows = (page?.weights || []).flatMap((group) => group?.rows || []);
   const teams = new Set(rows.map((row) => normalizeText(row?.team)).filter(Boolean));
+  const isFresher = String(selectedEvent || "").toUpperCase() === "FRESHER";
 
   const items = [
     { icon: Trophy, label: "Winners", value: rows.length },
-    { icon: Weight, label: "Weight Categories", value: page?.weights?.length || 0 },
+    {
+      icon: Weight,
+      label: isFresher ? "Fresher Groups" : "Weight Categories",
+      value: page?.weights?.length || 0,
+    },
     { icon: Users, label: "Teams", value: teams.size },
   ];
 
@@ -359,7 +364,9 @@ const WinnerReport = ({
       <table className={styles.medalTable}>
         <thead>
           <tr>
-            <th className={styles.weightHeader}>Weight Category</th>
+            <th className={styles.weightHeader}>
+              {selectedEvent === "FRESHER" ? "Fresher Group" : "Weight Category"}
+            </th>
             <th className={styles.medalHeader}>Medal</th>
             <th className={styles.participantHeader}>Player Name</th>
             <th className={styles.teamHeader}>Team</th>
@@ -397,7 +404,7 @@ const WinnerReport = ({
       </table>
     </div>
 
-    <PageSummary page={page} />
+    <PageSummary page={page} selectedEvent={selectedEvent} />
 
     <footer className={styles.pageFooter}>
   <span>
@@ -459,6 +466,7 @@ MedalBadge.propTypes = {
 
 PageSummary.propTypes = {
   page: winnerPageShape,
+  selectedEvent: PropTypes.string,
 };
 
 WinnerReport.propTypes = {

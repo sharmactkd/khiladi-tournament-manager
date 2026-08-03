@@ -86,8 +86,15 @@ const applyTeamsToExistingBracket = (bracket, teamsToApply) => {
   relinkSourceGames(cloned);
 
   cloned.shuffledPlayers = teams.map((team) => ({
+    entryId: team?.entryId || team?.id || '',
     name: team?.name || '',
     team: team?.team || '',
+    gender: team?.gender || '',
+    ageCategory: team?.ageCategory || '',
+    weightCategory: team?.weightCategory || '',
+    event: team?.event || '',
+    subEvent: team?.subEvent || '',
+    fresherGroup: team?.fresherGroup || '',
   }));
 
   cloned.outcomes = {};

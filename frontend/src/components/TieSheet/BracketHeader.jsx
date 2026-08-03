@@ -48,6 +48,9 @@ const BracketHeader = ({
 
       {/* Category Row - Simplified */}
       <div className={styles.categoryRow}>
+        {bracket?.eventType && (
+          <span className={styles.categoryItem}>{bracket.eventType}</span>
+        )}
         {bracket?.pool && (
           <span className={styles.categoryItem}>
             Pool: {bracket.pool}
@@ -58,6 +61,9 @@ const BracketHeader = ({
         )}
         {bracket?.gender && (
           <span className={styles.categoryItem}>{bracket.gender}</span>
+        )}
+        {bracket?.fresherGroup && (
+          <span className={styles.categoryItem}>{bracket.fresherGroup}</span>
         )}
       {bracket?.weightCategory && (
   <span className={styles.categoryItem}>

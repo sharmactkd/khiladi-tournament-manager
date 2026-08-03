@@ -175,6 +175,9 @@ export const makeMedalPayloadItem = (team, medal, bracket = {}) => ({
   gender: team?.gender || bracket?.gender || '',
   ageCategory: team?.ageCategory || bracket?.ageCategory || '',
   weightCategory: team?.weightCategory || bracket?.weightCategory || '',
+  fresherGroup: team?.fresherGroup || bracket?.fresherGroup || '',
+  event: team?.event || '',
+  subEvent: team?.subEvent || '',
 });
 
 export const pushUniqueMedalist = (list = [], item = {}) => {
@@ -422,6 +425,7 @@ export const collectBracketMedalPayload = ({
           gender: player.gender || bracket.gender || '',
           ageCategory: player.ageCategory || bracket.ageCategory || '',
           weightCategory: player.weightCategory || bracket.weightCategory || '',
+          fresherGroup: player.fresherGroup || bracket.fresherGroup || '',
         });
       });
     });
