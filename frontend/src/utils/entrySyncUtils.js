@@ -1,12 +1,4 @@
 export const ENTRY_SYNC_BATCH_SIZE = 75;
-export const AUTO_CATEGORY_MEDAL_SOURCE = "category-auto";
-export const MEDAL_CATEGORY_FIELDS = Object.freeze([
-  "gender",
-  "ageCategory",
-  "weightCategory",
-  "event",
-  "subEvent",
-]);
 
 export const createStableId = (prefix = "id") => {
   const random =
@@ -21,7 +13,7 @@ export const createTemporaryEntryId = () => createStableId("entry");
 export const getEntrySyncScope = (tournamentId, userId) =>
   `${String(userId || "anonymous")}:${String(tournamentId || "unknown")}`;
 
-export const ENTRY_SYNC_UPDATE_FIELDS = new Set([
+const ENTRY_SYNC_ALLOWED_FIELDS = new Set([
   "title",
   "name",
   "fathersName",
@@ -39,21 +31,21 @@ export const ENTRY_SYNC_UPDATE_FIELDS = new Set([
   "medal",
   "medalSource",
   "medalUpdatedAt",
+  "coach",
+  "coachContact",
+  "manager",
+  "managerContact",
   "entrySource",
   "sourceSubmissionId",
   "sourcePlayerId",
   "sr",
   "srNo",
-  "coach",
-  "coachContact",
-  "manager",
-  "managerContact",
 ]);
 
 export const sanitizeEntryUpdates = (updates = {}) => {
   const result = {};
   for (const [key, value] of Object.entries(updates || {})) {
-    if (!ENTRY_SYNC_UPDATE_FIELDS.has(key)) continue;
+    if (!ENTRY_SYNC_ALLOWED_FIELDS.has(key)) continue;
     result[key] = value;
   }
   return result;
@@ -149,7 +141,13 @@ export const buildBracketEntrySignature = (entries = []) => {
 };
 
 export const buildBracketCategoryKey = (entry = {}) =>
-  MEDAL_CATEGORY_FIELDS.map((field) => entry?.[field])
+  [
+    entry?.gender,
+    entry?.ageCategory,
+    entry?.weightCategory,
+    entry?.event,
+    entry?.subEvent,
+  ]
     .map((value) =>
       String(value || "")
         .normalize("NFKC")
@@ -158,108 +156,6 @@ export const buildBracketCategoryKey = (entry = {}) =>
         .replace(/\s+/g, " ")
     )
     .join("|");
-
-export const buildMedalCategoryKey = buildBracketCategoryKey;
-
-export const hasCompleteMedalCategory = (entry = {}) =>
-  MEDAL_CATEGORY_FIELDS.every((field) => String(entry?.[field] || "").trim());
-
-export const countCategoryMedals = (entries = [], categoryKey = "") => {
-  const counts = { Gold: 0, Silver: 0, Bronze: 0 };
-
-  for (const entry of Array.isArray(entries) ? entries : []) {
-    if (!hasCompleteMedalCategory(entry)) continue;
-    if (buildMedalCategoryKey(entry) !== categoryKey) continue;
-    if (String(entry?.medalSource || "") === "tiesheet") continue;
-    const medal = String(entry?.medal || "").trim();
-    if (Object.hasOwn(counts, medal)) counts[medal] += 1;
-  }
-
-  return counts;
-};
-
-export const isCategoryPodiumComplete = (counts = {}) =>
-  Number(counts.Gold || 0) === 1 &&
-  Number(counts.Silver || 0) === 1 &&
-  Number(counts.Bronze || 0) === 2;
-
-export const reconcileCompletedCategoryMedals = (
-  entries = [],
-  categoryKeys = [],
-  { now = new Date().toISOString() } = {}
-) => {
-  const nextEntries = (Array.isArray(entries) ? entries : []).map((entry) => ({
-    ...entry,
-  }));
-  const keys = new Set(
-    (categoryKeys?.length
-      ? categoryKeys
-      : nextEntries.filter(hasCompleteMedalCategory).map(buildMedalCategoryKey)
-    )
-      .map((key) => String(key || ""))
-      .filter(Boolean)
-  );
-  const changedRows = [];
-  const completedCategoryKeys = [];
-
-  for (const categoryKey of keys) {
-    const groupIndexes = nextEntries
-      .map((entry, index) =>
-        hasCompleteMedalCategory(entry) &&
-        buildMedalCategoryKey(entry) === categoryKey
-          ? index
-          : -1
-      )
-      .filter((index) => index >= 0);
-
-    if (!groupIndexes.length) continue;
-
-    const counts = countCategoryMedals(nextEntries, categoryKey);
-    const isComplete = isCategoryPodiumComplete(counts);
-    if (isComplete) completedCategoryKeys.push(categoryKey);
-
-    for (const index of groupIndexes) {
-      const entry = nextEntries[index];
-      const medal = String(entry?.medal || "").trim();
-      const medalSource = String(entry?.medalSource || "").trim();
-
-      if (medalSource === "tiesheet") continue;
-
-      if (isComplete && !medal) {
-        const updated = {
-          ...entry,
-          medal: "X-X-X-X",
-          medalSource: AUTO_CATEGORY_MEDAL_SOURCE,
-          medalUpdatedAt: now,
-        };
-        nextEntries[index] = updated;
-        changedRows.push(updated);
-        continue;
-      }
-
-      if (
-        !isComplete &&
-        medal === "X-X-X-X" &&
-        medalSource === AUTO_CATEGORY_MEDAL_SOURCE
-      ) {
-        const updated = {
-          ...entry,
-          medal: "",
-          medalSource: "",
-          medalUpdatedAt: null,
-        };
-        nextEntries[index] = updated;
-        changedRows.push(updated);
-      }
-    }
-  }
-
-  return {
-    entries: nextEntries,
-    changedRows,
-    completedCategoryKeys,
-  };
-};
 
 export const buildBracketGroupSignatures = (entries = []) => {
   const groups = new Map();
@@ -276,4 +172,76 @@ export const buildBracketGroupSignatures = (entries = []) => {
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, rows]) => [key, buildBracketEntrySignature(rows)])
   );
+};
+
+export const MEDAL_CATEGORY_FIELDS = [
+  "gender",
+  "ageCategory",
+  "weightCategory",
+  "event",
+  "subEvent",
+];
+
+const normalizeMedalCategoryPart = (value) =>
+  String(value || "")
+    .normalize("NFKC")
+    .replace(/\u00a0/g, " ")
+    .replace(/[–—−]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+export const buildMedalCategoryKey = (entry = {}) => {
+  const parts = MEDAL_CATEGORY_FIELDS.map((field) =>
+    normalizeMedalCategoryPart(entry?.[field])
+  );
+  return parts.every(Boolean) ? parts.join("|") : "";
+};
+
+export const applyCompletedCategoryMedals = (entries = []) => {
+  const sourceRows = Array.isArray(entries) ? entries : [];
+  const groups = new Map();
+
+  sourceRows.forEach((entry, index) => {
+    const key = buildMedalCategoryKey(entry);
+    if (!key) return;
+    const group = groups.get(key) || [];
+    group.push({ entry, index });
+    groups.set(key, group);
+  });
+
+  const completedKeys = new Set();
+  for (const [key, group] of groups) {
+    const counts = { Gold: 0, Silver: 0, Bronze: 0 };
+    for (const { entry } of group) {
+      if (Object.prototype.hasOwnProperty.call(counts, entry?.medal)) {
+        counts[entry.medal] += 1;
+      }
+    }
+    if (counts.Gold >= 1 && counts.Silver >= 1 && counts.Bronze >= 2) {
+      completedKeys.add(key);
+    }
+  }
+
+  if (completedKeys.size === 0) {
+    return { entries: sourceRows, changedRows: [] };
+  }
+
+  const changedRows = [];
+  const nextEntries = sourceRows.map((entry) => {
+    const key = buildMedalCategoryKey(entry);
+    const medal = String(entry?.medal || "").trim();
+    if (
+      !completedKeys.has(key) ||
+      medal ||
+      entry?.medalSource === "tiesheet"
+    ) {
+      return entry;
+    }
+    const updated = { ...entry, medal: "X-X-X-X" };
+    changedRows.push(updated);
+    return updated;
+  });
+
+  return { entries: nextEntries, changedRows };
 };

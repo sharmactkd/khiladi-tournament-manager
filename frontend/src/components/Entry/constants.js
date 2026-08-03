@@ -25,3 +25,34 @@ export const optionalColumnsDef = [
   { header: 'School', accessorKey: 'school', id: 'school', size: 220, minSize: 200, className: 'col-school' },
   { header: 'Class', accessorKey: 'class', id: 'class', size: 100, minSize: 80, className: 'col-class' },
 ];
+
+export const MULTI_SORT_COLUMNS = [
+  { id: 'sr', label: 'Serial Number' },
+  { id: 'title', label: 'Title' },
+  { id: 'name', label: 'Player Name' },
+  { id: 'team', label: 'Team' },
+  { id: 'fathersName', label: "Father's Name" },
+  { id: 'school', label: 'School' },
+  { id: 'class', label: 'Class' },
+  { id: 'gender', label: 'Gender' },
+  { id: 'dob', label: 'DOB' },
+  { id: 'weight', label: 'Weight' },
+  { id: 'event', label: 'Event' },
+  { id: 'subEvent', label: 'Sub Event' },
+  { id: 'ageCategory', label: 'Age Category' },
+  { id: 'weightCategory', label: 'Weight Category' },
+  { id: 'medal', label: 'Medal' },
+  { id: 'coach', label: 'Coach' },
+  { id: 'coachContact', label: 'Coach Contact' },
+  { id: 'manager', label: 'Manager' },
+  { id: 'managerContact', label: 'Manager Contact' },
+];
+
+export const MAX_MULTI_SORT_LEVELS = MULTI_SORT_COLUMNS.length;
+
+export const DEFAULT_MULTI_SORT = [
+  { id: 'gender', desc: false },
+  { id: 'ageCategory', desc: false },
+  { id: 'weightCategory', desc: false },
+  { id: 'medal', desc: false },
+];

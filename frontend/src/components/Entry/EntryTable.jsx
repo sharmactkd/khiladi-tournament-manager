@@ -22,7 +22,11 @@ import { saveEntries as saveEntriesApi } from "../../api";
 
 import EditableCell from "./EditableCell";
 import FilterDropdown from "./FilterDropdown";
-import { baseColumnsDef } from "./constants";
+import { baseColumnsDef, MAX_MULTI_SORT_LEVELS } from "./constants";
+import {
+  createEntrySortingFn,
+  subEventSortingFn,
+} from "../../utils/entrySortingUtils";
 import styles from "../../pages/Entry.module.css";
 
 const isDev = typeof import.meta !== "undefined" && !!import.meta.env?.DEV;
@@ -31,59 +35,6 @@ const multiSelectIncludeFilter = (row, columnId, filterValue) => {
   if (!filterValue || filterValue.length === 0) return true;
   const cellValue = row.getValue(columnId)?.toString()?.trim() || "";
   return filterValue.includes(cellValue);
-};
-
-const alphanumericSortWithEmpty = (rowA, rowB, columnId) => {
-  const a = rowA.getValue(columnId) || "";
-  const b = rowB.getValue(columnId) || "";
-  if (!a && !b) return 0;
-  if (!a) return 1;
-  if (!b) return -1;
-  return a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" });
-};
-
-const genderSort = (rowA, rowB, columnId) => {
-  const a = (rowA.getValue(columnId) || "").toString().trim().toLowerCase();
-  const b = (rowB.getValue(columnId) || "").toString().trim().toLowerCase();
-  const order = { male: 1, m: 1, female: 2, f: 2, "": 3 };
-  return (order[a] ?? 3) - (order[b] ?? 3);
-};
-
-const subEventSort = (rowA, rowB, columnId) => {
-  const a = rowA.getValue(columnId) || "";
-  const b = rowB.getValue(columnId) || "";
-  const eventA = rowA.getValue("event") || "";
-  const eventB = rowB.getValue("event") || "";
-
-  const kyorugiOrder = { Kyorugi: 1, Fresher: 2, "Tag Team": 3, "": 4 };
-  const poomsaeOrder = { Individual: 1, Pair: 2, Team: 3, "": 4 };
-
-  if (eventA === eventB) {
-    const map = eventA === "Kyorugi" ? kyorugiOrder : poomsaeOrder;
-    return (map[a] || 4) - (map[b] || 4);
-  }
-
-  return eventA.localeCompare(eventB, undefined, { sensitivity: "base" });
-};
-
-const ageCategorySort = (rowA, rowB, columnId) => {
-  const order = {
-    "Sub-Junior": 1,
-    Cadet: 2,
-    Junior: 3,
-    Senior: 4,
-    "Under - 14": 5,
-    "Under - 17": 6,
-    "Under - 19": 7,
-    "Not Eligible": 8,
-    "": 9,
-  };
-  return (order[rowA.getValue(columnId)] || 9) - (order[rowB.getValue(columnId)] || 9);
-};
-
-const medalSort = (rowA, rowB, columnId) => {
-  const order = { Gold: 1, Silver: 2, Bronze: 3, "X-X-X-X": 4, "": 5 };
-  return (order[rowA.getValue(columnId)] || 5) - (order[rowB.getValue(columnId)] || 5);
 };
 
 const stableStringify = (obj) => {
@@ -427,15 +378,9 @@ const EntryTable = forwardRef(
             : custom.enableResizing ?? col.enableColumnResizing !== false,
           enableSorting: isSortable,
           sortingFn:
-            col.id === "gender"
-              ? genderSort
-              : col.id === "subEvent"
-                ? subEventSort
-                : col.id === "ageCategory"
-                  ? ageCategorySort
-                  : col.id === "medal"
-                    ? medalSort
-                    : alphanumericSortWithEmpty,
+            col.id === "subEvent"
+              ? subEventSortingFn
+              : createEntrySortingFn(col.id),
           filterFn: [
             "team",
             "school",
@@ -483,6 +428,12 @@ const EntryTable = forwardRef(
         columnFilters: columnFiltersArray,
       },
       onSortingChange: setSorting,
+      enableMultiSort: true,
+      enableSortingRemoval: true,
+      maxMultiSortColCount: MAX_MULTI_SORT_LEVELS,
+      // Normal click applies single-column sorting. Hold Shift while clicking
+      // another header to append it to the active multi-sort chain.
+      isMultiSortEvent: (event) => Boolean(event?.shiftKey),
       onGlobalFilterChange: setSearchTerm,
       onColumnFiltersChange: (updater) => {
         const newFilters = typeof updater === "function" ? updater(columnFiltersArray) : updater;
@@ -602,20 +553,12 @@ const EntryTable = forwardRef(
                   <tr key={headerGroup.id}>
                     {headerGroup.headers.map((header) => {
                       const columnId = header.column.id;
-                      const sortableColumns = [
-                        "sr",
-                        "team",
-                        "gender",
-                        "event",
-                        "subEvent",
-                        "weightCategory",
-                        "ageCategory",
-                        "medal",
-                        "coach",
-                      ];
-                      const canSort = sortableColumns.includes(columnId);
+                      const canSort = header.column.getCanSort();
                       const sortDirection = header.column.getIsSorted();
                       const isSorted = !!sortDirection;
+                      const sortPriority = (sorting || []).findIndex(
+                        (rule) => rule.id === columnId
+                      );
 
                       const canFilter = [
                         "team",
@@ -663,6 +606,16 @@ const EntryTable = forwardRef(
                                 }}
                               >
                                 {sortDirection === "asc" ? " ↑" : sortDirection === "desc" ? " ↓" : " ↕"}
+                              </span>
+                            )}
+
+                            {sortPriority >= 0 && (
+                              <span
+                                className={styles.sortPriorityBadge}
+                                title={`Sort priority ${sortPriority + 1}`}
+                                aria-label={`Sort priority ${sortPriority + 1}`}
+                              >
+                                {sortPriority + 1}
                               </span>
                             )}
 

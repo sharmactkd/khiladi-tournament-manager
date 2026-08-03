@@ -20,14 +20,18 @@ import ImageImport from '../components/import/ImageImport';
 import AddTeamEntriesModal from '../components/Team/AddTeamEntriesModal';
 import useEntrySync from '../hooks/useEntrySync';
 import toast, { Toaster } from "react-hot-toast";
-import {
-  buildMedalCategoryKey,
-  hasCompleteMedalCategory,
-  MEDAL_CATEGORY_FIELDS,
-  reconcileCompletedCategoryMedals,
-} from "../utils/entrySyncUtils";
 
-import { baseColumnsDef, optionalColumnsDef } from '../components/Entry/constants';
+import {
+  baseColumnsDef,
+  optionalColumnsDef,
+  MAX_MULTI_SORT_LEVELS,
+  MULTI_SORT_COLUMNS,
+} from '../components/Entry/constants';
+import { normalizeMultiSortingState } from '../utils/entrySortingUtils';
+import {
+  applyCompletedCategoryMedals,
+  MEDAL_CATEGORY_FIELDS,
+} from '../utils/entrySyncUtils';
 
 import styles from './Entry.module.css';
 
@@ -184,7 +188,18 @@ const Entry = () => {
   });
   const [columnWidths, setColumnWidths] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sorting, setSorting] = useState([]);
+  const [sorting, setSorting] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(`entrySorting_${id}`) || '[]');
+      return normalizeMultiSortingState(
+        saved,
+        MULTI_SORT_COLUMNS.map((column) => column.id),
+        MAX_MULTI_SORT_LEVELS
+      );
+    } catch {
+      return [];
+    }
+  });
   const [filterColumn, setFilterColumn] = useState(null);
   const [filters, setFilters] = useState(() => ({}));
   const [loadError, setLoadError] = useState(null);
@@ -203,6 +218,20 @@ const [isLoadingMoreEntries, setIsLoadingMoreEntries] = useState(false);
 const entryTableRef = useRef(null);
 const dataRef = useRef(data);
 
+  useEffect(() => {
+    localStorage.setItem(`entrySorting_${id}`, JSON.stringify(sorting));
+  }, [id, sorting]);
+
+  const applyMultiLevelSorting = useCallback((nextSorting) => {
+    setSorting(
+      normalizeMultiSortingState(
+        nextSorting,
+        MULTI_SORT_COLUMNS.map((column) => column.id),
+        MAX_MULTI_SORT_LEVELS
+      )
+    );
+  }, []);
+
   const [showImportModal, setShowImportModal] = useState(false);
   const [showImageImportModal, setShowImageImportModal] = useState(false);
   const [showAddTeamEntriesModal, setShowAddTeamEntriesModal] = useState(false);
@@ -217,6 +246,7 @@ const dataRef = useRef(data);
   const canManageTournament = Boolean(access?.canAccessEntry || isAdminUser || isOrganizer);
   const canEditTournament = Boolean(!isPageReadOnly && (!isAdminUser || adminEditMode));
   const {
+    queueUpsert,
     queueUpserts,
     queueDelete,
     flush: flushEntrySync,
@@ -493,7 +523,12 @@ finalEntries = regenerateSrNumbers(
         setData(finalEntries);
 
         if (usedSource === 'server' && finalState) {
-          setSorting(finalState.sorting || []);
+          const serverSorting = normalizeMultiSortingState(
+            finalState.sorting,
+            MULTI_SORT_COLUMNS.map((column) => column.id),
+            MAX_MULTI_SORT_LEVELS
+          );
+          if (serverSorting.length > 0) setSorting(serverSorting);
           const stableFilters = finalState.filters ? { ...finalState.filters } : {};
           setFilters(stableFilters);
           setSearchTerm('');
@@ -672,110 +707,76 @@ finalEntries = regenerateSrNumbers(
       const committedUpdates =
         columnId && typeof columnId === "object" ? { ...columnId } : null;
 
-      if (!committedUpdates && columnId === "gender") {
-        const v = String(value || "").trim().toLowerCase();
-        if (["m", "male"].includes(v)) finalValue = "Male";
-        else if (["f", "female"].includes(v)) finalValue = "Female";
+      if (!committedUpdates && columnId === 'gender') {
+        const v = String(value || '').trim().toLowerCase();
+        if (['m', 'male'].includes(v)) finalValue = 'Male';
+        else if (['f', 'female'].includes(v)) finalValue = 'Female';
       }
 
-      if (!committedUpdates && columnId === "weight") {
-        finalValue = String(value || "").replace(/[^0-9.]/g, "");
-      }
+    if (!committedUpdates && columnId === 'weight') {
+  finalValue = String(value || '').replace(/[^0-9.]/g, '');
+}
 
-      if (
-        !committedUpdates &&
-        ["event", "subEvent", "ageCategory", "weightCategory"].includes(columnId)
-      ) {
-        finalValue = normalizeEntryCategoryValue(finalValue, columnId);
-      }
+if (!committedUpdates && ["event", "subEvent", "ageCategory", "weightCategory"].includes(columnId)) {
+  finalValue = normalizeEntryCategoryValue(finalValue, columnId);
+}
 
-      saveToHistory();
+saveToHistory();
 
-      const newData = [...dataRef.current];
-      const currentRow = ensureEntryId(newData[rowIndex] || {});
-      let nextRow = {
-        ...currentRow,
-        ...(committedUpdates || { [columnId]: finalValue }),
-      };
+const newData = [...dataRef.current];
+const currentRow = ensureEntryId(newData[rowIndex] || {});
+const nextRow = {
+  ...currentRow,
+  ...(committedUpdates || { [columnId]: finalValue }),
+};
+newData[rowIndex] = nextRow;
 
-      const changedFields = Object.keys(
-        committedUpdates || { [columnId]: finalValue }
+const committedFieldIds = Object.keys(
+  committedUpdates || { [columnId]: finalValue }
+);
+const shouldCheckMedalCompletion = committedFieldIds.some(
+  (field) => field === 'medal' || MEDAL_CATEGORY_FIELDS.includes(field)
+);
+const medalCompletion = shouldCheckMedalCompletion
+  ? applyCompletedCategoryMedals(newData)
+  : { entries: newData, changedRows: [] };
+const finalData = medalCompletion.entries;
+
+dataRef.current = finalData;
+setData(finalData);
+
+if (ENTRY_SYNC_V2_ENABLED) {
+  queueUpsert(currentRow.entryId, {
+    ...(committedUpdates || { [columnId]: finalValue }),
+    srNo: rowIndex + 1,
+    entrySource:
+      currentRow.entrySource === "import"
+        ? "import"
+        : currentRow.entrySource === "teamSubmission"
+          ? "teamSubmission"
+          : "manual",
+  }).catch((error) => {
+    console.error("[Entry Sync V2] Failed to queue row update:", error);
+    setLoadError(
+      "This change could not be stored locally. Keep the page open and retry."
+    );
+  });
+
+  if (medalCompletion.changedRows.length > 0) {
+    Promise.all(
+      medalCompletion.changedRows.map((row) =>
+        queueUpsert(row.entryId, { medal: 'X-X-X-X' })
+      )
+    ).catch((error) => {
+      console.error("[Entry Sync V2] Failed to queue automatic X-X-X-X medals:", error);
+      setLoadError(
+        "Automatic X-X-X-X medals were applied locally but could not be stored in the sync queue."
       );
-      const medalWasCommitted = changedFields.includes("medal");
-
-      if (medalWasCommitted && currentRow.medalSource === "tiesheet") {
-        nextRow = {
-          ...nextRow,
-          medal: currentRow.medal,
-          medalSource: "tiesheet",
-          medalUpdatedAt: currentRow.medalUpdatedAt,
-        };
-      } else if (medalWasCommitted) {
-        const committedMedal = String(nextRow.medal || "").trim();
-        nextRow = {
-          ...nextRow,
-          medalSource: committedMedal ? "manual" : "",
-          medalUpdatedAt: committedMedal ? new Date().toISOString() : null,
-        };
-      }
-
-      newData[rowIndex] = nextRow;
-
-      const shouldReconcileMedals = changedFields.some(
-        (field) => field === "medal" || MEDAL_CATEGORY_FIELDS.includes(field)
-      );
-      let finalData = newData;
-      let autoChangedRows = [];
-
-      if (shouldReconcileMedals) {
-        const affectedCategoryKeys = new Set();
-        if (hasCompleteMedalCategory(currentRow)) {
-          affectedCategoryKeys.add(buildMedalCategoryKey(currentRow));
-        }
-        if (hasCompleteMedalCategory(nextRow)) {
-          affectedCategoryKeys.add(buildMedalCategoryKey(nextRow));
-        }
-
-        const reconciliation = reconcileCompletedCategoryMedals(newData, [
-          ...affectedCategoryKeys,
-        ]);
-        finalData = reconciliation.entries;
-        autoChangedRows = reconciliation.changedRows;
-      }
-
-      dataRef.current = finalData;
-      setData(finalData);
-
-      if (ENTRY_SYNC_V2_ENABLED) {
-        const primaryRow = finalData[rowIndex] || nextRow;
-        const rowsToQueue = new Map([[primaryRow.entryId, primaryRow]]);
-        autoChangedRows.forEach((row) => rowsToQueue.set(row.entryId, row));
-
-        const queuedRows = [...rowsToQueue.values()].map((row) => {
-          const index = finalData.findIndex(
-            (candidate) => candidate.entryId === row.entryId
-          );
-          return {
-            ...row,
-            srNo: index >= 0 ? index + 1 : rowIndex + 1,
-            entrySource:
-              row.entrySource === "import"
-                ? "import"
-                : row.entrySource === "teamSubmission"
-                  ? "teamSubmission"
-                  : "manual",
-          };
-        });
-
-        queueUpserts(queuedRows).catch((error) => {
-          console.error("[Entry Sync V2] Failed to queue row update:", error);
-          setLoadError(
-            "This change could not be stored locally. Keep the page open and retry."
-          );
-        });
-      }
+    });
+  }
+}
     },
-    [saveToHistory, guardAdminReadOnly, queueUpserts]
+  [saveToHistory, guardAdminReadOnly, queueUpsert]
   );
 
   const handleSearchChange = useCallback((value) => {
@@ -1368,6 +1369,9 @@ newData = [emptyRow];
         onExport={handleExport}
         onGenerateTieSheets={handleGenerateTieSheets}
         showImportModal={showImportModal}
+        sorting={sorting}
+        onApplyMultiSort={applyMultiLevelSorting}
+        onClearSorting={() => setSorting([])}
        
       />
 

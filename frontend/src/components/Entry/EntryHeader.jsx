@@ -1,5 +1,5 @@
 // src/components/Entry/EntryHeader.jsx
-import React, { useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import {
   faTrash,
@@ -14,7 +14,14 @@ import {
   faPlusCircle,
   faShareAlt,
   faInbox,
+  faSortAmountDown,
 } from '@fortawesome/free-solid-svg-icons';
+import {
+  DEFAULT_MULTI_SORT,
+  MAX_MULTI_SORT_LEVELS,
+  MULTI_SORT_COLUMNS,
+} from './constants';
+import { normalizeMultiSortingState } from '../../utils/entrySortingUtils';
 import styles from '../../pages/Entry.module.css';
 
 const EntryHeader = ({
@@ -45,14 +52,43 @@ const EntryHeader = ({
   onShareEntryForm,
   onViewTeamSubmissions,
   showOrganizerActions = true,
-  
+  sorting = [],
+  onApplyMultiSort,
+  onClearSorting,
 }) => {
   const fileInputRef = useRef(null);
+  const [showSortModal, setShowSortModal] = useState(false);
+  const [draftSorting, setDraftSorting] = useState([]);
+
+  useEffect(() => {
+    if (!showSortModal) return;
+    setDraftSorting(
+      (sorting?.length ? sorting : DEFAULT_MULTI_SORT).map((rule) => ({ ...rule }))
+    );
+  }, [showSortModal, sorting]);
 
   const triggerFileInput = () => {
     if (!isLoading && !showImportModal) {
       fileInputRef.current?.click();
     }
+  };
+
+  const updateSortRule = (index, patch) => {
+    setDraftSorting((current) =>
+      current.map((rule, ruleIndex) =>
+        ruleIndex === index ? { ...rule, ...patch } : rule
+      )
+    );
+  };
+
+  const applySorting = () => {
+    const nextSorting = normalizeMultiSortingState(
+      draftSorting,
+      MULTI_SORT_COLUMNS.map((column) => column.id),
+      MAX_MULTI_SORT_LEVELS
+    );
+    onApplyMultiSort?.(nextSorting);
+    setShowSortModal(false);
   };
 
  
@@ -214,6 +250,32 @@ const EntryHeader = ({
               <FontAwesomeIcon icon={faRedo} />
               Redo {redoHistoryLength > 0 && `(${redoHistoryLength})`}
             </button>
+
+            <div className={styles.multiSortButtonGroup}>
+              <button
+                type="button"
+                className={styles.actionButton}
+                onClick={() => setShowSortModal(true)}
+                disabled={isLoading}
+                aria-label="Configure multi-level sorting"
+                title="Sort by multiple columns in priority order"
+              >
+                <FontAwesomeIcon icon={faSortAmountDown} />
+                Multi Sort{sorting.length ? ` (${sorting.length})` : ''}
+              </button>
+              {sorting.length > 0 && (
+                <button
+                  type="button"
+                  className={styles.multiSortClearButton}
+                  onClick={onClearSorting}
+                  disabled={isLoading}
+                  aria-label="Clear multi-level sorting"
+                  title="Clear multi-level sorting"
+                >
+                  <FontAwesomeIcon icon={faTimes} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -295,6 +357,151 @@ const EntryHeader = ({
           )}
         </div>
       </div>
+
+      {showSortModal && (
+        <div
+          className={styles.multiSortOverlay}
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setShowSortModal(false);
+          }}
+        >
+          <section
+            className={styles.multiSortDialog}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="multi-sort-title"
+          >
+            <div className={styles.multiSortHeader}>
+              <div>
+                <h3 id="multi-sort-title">Multi-Level Sorting</h3>
+                <p>Priority 1 is applied first, followed by the next levels.</p>
+              </div>
+              <button
+                type="button"
+                className={styles.multiSortClose}
+                onClick={() => setShowSortModal(false)}
+                aria-label="Close multi-level sorting"
+              >
+                <FontAwesomeIcon icon={faTimes} />
+              </button>
+            </div>
+
+            <div className={styles.multiSortRules}>
+              {draftSorting.map((rule, index) => {
+                const selectedElsewhere = new Set(
+                  draftSorting
+                    .filter((_, ruleIndex) => ruleIndex !== index)
+                    .map((item) => item.id)
+                );
+
+                return (
+                  <div className={styles.multiSortRule} key={`sort-level-${index + 1}`}>
+                    <span className={styles.multiSortLevel}>{index + 1}</span>
+                    <label>
+                      <span>Column</span>
+                      <select
+                        value={rule.id}
+                        onChange={(event) => {
+                          const next = [...draftSorting];
+                          next[index] = { id: event.target.value, desc: rule.desc === true };
+                          setDraftSorting(next.filter((item, itemIndex) => itemIndex <= index || item.id));
+                        }}
+                      >
+                        <option value="">Not used</option>
+                        {MULTI_SORT_COLUMNS.map((column) => (
+                          <option
+                            key={column.id}
+                            value={column.id}
+                            disabled={selectedElsewhere.has(column.id)}
+                          >
+                            {column.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      <span>Order</span>
+                      <select
+                        value={rule.desc ? 'desc' : 'asc'}
+                        disabled={!rule.id}
+                        onChange={(event) =>
+                          updateSortRule(index, { desc: event.target.value === 'desc' })
+                        }
+                      >
+                        <option value="asc">Ascending</option>
+                        <option value="desc">Descending</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      className={styles.multiSortRemoveRule}
+                      onClick={() =>
+                        setDraftSorting((current) =>
+                          current.filter((_, ruleIndex) => ruleIndex !== index)
+                        )
+                      }
+                      aria-label={`Remove sort priority ${index + 1}`}
+                      title="Remove this sort level"
+                    >
+                      <FontAwesomeIcon icon={faTimes} />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+
+            {draftSorting.length < MAX_MULTI_SORT_LEVELS && (
+              <button
+                type="button"
+                className={styles.multiSortAddLevel}
+                onClick={() =>
+                  setDraftSorting((current) => [
+                    ...current,
+                    {
+                      id:
+                        MULTI_SORT_COLUMNS.find(
+                          (column) => !current.some((rule) => rule.id === column.id)
+                        )?.id || '',
+                      desc: false,
+                    },
+                  ])
+                }
+              >
+                <FontAwesomeIcon icon={faPlusCircle} /> Add Sort Level
+              </button>
+            )}
+
+            <p className={styles.multiSortHint}>
+              Tip: table headers can also be Shift-clicked to add another sort level.
+            </p>
+
+            <div className={styles.multiSortActions}>
+              <button
+                type="button"
+                className={styles.multiSortSecondary}
+                onClick={() => {
+                  setDraftSorting([]);
+                  onClearSorting?.();
+                  setShowSortModal(false);
+                }}
+              >
+                Clear Sorting
+              </button>
+              <button
+                type="button"
+                className={styles.multiSortSecondary}
+                onClick={() => setDraftSorting(DEFAULT_MULTI_SORT.map((rule) => ({ ...rule })))}
+              >
+                Use Recommended
+              </button>
+              <button type="button" className={styles.multiSortApply} onClick={applySorting}>
+                Apply Sorting
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
     </div>
   );
 };

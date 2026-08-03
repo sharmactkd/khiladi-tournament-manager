@@ -1,13 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  AUTO_CATEGORY_MEDAL_SOURCE,
-  buildMedalCategoryKey,
+  applyCompletedCategoryMedals,
   buildBracketEntrySignature,
   chunkEntryOperations,
-  countCategoryMedals,
-  isCategoryPodiumComplete,
   mergeEntryUpdates,
-  reconcileCompletedCategoryMedals,
   reconcileEntriesWithPending,
   sanitizeEntryUpdates,
 } from "../entrySyncUtils";
@@ -63,9 +59,10 @@ describe("entrySyncUtils", () => {
       sanitizeEntryUpdates({
         entryId: "imported-entry-1",
         _id: "mongo-id",
+        tournamentId: "must-not-be-sent-inside-updates",
+        updatedBy: "must-not-be-sent-inside-updates",
         actions: "",
         pendingSync: true,
-        unexpectedUiField: "must never reach the API",
         name: "PLAYER ONE",
         team: "TEAM ONE",
         sr: "1",
@@ -90,134 +87,49 @@ describe("entrySyncUtils", () => {
     ).toEqual({ name: "NEW NAME" });
   });
 
-  const categoryRow = (entryId, medal = "", overrides = {}) => ({
-    entryId,
-    name: `PLAYER ${entryId}`,
-    gender: "Male",
-    ageCategory: "Senior",
-    weightCategory: "Under - 54 KG",
-    event: "Kyorugi",
-    subEvent: "Kyorugi",
-    medal,
-    medalSource: medal ? "manual" : "",
-    ...overrides,
-  });
-
-  it("auto-assigns X-X-X-X after exactly one Gold, one Silver and two Bronze", () => {
+  it("fills empty medals with X-X-X-X after Gold, Silver and two Bronze are declared", () => {
+    const category = {
+      gender: "Male",
+      ageCategory: "Cadet",
+      weightCategory: "Under - 41 KG",
+      event: "Kyorugi",
+      subEvent: "Kyorugi",
+    };
     const rows = [
-      categoryRow("gold", "Gold"),
-      categoryRow("silver", "Silver"),
-      categoryRow("bronze-1", "Bronze"),
-      categoryRow("bronze-2", "Bronze"),
-      categoryRow("remaining-1"),
-      categoryRow("remaining-2"),
+      { entryId: "g", ...category, medal: "Gold" },
+      { entryId: "s", ...category, medal: "Silver" },
+      { entryId: "b1", ...category, medal: "Bronze" },
+      { entryId: "b2", ...category, medal: "Bronze" },
+      { entryId: "x1", ...category, medal: "" },
+      { entryId: "x2", ...category, medal: "" },
     ];
-    const key = buildMedalCategoryKey(rows[0]);
-    const result = reconcileCompletedCategoryMedals(rows, [key], {
-      now: "2026-08-02T10:00:00.000Z",
-    });
 
-    expect(result.changedRows.map((row) => row.entryId)).toEqual([
-      "remaining-1",
-      "remaining-2",
-    ]);
-    expect(result.entries.slice(4).map((row) => row.medal)).toEqual([
+    const result = applyCompletedCategoryMedals(rows);
+    expect(result.entries.map((entry) => entry.medal)).toEqual([
+      "Gold",
+      "Silver",
+      "Bronze",
+      "Bronze",
       "X-X-X-X",
       "X-X-X-X",
     ]);
-    expect(result.entries.slice(4).map((row) => row.medalSource)).toEqual([
-      AUTO_CATEGORY_MEDAL_SOURCE,
-      AUTO_CATEGORY_MEDAL_SOURCE,
-    ]);
+    expect(result.changedRows.map((entry) => entry.entryId)).toEqual(["x1", "x2"]);
   });
 
-  it("does nothing while the manual podium is incomplete", () => {
+  it("does not fill X-X-X-X before the category has two Bronze medals", () => {
+    const category = {
+      gender: "Female",
+      ageCategory: "Senior",
+      weightCategory: "Under - 49 KG",
+      event: "Kyorugi",
+      subEvent: "Kyorugi",
+    };
     const rows = [
-      categoryRow("gold", "Gold"),
-      categoryRow("silver", "Silver"),
-      categoryRow("bronze", "Bronze"),
-      categoryRow("remaining"),
+      { ...category, medal: "Gold" },
+      { ...category, medal: "Silver" },
+      { ...category, medal: "Bronze" },
+      { ...category, medal: "" },
     ];
-    const key = buildMedalCategoryKey(rows[0]);
-
-    expect(countCategoryMedals(rows, key)).toEqual({
-      Gold: 1,
-      Silver: 1,
-      Bronze: 1,
-    });
-    expect(isCategoryPodiumComplete(countCategoryMedals(rows, key))).toBe(false);
-    expect(reconcileCompletedCategoryMedals(rows, [key]).changedRows).toEqual([]);
-  });
-
-  it("clears only category-auto X when the podium becomes incomplete", () => {
-    const rows = [
-      categoryRow("gold"),
-      categoryRow("silver", "Silver"),
-      categoryRow("bronze-1", "Bronze"),
-      categoryRow("bronze-2", "Bronze"),
-      categoryRow("auto-x", "X-X-X-X", {
-        medalSource: AUTO_CATEGORY_MEDAL_SOURCE,
-      }),
-      categoryRow("manual-x", "X-X-X-X", { medalSource: "manual" }),
-    ];
-    const key = buildMedalCategoryKey(rows[0]);
-    const result = reconcileCompletedCategoryMedals(rows, [key]);
-
-    expect(result.entries.find((row) => row.entryId === "auto-x")).toMatchObject({
-      medal: "",
-      medalSource: "",
-      medalUpdatedAt: null,
-    });
-    expect(result.entries.find((row) => row.entryId === "manual-x")).toMatchObject({
-      medal: "X-X-X-X",
-      medalSource: "manual",
-    });
-  });
-
-  it("does not overwrite TieSheet-controlled medals or another category", () => {
-    const firstCategory = [
-      categoryRow("gold", "Gold"),
-      categoryRow("silver", "Silver"),
-      categoryRow("bronze-1", "Bronze"),
-      categoryRow("bronze-2", "Bronze"),
-      categoryRow("tiesheet", "", { medalSource: "tiesheet" }),
-      categoryRow("remaining"),
-    ];
-    const otherCategory = categoryRow("other", "", {
-      weightCategory: "Under - 58 KG",
-    });
-    const key = buildMedalCategoryKey(firstCategory[0]);
-    const result = reconcileCompletedCategoryMedals(
-      [...firstCategory, otherCategory],
-      [key]
-    );
-
-    expect(result.entries.find((row) => row.entryId === "tiesheet")).toMatchObject({
-      medal: "",
-      medalSource: "tiesheet",
-    });
-    expect(result.entries.find((row) => row.entryId === "remaining")).toMatchObject({
-      medal: "X-X-X-X",
-      medalSource: AUTO_CATEGORY_MEDAL_SOURCE,
-    });
-    expect(result.entries.find((row) => row.entryId === "other")).toMatchObject({
-      medal: "",
-      medalSource: "",
-    });
-  });
-
-  it("does not complete a category containing duplicate podium medals", () => {
-    const rows = [
-      categoryRow("gold-1", "Gold"),
-      categoryRow("gold-2", "Gold"),
-      categoryRow("silver", "Silver"),
-      categoryRow("bronze-1", "Bronze"),
-      categoryRow("bronze-2", "Bronze"),
-      categoryRow("remaining"),
-    ];
-    const key = buildMedalCategoryKey(rows[0]);
-
-    expect(isCategoryPodiumComplete(countCategoryMedals(rows, key))).toBe(false);
-    expect(reconcileCompletedCategoryMedals(rows, [key]).changedRows).toEqual([]);
+    expect(applyCompletedCategoryMedals(rows).changedRows).toEqual([]);
   });
 });
