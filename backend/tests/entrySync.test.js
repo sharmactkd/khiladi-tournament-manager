@@ -40,6 +40,99 @@ describe("Entry Sync V2", () => {
     expect(() => normalizeEntrySyncUpdates({ isAdmin: true })).toThrow(
       "Unsupported entry fields"
     );
+
+    expect(
+      normalizeEntrySyncUpdates({
+        medal: "X-X-X-X",
+        medalSource: "category-auto",
+      })
+    ).toMatchObject({
+      medal: "X-X-X-X",
+      medalSource: "category-auto",
+    });
+  });
+
+  test("preserves only valid category-auto X medals", async () => {
+    const tournamentId = new mongoose.Types.ObjectId().toString();
+    const userId = new mongoose.Types.ObjectId().toString();
+
+    await processEntrySyncBatch({
+      tournamentId,
+      userId,
+      clientMutationId: "category-auto-medals",
+      clientSeq: Date.now() * 1000,
+      operations: [
+        {
+          operationId: "auto-x",
+          entryId: "auto-x",
+          type: "upsert",
+          updates: { medal: "X-X-X-X", medalSource: "category-auto" },
+        },
+        {
+          operationId: "manual-x",
+          entryId: "manual-x",
+          type: "upsert",
+          updates: { medal: "X-X-X-X", medalSource: "manual" },
+        },
+        {
+          operationId: "invalid-auto-gold",
+          entryId: "invalid-auto-gold",
+          type: "upsert",
+          updates: { medal: "Gold", medalSource: "category-auto" },
+        },
+      ],
+    });
+
+    const rows = await EntryRow.find({ tournamentId }).lean();
+    const byId = new Map(rows.map((row) => [row.entryId, row]));
+
+    expect(byId.get("auto-x")).toMatchObject({
+      medal: "X-X-X-X",
+      medalSource: "category-auto",
+    });
+    expect(byId.get("manual-x")).toMatchObject({
+      medal: "X-X-X-X",
+      medalSource: "manual",
+    });
+    expect(byId.get("invalid-auto-gold")).toMatchObject({
+      medal: "Gold",
+      medalSource: "manual",
+    });
+  });
+
+  test("does not overwrite a TieSheet-controlled medal", async () => {
+    const tournamentId = new mongoose.Types.ObjectId();
+    const userId = new mongoose.Types.ObjectId();
+    await EntryRow.create({
+      tournamentId,
+      entryId: "tiesheet-player",
+      medal: "Gold",
+      medalSource: "tiesheet",
+      createdBy: userId,
+      updatedBy: userId,
+    });
+
+    await processEntrySyncBatch({
+      tournamentId: tournamentId.toString(),
+      userId: userId.toString(),
+      clientMutationId: "protect-tiesheet-medal",
+      clientSeq: Date.now() * 1000,
+      operations: [
+        {
+          operationId: "replace-with-auto-x",
+          entryId: "tiesheet-player",
+          type: "upsert",
+          updates: { medal: "X-X-X-X", medalSource: "category-auto" },
+        },
+      ],
+    });
+
+    expect(
+      await EntryRow.findOne({ tournamentId, entryId: "tiesheet-player" }).lean()
+    ).toMatchObject({
+      medal: "Gold",
+      medalSource: "tiesheet",
+    });
   });
 
   test("synchronizes 1,000 entries in 10 batches without duplicates", async () => {

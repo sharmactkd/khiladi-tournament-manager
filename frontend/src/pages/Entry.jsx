@@ -20,6 +20,12 @@ import ImageImport from '../components/import/ImageImport';
 import AddTeamEntriesModal from '../components/Team/AddTeamEntriesModal';
 import useEntrySync from '../hooks/useEntrySync';
 import toast, { Toaster } from "react-hot-toast";
+import {
+  buildMedalCategoryKey,
+  hasCompleteMedalCategory,
+  MEDAL_CATEGORY_FIELDS,
+  reconcileCompletedCategoryMedals,
+} from "../utils/entrySyncUtils";
 
 import { baseColumnsDef, optionalColumnsDef } from '../components/Entry/constants';
 
@@ -211,7 +217,6 @@ const dataRef = useRef(data);
   const canManageTournament = Boolean(access?.canAccessEntry || isAdminUser || isOrganizer);
   const canEditTournament = Boolean(!isPageReadOnly && (!isAdminUser || adminEditMode));
   const {
-    queueUpsert,
     queueUpserts,
     queueDelete,
     flush: flushEntrySync,
@@ -667,51 +672,110 @@ finalEntries = regenerateSrNumbers(
       const committedUpdates =
         columnId && typeof columnId === "object" ? { ...columnId } : null;
 
-      if (!committedUpdates && columnId === 'gender') {
-        const v = String(value || '').trim().toLowerCase();
-        if (['m', 'male'].includes(v)) finalValue = 'Male';
-        else if (['f', 'female'].includes(v)) finalValue = 'Female';
+      if (!committedUpdates && columnId === "gender") {
+        const v = String(value || "").trim().toLowerCase();
+        if (["m", "male"].includes(v)) finalValue = "Male";
+        else if (["f", "female"].includes(v)) finalValue = "Female";
       }
 
-    if (!committedUpdates && columnId === 'weight') {
-  finalValue = String(value || '').replace(/[^0-9.]/g, '');
-}
+      if (!committedUpdates && columnId === "weight") {
+        finalValue = String(value || "").replace(/[^0-9.]/g, "");
+      }
 
-if (!committedUpdates && ["event", "subEvent", "ageCategory", "weightCategory"].includes(columnId)) {
-  finalValue = normalizeEntryCategoryValue(finalValue, columnId);
-}
+      if (
+        !committedUpdates &&
+        ["event", "subEvent", "ageCategory", "weightCategory"].includes(columnId)
+      ) {
+        finalValue = normalizeEntryCategoryValue(finalValue, columnId);
+      }
 
-saveToHistory();
+      saveToHistory();
 
-const newData = [...dataRef.current];
-const currentRow = ensureEntryId(newData[rowIndex] || {});
-const nextRow = {
-  ...currentRow,
-  ...(committedUpdates || { [columnId]: finalValue }),
-};
-newData[rowIndex] = nextRow;
-dataRef.current = newData;
-setData(newData);
+      const newData = [...dataRef.current];
+      const currentRow = ensureEntryId(newData[rowIndex] || {});
+      let nextRow = {
+        ...currentRow,
+        ...(committedUpdates || { [columnId]: finalValue }),
+      };
 
-if (ENTRY_SYNC_V2_ENABLED) {
-  queueUpsert(currentRow.entryId, {
-    ...(committedUpdates || { [columnId]: finalValue }),
-    srNo: rowIndex + 1,
-    entrySource:
-      currentRow.entrySource === "import"
-        ? "import"
-        : currentRow.entrySource === "teamSubmission"
-          ? "teamSubmission"
-          : "manual",
-  }).catch((error) => {
-    console.error("[Entry Sync V2] Failed to queue row update:", error);
-    setLoadError(
-      "This change could not be stored locally. Keep the page open and retry."
-    );
-  });
-}
+      const changedFields = Object.keys(
+        committedUpdates || { [columnId]: finalValue }
+      );
+      const medalWasCommitted = changedFields.includes("medal");
+
+      if (medalWasCommitted && currentRow.medalSource === "tiesheet") {
+        nextRow = {
+          ...nextRow,
+          medal: currentRow.medal,
+          medalSource: "tiesheet",
+          medalUpdatedAt: currentRow.medalUpdatedAt,
+        };
+      } else if (medalWasCommitted) {
+        const committedMedal = String(nextRow.medal || "").trim();
+        nextRow = {
+          ...nextRow,
+          medalSource: committedMedal ? "manual" : "",
+          medalUpdatedAt: committedMedal ? new Date().toISOString() : null,
+        };
+      }
+
+      newData[rowIndex] = nextRow;
+
+      const shouldReconcileMedals = changedFields.some(
+        (field) => field === "medal" || MEDAL_CATEGORY_FIELDS.includes(field)
+      );
+      let finalData = newData;
+      let autoChangedRows = [];
+
+      if (shouldReconcileMedals) {
+        const affectedCategoryKeys = new Set();
+        if (hasCompleteMedalCategory(currentRow)) {
+          affectedCategoryKeys.add(buildMedalCategoryKey(currentRow));
+        }
+        if (hasCompleteMedalCategory(nextRow)) {
+          affectedCategoryKeys.add(buildMedalCategoryKey(nextRow));
+        }
+
+        const reconciliation = reconcileCompletedCategoryMedals(newData, [
+          ...affectedCategoryKeys,
+        ]);
+        finalData = reconciliation.entries;
+        autoChangedRows = reconciliation.changedRows;
+      }
+
+      dataRef.current = finalData;
+      setData(finalData);
+
+      if (ENTRY_SYNC_V2_ENABLED) {
+        const primaryRow = finalData[rowIndex] || nextRow;
+        const rowsToQueue = new Map([[primaryRow.entryId, primaryRow]]);
+        autoChangedRows.forEach((row) => rowsToQueue.set(row.entryId, row));
+
+        const queuedRows = [...rowsToQueue.values()].map((row) => {
+          const index = finalData.findIndex(
+            (candidate) => candidate.entryId === row.entryId
+          );
+          return {
+            ...row,
+            srNo: index >= 0 ? index + 1 : rowIndex + 1,
+            entrySource:
+              row.entrySource === "import"
+                ? "import"
+                : row.entrySource === "teamSubmission"
+                  ? "teamSubmission"
+                  : "manual",
+          };
+        });
+
+        queueUpserts(queuedRows).catch((error) => {
+          console.error("[Entry Sync V2] Failed to queue row update:", error);
+          setLoadError(
+            "This change could not be stored locally. Keep the page open and retry."
+          );
+        });
+      }
     },
-  [saveToHistory, guardAdminReadOnly, queueUpsert]
+    [saveToHistory, guardAdminReadOnly, queueUpserts]
   );
 
   const handleSearchChange = useCallback((value) => {

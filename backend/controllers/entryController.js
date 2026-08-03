@@ -15,7 +15,7 @@ const isProd = process.env.NODE_ENV === "production";
 const MAX_ENTRY_SAVE_BYTES = 10 * 1024 * 1024;
 
 const allowedMedals = ["Gold", "Silver", "Bronze", "X-X-X-X", ""];
-const allowedMedalSources = ["", "manual", "tiesheet"];
+const allowedMedalSources = ["", "manual", "tiesheet", "category-auto"];
 const allowedEntrySources = ["", "manual", "teamSubmission", "import"];
 const bracketDisplayFields = new Set(["name", "team"]);
 const bracketStructureFields = new Set([
@@ -516,10 +516,14 @@ const buildSanitizedEntries = ({ incomingEntries, existingEntries }) => {
     }
 
     if (incomingMedal) {
+      const incomingMedalSource = normalizeMedalSource(e.medalSource);
       return {
         ...enrichedBaseEntry,
         medal: incomingMedal,
-        medalSource: "manual",
+        medalSource:
+          incomingMedal === "X-X-X-X" && incomingMedalSource === "category-auto"
+            ? "category-auto"
+            : "manual",
         medalUpdatedAt: now,
       };
     }

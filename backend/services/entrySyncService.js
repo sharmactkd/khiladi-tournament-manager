@@ -82,7 +82,9 @@ const normalizeMedal = (value) => {
 
 const normalizeMedalSource = (value) => {
   const source = String(value || "").trim();
-  return ["", "manual", "tiesheet"].includes(source) ? source : "";
+  return ["", "manual", "tiesheet", "category-auto"].includes(source)
+    ? source
+    : "";
 };
 
 const normalizeEntrySource = (value) => {
@@ -145,23 +147,40 @@ export const normalizeEntrySyncUpdates = (updates = {}) => {
 };
 
 const validateOperation = (operation, index) => {
+  const invalid = (message) => {
+    const error = new Error(message);
+    error.statusCode = 400;
+    error.retryable = false;
+    return error;
+  };
   const operationId = String(operation?.operationId || "").trim();
   const entryId = String(operation?.entryId || "").trim();
   const type = String(operation?.type || "").trim();
 
-  if (!operationId) throw new Error(`operations[${index}].operationId is required`);
+  if (!operationId) throw invalid(`operations[${index}].operationId is required`);
   if (!entryId || entryId.length > 160) {
-    throw new Error(`operations[${index}].entryId is invalid`);
+    throw invalid(`operations[${index}].entryId is invalid`);
   }
   if (!["upsert", "delete"].includes(type)) {
-    throw new Error(`operations[${index}].type must be upsert or delete`);
+    throw invalid(`operations[${index}].type must be upsert or delete`);
+  }
+
+  let updates = {};
+  if (type === "upsert") {
+    try {
+      updates = normalizeEntrySyncUpdates(operation.updates);
+    } catch (error) {
+      error.statusCode = 400;
+      error.retryable = false;
+      throw error;
+    }
   }
 
   return {
     operationId,
     entryId,
     type,
-    updates: type === "upsert" ? normalizeEntrySyncUpdates(operation.updates) : {},
+    updates,
   };
 };
 
@@ -333,8 +352,18 @@ export const processEntrySyncBatch = async ({
         delete updates.medalSource;
         delete updates.medalUpdatedAt;
       } else if (updates.medal !== undefined) {
-        updates.medalSource = updates.medal ? "manual" : "";
+        updates.medalSource = updates.medal
+          ? updates.medal === "X-X-X-X" &&
+            updates.medalSource === "category-auto"
+            ? "category-auto"
+            : "manual"
+          : "";
         updates.medalUpdatedAt = updates.medal ? now : null;
+      } else if (
+        updates.medalSource === "category-auto" &&
+        existing?.medal !== "X-X-X-X"
+      ) {
+        updates.medalSource = existing?.medal ? "manual" : "";
       }
 
       effectiveOperations.push({ ...operation, updates });
