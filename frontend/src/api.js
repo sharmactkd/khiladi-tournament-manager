@@ -115,7 +115,7 @@ const isPublicApiRequest = (requestUrl = "") => {
 const api = axios.create({
   baseURL: API_URL,
   withCredentials: true,
-  timeout: 30000,
+  timeout: 60000,
 });
 
 let refreshPromise = null;
@@ -143,6 +143,18 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config || {};
     const requestUrl = String(originalRequest.url || "");
+
+    const canRetrySafeGet =
+      String(originalRequest.method || "").toLowerCase() === "get" &&
+      !error.response &&
+      Number(originalRequest._networkRetryCount || 0) < 1;
+
+    if (canRetrySafeGet) {
+      originalRequest._networkRetryCount =
+        Number(originalRequest._networkRetryCount || 0) + 1;
+      await new Promise((resolve) => globalThis.setTimeout(resolve, 1500));
+      return api(originalRequest);
+    }
 
     const isPublicAuthRequest =
       requestUrl.includes("/auth/login") ||
@@ -307,6 +319,7 @@ export const updateTournament = (tournamentId, data) =>
 
 export const getOngoingTournaments = () => apiCall("get", "/tournament/ongoing");
 export const getPreviousTournaments = () => apiCall("get", "/tournament/previous");
+export const getTournamentHome = () => apiCall("get", "/tournament/home");
 export const getTournamentById = (id) => apiCall("get", `/tournament/${id}`);
 
 export const saveWeightPreset = (name, data) =>

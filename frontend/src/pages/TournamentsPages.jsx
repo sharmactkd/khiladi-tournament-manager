@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { Helmet } from "react-helmet-async";
-import { getOngoingTournaments, getPreviousTournaments } from "../api";
+import {
+  getOngoingTournaments,
+  getPreviousTournaments,
+  getTournamentHome,
+} from "../api";
 import TournamentPreviewCard from "../components/TournamentPreviewCard";
 import FilterComponent from "../components/FilterComponent";
 import { useAuth } from "../context/AuthContext";
@@ -32,10 +36,35 @@ const TournamentsPages = () => {
       setError(null);
 
       try {
-        const [ongoingResponse, previousResponse] = await Promise.all([
-          getOngoingTournaments(),
-          getPreviousTournaments(),
-        ]);
+        let ongoingResponse;
+        let previousResponse;
+
+        try {
+          const homeResponse = await getTournamentHome();
+          ongoingResponse = homeResponse?.ongoing || [];
+          previousResponse = homeResponse?.previous || [];
+        } catch (homeError) {
+          if (homeError?.status !== 404) throw homeError;
+
+          const [ongoingResult, previousResult] = await Promise.allSettled([
+            getOngoingTournaments(),
+            getPreviousTournaments(),
+          ]);
+
+          ongoingResponse = ongoingResult.status === "fulfilled"
+            ? ongoingResult.value
+            : [];
+          previousResponse = previousResult.status === "fulfilled"
+            ? previousResult.value
+            : [];
+
+          if (
+            ongoingResult.status === "rejected" &&
+            previousResult.status === "rejected"
+          ) {
+            throw ongoingResult.reason;
+          }
+        }
 
         if (!isMounted) return;
 
@@ -270,7 +299,6 @@ const TournamentsPages = () => {
                 <TournamentPreviewCard
                   key={tournament._id}
                   tournament={tournament}
-                  onClick={() => navigate(`/tournaments/${tournament._id}`)}
                 />
               ))
             ) : (

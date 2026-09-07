@@ -19,8 +19,13 @@ const TournamentLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const [tournament, setTournament] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const routePreview =
+    location.state?.tournamentPreview?._id === id
+      ? location.state.tournamentPreview
+      : null;
+
+  const [tournament, setTournament] = useState(routePreview);
+  const [loading, setLoading] = useState(!routePreview);
   const [error, setError] = useState(null);
 
   const [adminEditMode, setAdminEditMode] = useState(false);
@@ -34,25 +39,27 @@ const TournamentLayout = () => {
 
     const fetchTournament = async () => {
       try {
-        setLoading(true);
+        setLoading(!routePreview);
         setError(null);
 
         const data = await getTournamentById(id);
         setTournament(data);
       } catch (err) {
-        setTournament(null);
-        setError(
-          err?.response?.data?.message ||
-            err?.message ||
-            "Failed to load tournament details. Please try again or check your connection."
-        );
+        if (!routePreview) {
+          setTournament(null);
+          setError(
+            err?.response?.data?.message ||
+              err?.message ||
+              "Failed to load tournament details. Please try again or check your connection."
+          );
+        }
       } finally {
         setLoading(false);
       }
     };
 
     fetchTournament();
-  }, [id]);
+  }, [id, routePreview]);
 
   useEffect(() => {
     setAdminEditMode(false);

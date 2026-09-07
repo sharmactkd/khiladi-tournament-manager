@@ -1,12 +1,12 @@
 import express from "express";
 import multer from "multer";
-import mongoose from "mongoose";
 
 import {
   createTournament,
   getAllTournaments,
   getOngoingTournaments,
   getPreviousTournaments,
+  getTournamentHome,
   getTournamentById,
   getPrivateTournamentById,
   updateTournament,
@@ -57,43 +57,9 @@ const multerErrorHandler = (err, req, res, next) => {
   next();
 };
 
-const requirePublicOrOwnerView = async (req, res, next) => {
-  const { id } = req.params;
-
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(400).json({ message: "Invalid tournament ID" });
-  }
-
-  try {
-    const tournament = await Tournament.findById(id).select("createdBy visibility");
-
-    if (!tournament) {
-      return res.status(404).json({ message: "Tournament not found" });
-    }
-
-    const isAdminUser = ["admin", "superadmin"].includes(req.user?.role);
-    const isOwner =
-      req.user && tournament.createdBy.toString() === req.user._id.toString();
-
-    if (tournament.visibility === false && !isOwner && !isAdminUser) {
-      return res.status(403).json({ message: "This tournament is private" });
-    }
-
-    return next();
-  } catch (error) {
-    logger.error("Public tournament view error", {
-      tournamentId: id,
-      userId: req.user?._id,
-      error: error.message,
-      stack: error.stack,
-    });
-
-    return res.status(500).json({ message: "Server error" });
-  }
-};
-
 // ================ PUBLIC ROUTES ================
 router.get("/", getAllTournaments);
+router.get("/home", getTournamentHome);
 router.get("/ongoing", getOngoingTournaments);
 router.get("/previous", getPreviousTournaments);
 
@@ -127,7 +93,7 @@ router.get("/my", authMiddleware, async (req, res) => {
 });
 
 // ================ PUBLIC TOURNAMENT VIEW WITH OPTIONAL AUTH ================
-router.get("/:id", optionalAuthMiddleware, requirePublicOrOwnerView, getTournamentById);
+router.get("/:id", optionalAuthMiddleware, getTournamentById);
 
 router.get(
   "/:id/private",

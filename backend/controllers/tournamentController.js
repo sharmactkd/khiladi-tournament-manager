@@ -168,6 +168,29 @@ cadetCategoryType: tournament.cadetCategoryType,
   updatedAt: tournament.updatedAt,
 });
 
+const setPublicTournamentCache = (res, { detail = false } = {}) => {
+  res.set("Cache-Control", detail
+    ? "public, max-age=60, s-maxage=300, stale-while-revalidate=600"
+    : "public, max-age=60, s-maxage=180, stale-while-revalidate=300");
+};
+
+const findOngoingPublicTournaments = (today) => Tournament.find({
+  $and: [{ dateTo: { $gte: today } }, getPublicVisibilityFilter()],
+})
+  .select(publicTournamentListSelect)
+  .populate("createdBy", "name email phone")
+  .sort({ dateFrom: 1 })
+  .lean();
+
+const findPreviousPublicTournaments = (today) => Tournament.find({
+  $and: [{ dateTo: { $lt: today } }, getPublicVisibilityFilter()],
+})
+  .select(publicTournamentListSelect)
+  .populate("createdBy", "name email phone")
+  .sort({ dateTo: -1 })
+  .limit(50)
+  .lean();
+
 const allowedResultMedals = ["Gold", "Silver", "Bronze", "X-X-X-X"];
 
 const normalizeResultText = (value) =>
@@ -1269,6 +1292,7 @@ export const getAllTournaments = async (req, res) => {
 
     const normalized = tournaments.map(buildPublicTournamentResponse);
 
+    setPublicTournamentCache(res);
     res.status(200).json({ count: normalized.length, data: normalized });
   } catch (error) {
     logger.error("Get all tournaments failed", { error: error.message });
@@ -1279,17 +1303,11 @@ export const getAllTournaments = async (req, res) => {
 export const getOngoingTournaments = async (req, res) => {
   try {
     const today = getCurrentIndiaDayStart();
-
-    const tournaments = await Tournament.find({
-      $and: [{ dateTo: { $gte: today } }, getPublicVisibilityFilter()],
-    })
-      .select(publicTournamentListSelect)
-      .populate("createdBy", "name email phone")
-      .sort({ dateFrom: 1 })
-      .lean();
+    const tournaments = await findOngoingPublicTournaments(today);
 
     const normalized = tournaments.map(buildPublicTournamentResponse);
 
+    setPublicTournamentCache(res);
     res.status(200).json({ count: normalized.length, data: normalized });
   } catch (error) {
     logger.error("Get ongoing tournaments failed", { error: error.message });
@@ -1300,18 +1318,11 @@ export const getOngoingTournaments = async (req, res) => {
 export const getPreviousTournaments = async (req, res) => {
   try {
     const today = getCurrentIndiaDayStart();
-
-    const tournaments = await Tournament.find({
-      $and: [{ dateTo: { $lt: today } }, getPublicVisibilityFilter()],
-    })
-      .select(publicTournamentListSelect)
-      .populate("createdBy", "name email phone")
-      .sort({ dateTo: -1 })
-      .limit(50)
-      .lean();
+    const tournaments = await findPreviousPublicTournaments(today);
 
     const normalized = tournaments.map(buildPublicTournamentResponse);
 
+    setPublicTournamentCache(res);
     res.status(200).json({ count: normalized.length, data: normalized });
   } catch (error) {
     logger.error("Get previous tournaments failed", { error: error.message });
@@ -1319,11 +1330,35 @@ export const getPreviousTournaments = async (req, res) => {
   }
 };
 
+export const getTournamentHome = async (req, res) => {
+  try {
+    const today = getCurrentIndiaDayStart();
+    const [ongoing, previous] = await Promise.all([
+      findOngoingPublicTournaments(today),
+      findPreviousPublicTournaments(today),
+    ]);
+
+    setPublicTournamentCache(res);
+    return res.status(200).json({
+      ongoing: ongoing.map(buildPublicTournamentResponse),
+      previous: previous.map(buildPublicTournamentResponse),
+    });
+  } catch (error) {
+    logger.error("Get tournament home data failed", { error: error.message });
+    return res.status(500).json({ message: "Failed to load tournaments" });
+  }
+};
+
 
 
 export const getTournamentById = async (req, res) => {
   try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: "Invalid tournament ID" });
+    }
+
     const tournament = await Tournament.findById(req.params.id)
+      .select(`${publicTournamentListSelect} premiumSnapshot`)
       .populate("createdBy", "name phone email")
       .lean();
 
@@ -1331,10 +1366,28 @@ export const getTournamentById = async (req, res) => {
       return res.status(404).json({ message: "Tournament not found" });
     }
 
+    const isAdminUser = ["admin", "superadmin"].includes(req.user?.role);
+    const isOwner = Boolean(
+      req.user &&
+      String(tournament.createdBy?._id || tournament.createdBy) ===
+        String(req.user._id)
+    );
+
+    if (tournament.visibility === false && !isOwner && !isAdminUser) {
+      return res.status(403).json({ message: "This tournament is private" });
+    }
+
     const access = await calculateTournamentAccess({
       tournament,
       user: req.user || null,
     });
+
+    res.vary("Authorization");
+    if (!req.user) {
+      res.set("Cache-Control", "private, max-age=60, stale-while-revalidate=300");
+    } else {
+      res.set("Cache-Control", "private, no-store");
+    }
 
     return res.status(200).json({
       ...buildPublicTournamentResponse(tournament),

@@ -78,7 +78,9 @@ const TournamentPreviewCard = ({ tournament, onClick }) => {
 
   const handleCardClick = () => {
     if (onClick) onClick();
-    navigate(`/tournaments/${_id}`);
+    navigate(`/tournaments/${_id}`, {
+      state: { tournamentPreview: tournament },
+    });
   };
 
   return (
