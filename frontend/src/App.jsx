@@ -37,6 +37,7 @@ const TournamentsPages = lazy(() => import("./pages/TournamentsPages"));
 const TournamentForm = lazy(() => import("./pages/TournamentForm"));
 const TournamentDetails = lazy(() => import("./pages/TournamentDetails"));
 const SocialLogin = lazy(() => import("./pages/SocialLogin"));
+const SsoCallback = lazy(() => import("./pages/SsoCallback"));
 const TournamentManager = lazy(() => import("./pages/TournamentManager"));
 const BracketMaker = lazy(() => import("./pages/BracketMaker"));
 const TieSheetMaker = lazy(() => import("./pages/TieSheetMaker"));
@@ -131,6 +132,7 @@ function App() {
       <main className="mainContent">
         <Suspense fallback={<PageLoader />}>
           <Routes>
+            <Route path="/auth/sso/callback" element={<SsoCallback />} />
             <Route path="/" element={<TournamentsPages />} />
             <Route path="/tournaments" element={<TournamentsPages />} />
 

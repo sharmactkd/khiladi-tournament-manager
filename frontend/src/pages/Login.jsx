@@ -21,6 +21,7 @@ import {
 import { useAuth } from "../context/AuthContext";
 import { loginUser } from "../api";
 import styles from "./Login.module.css";
+import { beginCentralSso } from "../utils/centralSso";
 
 const Login = () => {
   const { login } = useAuth();
@@ -173,6 +174,11 @@ From entries to medals — everything automated.
           >
             <FcGoogle className={styles.googleIcon} />
             <span>Continue with Google</span>
+          </button>
+
+          <button type="button" className={styles.googleLoginBtn} onClick={beginCentralSso}>
+            <FiShield className={styles.googleIcon} />
+            <span>Continue with KHILADI</span>
           </button>
 
           <div className={styles.divider}>

@@ -41,6 +41,7 @@ import {
   setCsrfCookie,
 } from "../middleware/csrfProtection.js";
 import logger from "../utils/logger.js";
+import { centralSsoLogin } from "../controllers/ssoAuthController.js";
 
 const router = express.Router();
 
@@ -76,6 +77,7 @@ const setRefreshAuthCookies = (res, { userId, refreshToken }) => {
 router.post("/register", validateRegister, registerUser);
 
 router.post("/login", validateLogin, loginUser);
+router.post("/sso/exchange", centralSsoLogin);
 
 router.post("/forgot-password", forgotPassword);
 
