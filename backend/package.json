@@ -8,7 +8,7 @@
     "dev": "nodemon server.js",
     "migrate:access-entitlements": "node scripts/migrateAccessEntitlements.js",
     "check:entry-sync-index": "node scripts/checkEntrySyncReadiness.js",
-    "test": "cross-env NODE_ENV=test jest --runInBand",
+    "test": "cross-env NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
     "test:security": "cross-env NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --runInBand tests/security",
     "test:entry-sync": "cross-env NODE_ENV=test NODE_OPTIONS=--experimental-vm-modules jest --runInBand tests/entrySync.test.js"
   },

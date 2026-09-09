@@ -95,7 +95,7 @@ const entryRowSchema = new mongoose.Schema(
 
     medalSource: {
       type: String,
-      enum: ["", "manual", "tiesheet"],
+      enum: ["", "manual", "category-auto", "tiesheet"],
       default: "",
       index: true,
     },

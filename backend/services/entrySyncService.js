@@ -97,7 +97,9 @@ const normalizeMedal = (value) => {
 
 const normalizeMedalSource = (value) => {
   const source = String(value || "").trim();
-  return ["", "manual", "tiesheet"].includes(source) ? source : "";
+  return ["", "manual", "category-auto", "tiesheet"].includes(source)
+    ? source
+    : "";
 };
 
 const normalizeEntrySource = (value) => {
@@ -285,6 +287,24 @@ export const processEntrySyncBatch = async ({
   const normalizedOperations = operations.map(validateOperation);
   const expiresAt = new Date(Date.now() + RECEIPT_TTL_MS);
 
+  const existingReceipt = await EntrySyncBatch.findOne({
+    tournamentId: tournamentObjectId,
+    userId: userObjectId,
+    clientMutationId,
+  }).lean();
+  if (existingReceipt?.status === "completed" && existingReceipt.result) {
+    return { ...existingReceipt.result, idempotentReplay: true };
+  }
+  if (existingReceipt?.status === "processing") {
+    const retryError = new Error("This synchronization batch is already processing");
+    retryError.statusCode = 409;
+    retryError.retryable = true;
+    throw retryError;
+  }
+  if (existingReceipt?.status === "failed") {
+    await EntrySyncBatch.deleteOne({ _id: existingReceipt._id });
+  }
+
   let receipt;
   try {
     receipt = await EntrySyncBatch.create({
@@ -297,16 +317,16 @@ export const processEntrySyncBatch = async ({
     });
   } catch (error) {
     if (error?.code !== 11000) throw error;
-    const existingReceipt = await EntrySyncBatch.findOne({
+    const duplicateReceipt = await EntrySyncBatch.findOne({
       tournamentId: tournamentObjectId,
       userId: userObjectId,
       clientMutationId,
     }).lean();
-    if (existingReceipt?.status === "completed" && existingReceipt.result) {
-      return { ...existingReceipt.result, idempotentReplay: true };
+    if (duplicateReceipt?.status === "completed" && duplicateReceipt.result) {
+      return { ...duplicateReceipt.result, idempotentReplay: true };
     }
-    if (existingReceipt?.status === "failed") {
-      await EntrySyncBatch.deleteOne({ _id: existingReceipt._id });
+    if (duplicateReceipt?.status === "failed") {
+      await EntrySyncBatch.deleteOne({ _id: duplicateReceipt._id });
       return processEntrySyncBatch({
         tournamentId,
         userId,
@@ -399,7 +419,14 @@ export const processEntrySyncBatch = async ({
         delete updates.medalSource;
         delete updates.medalUpdatedAt;
       } else if (updates.medal !== undefined) {
-        updates.medalSource = updates.medal ? "manual" : "";
+        const isValidCategoryAutoMedal =
+          updates.medal === "X-X-X-X" &&
+          updates.medalSource === "category-auto";
+        updates.medalSource = updates.medal
+          ? isValidCategoryAutoMedal
+            ? "category-auto"
+            : "manual"
+          : "";
         updates.medalUpdatedAt = updates.medal ? now : null;
       }
 
@@ -477,6 +504,7 @@ export const processEntrySyncBatch = async ({
           ? "display"
           : "none",
       changedEntryIds: bracketChanges.changedEntryIds,
+      changedFields: bracketChanges.changedFields,
       changedBracketFields: bracketChanges.changedFields,
     };
 
